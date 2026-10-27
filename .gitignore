@@ -1,0 +1,14 @@
+# daxili materiallar açıq repoya düşmür
+design/
+CLAUDE.md
+.env*
+.omc/
+
+server/.venv/
+server/*.db
+__pycache__/
+.pytest_cache/
+
+web/node_modules/
+web/dist/
+.DS_Store

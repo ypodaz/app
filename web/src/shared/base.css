@@ -1,0 +1,17 @@
+/* Faza 0 test səhifələri üçün minimal üslub. Dizayn (ypod.css) Faza 1-də qoşulur. */
+html, body { margin: 0; background: #0b0713; color: #fdf6ff; font-family: system-ui, -apple-system, sans-serif; }
+* { box-sizing: border-box; }
+main { max-width: 480px; margin: 0 auto; padding: max(24px, env(safe-area-inset-top)) 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 22px; margin: 8px 0 0; }
+p { margin: 0; line-height: 1.5; color: #d8cfe6; }
+.card { background: #171024; border: 1px solid #2a1f3d; border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+button, .btn { min-height: 44px; border: 0; border-radius: 12px; padding: 0 16px; background: #7c3aed; color: #fff; font: inherit; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+button.ghost { background: transparent; border: 1px solid #3b2d55; color: #fdf6ff; }
+input { min-height: 44px; border-radius: 12px; border: 1px solid #3b2d55; background: #0f0a19; color: #fdf6ff; padding: 0 12px; font: inherit; font-size: 16px; width: 100%; }
+.code { font-size: 34px; letter-spacing: .25em; font-weight: 800; text-align: center; }
+.err { color: #fca5a5; }
+.muted { color: #9d8fb5; font-size: 14px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.qr { background: #fff; border-radius: 16px; padding: 12px; align-self: center; }
+video { width: 100%; border-radius: 16px; background: #000; }
+ol { margin: 0; padding-left: 20px; line-height: 1.6; color: #d8cfe6; }
