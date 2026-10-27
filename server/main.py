@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import settings
 from auth import ensure_admin
 from db import SessionLocal
-from routes import admin, client, public
+from routes import admin, admin_shoots, client, public
 
 
 @asynccontextmanager
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(public.router)
 app.include_router(client.router)
 app.include_router(admin.router)
+app.include_router(admin_shoots.router)
 
 
 @app.get("/api/health")

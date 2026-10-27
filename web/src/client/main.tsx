@@ -1,118 +1,76 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import QRCode from 'qrcode';
-import { api, ApiError, storedToken, storeToken } from '../shared/api';
-import '../shared/base.css';
-
-const KEY = 'ypod.token';
-const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+import { api, storedToken, storeToken } from '../shared/api';
+import '../shared/ypod.css';
+import '../shared/responsive.css';
+import './client.css';
+import { Install, CodeEntry, InvalidInvite, Welcome } from './auth';
+import { Calendar } from './calendar';
+import { AuthCtx, Loading, TOKEN_KEY, useRoute } from './core';
+import { ShootDetail } from './detail';
+import { Home } from './home';
+import { Cashback, Materials, Notifications, PackagePage, QrCard } from './pages';
+import { standalone } from './util';
 
 // Dəvət tokeni ünvandan dərhal götürülür ki, tarixçədə və ekran şəklində qalmasın.
 const inviteToken = new URLSearchParams(location.search).get('i');
 if (inviteToken) history.replaceState(null, '', location.pathname);
 
-type Me = { full_name: string; card_code: string };
+type Stage = 'app' | 'welcome' | 'install';
+
+function Routes({ onLogout, pair, setPair, token }: { onLogout: () => void; pair: string | null; setPair: (c: string) => void; token: string }) {
+  const [r0, r1] = useRoute();
+  switch (r0) {
+    case 'calendar': return <Calendar />;
+    case 'shoots': return r1 ? <ShootDetail id={r1} key={r1} /> : <Calendar />;
+    case 'cashback': return <Cashback />;
+    case 'package': return <PackagePage />;
+    case 'materials': return <Materials />;
+    case 'qr': return <QrCard />;
+    case 'notifications': return <Notifications />;
+    case 'install': return <Install token={token} pair={pair} setPair={setPair} onDone={() => { location.hash = '#/'; }} />;
+    default: return <Home onLogout={onLogout} />;
+  }
+}
 
 function App() {
-  const [token, setToken] = useState(storedToken(KEY));
+  const [token, setToken] = useState(storedToken(TOKEN_KEY));
   const [pair, setPair] = useState<string | null>(null);
-  const [me, setMe] = useState<Me | null>(null);
-  const [err, setErr] = useState('');
+  const [name, setName] = useState('');
+  const [stage, setStage] = useState<Stage>('app');
   const [busy, setBusy] = useState(!!inviteToken);
+  const [badInvite, setBadInvite] = useState(false);
   const redeemed = useRef(false);
 
-  function signIn(t: string) { storeToken(KEY, t); setToken(t); }
-  function signOut() { storeToken(KEY, null); setToken(null); setMe(null); }
+  function signIn(t: string) { storeToken(TOKEN_KEY, t); setToken(t); }
+  function signOut() {
+    storeToken(TOKEN_KEY, null); setToken(null); setPair(null); setStage('app');
+    try { Object.keys(localStorage).filter((k) => k.startsWith('ypod.')).forEach((k) => localStorage.removeItem(k)); } catch { /* gizli rejim */ }
+  }
 
   useEffect(() => {
     if (!inviteToken || redeemed.current) return;
     redeemed.current = true;
-    api<{ token: string; pair_code: string }>('/auth/redeem', { body: { token: inviteToken } })
-      .then((r) => { signIn(r.token); setPair(r.pair_code); })
-      .catch((e: ApiError) => setErr(e.message))
+    api<{ token: string; pair_code: string; full_name?: string }>('/auth/redeem', { body: { token: inviteToken } })
+      .then((r) => { signIn(r.token); setPair(r.pair_code); setName(r.full_name ?? ''); setStage('welcome'); })
+      .catch(() => setBadInvite(true))
       .finally(() => setBusy(false));
   }, []);
 
-  useEffect(() => {
-    if (!token || busy) return;
-    api<Me>('/me', { token }).then(setMe).catch((e: ApiError) => (e.status === 401 ? signOut() : setErr(e.message)));
-  }, [token, busy]);
+  if (busy) return <main className="scr"><div className="au"><Loading /></div></main>;
+  if (!token) return badInvite ? <InvalidInvite onCode={() => setBadInvite(false)} /> : <CodeEntry onToken={signIn} />;
 
-  if (busy) return <main><p>Yüklənir…</p></main>;
-  if (!token) return <CodeEntry onToken={signIn} initialError={err} />;
-  if (!me) return <main>{err ? <p className="err">{err}</p> : <p>Yüklənir…</p>}</main>;
+  const logout = async () => { await api('/me/logout', { token, body: {} }).catch(() => {}); signOut(); };
+  const toApp = () => { setStage('app'); location.hash = '#/'; };
 
   return (
-    <main>
-      <h1>Salam, {me.full_name}!</h1>
-      {!standalone && <Install token={token} pair={pair} setPair={setPair} />}
-      <div className="card">
-        <strong>Müştəri kartınız</strong>
-        <p className="muted">Studiyada bu QR-ı göstərin.</p>
-        <QrImage value={me.card_code} />
-      </div>
-      <p className="muted">Faza 0 test versiyası · {standalone ? 'ana ekrandan açılıb' : 'brauzerdə açılıb'}</p>
-      <button className="ghost" onClick={async () => { await api('/me/logout', { token, body: {} }).catch(() => {}); signOut(); }}>Çıxış</button>
-    </main>
+    <AuthCtx.Provider value={{ token, signOut }}>
+      {stage === 'welcome' ? <Welcome name={name} onNext={() => (standalone ? toApp() : setStage('install'))} />
+        : stage === 'install' ? <Install token={token} pair={pair} setPair={setPair} onDone={toApp} />
+        : <Routes onLogout={logout} pair={pair} setPair={setPair} token={token} />}
+    </AuthCtx.Provider>
   );
-}
-
-function Install({ token, pair, setPair }: { token: string; pair: string | null; setPair: (c: string) => void }) {
-  const [err, setErr] = useState('');
-  async function fresh() {
-    setErr('');
-    try { setPair((await api<{ pair_code: string }>('/me/pair-code', { token, body: {} })).pair_code); }
-    catch (e) { setErr((e as ApiError).message); }
-  }
-  return (
-    <div className="card">
-      <strong>App-ı ana ekrana əlavə edin</strong>
-      {isIOS ? (
-        <ol><li>Aşağıda «Paylaş» düyməsinə basın.</li><li>«Ana ekrana əlavə et» seçin.</li><li>Ana ekrandakı Y Pod-u açın və bu kodu yazın.</li></ol>
-      ) : (
-        <ol><li>Brauzerin menyusunu (⋮) açın.</li><li>«Ana ekrana əlavə et» və ya «Quraşdır» seçin.</li><li>Ana ekrandakı Y Pod-u açın. Kod istəsə, bu kodu yazın.</li></ol>
-      )}
-      {pair ? <div className="code">{pair}</div> : null}
-      <p className="muted">Kod 15 dəqiqə etibarlıdır.</p>
-      <button className="ghost" onClick={fresh}>{pair ? 'Yeni kod' : 'Kod al'}</button>
-      {err && <p className="err">{err}</p>}
-    </div>
-  );
-}
-
-function CodeEntry({ onToken, initialError }: { onToken: (t: string) => void; initialError: string }) {
-  const [code, setCode] = useState('');
-  const [err, setErr] = useState(initialError);
-  const [busy, setBusy] = useState(false);
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true); setErr('');
-    try { onToken((await api<{ token: string }>('/auth/pair', { body: { code } })).token); }
-    catch (e) { setErr((e as ApiError).message); }
-    finally { setBusy(false); }
-  }
-  return (
-    <main>
-      <h1>Y Pod</h1>
-      <form className="card" onSubmit={submit}>
-        <strong>Kodu yazın</strong>
-        <p className="muted">Studiyanın WhatsApp-da göndərdiyi linki açanda 6 rəqəmli kod görünür.</p>
-        <input inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" aria-label="6 rəqəmli kod" />
-        <button disabled={busy || code.length !== 6}>Daxil ol</button>
-        {err && <p className="err">{err}</p>}
-      </form>
-      <p className="muted">Link və ya kod yoxdursa, studiyaya WhatsApp-da yazın, yeni link göndərək.</p>
-    </main>
-  );
-}
-
-function QrImage({ value }: { value: string }) {
-  const [src, setSrc] = useState('');
-  useEffect(() => { QRCode.toDataURL(value, { margin: 1, width: 220 }).then(setSrc); }, [value]);
-  return src ? <img className="qr" src={src} width={220} height={220} alt="Müştəri QR kodu" /> : null;
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

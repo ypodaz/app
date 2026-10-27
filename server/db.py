@@ -1,11 +1,18 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 import settings
 
 engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+
+if engine.dialect.name == "sqlite":
+    @event.listens_for(engine, "connect")
+    def _sqlite_fk(conn, _):
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
 
 

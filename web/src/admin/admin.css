@@ -1,0 +1,56 @@
+/* Admin paneli: ypod.css + responsive.css üzərinə yalnız bu səhifələrə lazım olan əlavələr. */
+body{min-width:320px}
+.ax-bare{background:transparent;border:0;outline:none;flex:1;min-width:0;padding:0;font-size:15px}
+.ax-back{align-self:flex-start;margin-left:-12px}
+.ax-time{width:52px;flex:none}
+.ax-narrow{max-width:560px;width:100%}
+.ax-li-btn{background:none;border:0;border-bottom:1px solid rgba(253,246,255,.08);text-align:left;width:100%;color:inherit}
+.ax-pick{max-height:46vh;overflow:auto}
+textarea.inp{font-family:inherit}
+select.inp{appearance:auto}
+input[type=date].inp,input[type=time].inp{color-scheme:dark}
+
+/* giriş və QR */
+.ax-login{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(180deg,#2e1065 0%,#12051f 45%,#0b0713 100%)}
+.ax-login-card{width:100%;max-width:400px;padding:28px;gap:16px}
+.ax-scan{min-height:100vh;min-height:100dvh;background:linear-gradient(180deg,#2e1065 0%,#12051f 45%,#0b0713 100%)}
+.ax-scan-body{display:flex;flex-direction:column;align-items:center;gap:22px;padding:10px 20px 40px}
+.ax-frame{position:relative;width:260px;height:260px;border-radius:18px;background:rgba(253,246,255,.03)}
+.ax-frame video{width:100%;height:100%;object-fit:cover;border-radius:18px;display:block}
+.ax-frame i{position:absolute;width:52px;height:52px;border:0 solid #c084fc}
+.ax-frame .tl{top:0;left:0;border-top-width:4px;border-left-width:4px;border-top-left-radius:16px}
+.ax-frame .tr{top:0;right:0;border-top-width:4px;border-right-width:4px;border-top-right-radius:16px}
+.ax-frame .bl{bottom:0;left:0;border-bottom-width:4px;border-left-width:4px;border-bottom-left-radius:16px}
+.ax-frame .br{bottom:0;right:0;border-bottom-width:4px;border-right-width:4px;border-bottom-right-radius:16px}
+
+/* çəkiliş formu: mobil — Yekun + düymə altda sabit; desktop — sağda sticky */
+.ax-form{display:flex;flex-direction:column;gap:14px;padding-bottom:130px}
+.ax-fields{gap:12px}
+.ax-side{display:flex;flex-direction:column;gap:12px}
+.ax-bar{position:fixed;left:0;right:0;bottom:calc(76px + env(safe-area-inset-bottom));padding:12px 20px;background:linear-gradient(transparent,#0b0713 28%);display:flex;flex-direction:column;gap:8px;z-index:5}
+@media (min-width:640px){.ax-bar{left:76px;bottom:0;padding-bottom:20px}.ax-form{padding-bottom:110px}}
+@media (min-width:1024px){
+  .ax-form{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:28px;align-items:start;padding-bottom:0}
+  .ax-side{position:sticky;top:20px}
+  .ax-bar{position:static;padding:0;background:none}
+}
+
+/* təqvim */
+.ax-cal{display:grid;border-top:1px solid rgba(253,246,255,.08)}
+.ax-hours{position:relative}
+.ax-hours span{position:absolute;right:8px;font-size:12px;color:#b9acd0;font-weight:600}
+.ax-col{position:relative;border-left:1px solid rgba(253,246,255,.08);cursor:pointer;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 43px,rgba(253,246,255,.08) 43px,rgba(253,246,255,.08) 44px)}
+.ax-ev{position:absolute;left:3px;right:3px;border-radius:10px;padding:4px 8px;overflow:hidden;text-decoration:none;display:flex;flex-direction:column;z-index:2}
+.ax-ev span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ax-ev-ok{background:#fdf6ff;color:#3b0764}
+.ax-ev-ok:hover{color:#3b0764}
+.ax-ev-beh{background:#1b1230;border:1.5px solid #f0abfc;color:#f5d0fe}
+.ax-ev-done{background:#7c3aed;color:#fff}
+.ax-ev-done:hover{color:#fff}
+.ax-block{position:absolute;left:3px;right:3px;border-radius:10px;padding:4px 8px;overflow:hidden;z-index:1;display:flex;align-items:flex-start;text-align:left;color:#fdf6ff;cursor:pointer;background:repeating-linear-gradient(45deg,rgba(253,246,255,.14) 0 6px,rgba(253,246,255,.03) 6px 12px);border:1px solid rgba(253,246,255,.3)}
+.ax-block-row{position:static;min-height:40px;align-items:center;width:100%}
+.ax-now{position:absolute;left:0;right:0;height:2px;background:#f0abfc;z-index:3;pointer-events:none;box-shadow:0 0 10px #c084fc}
+.ax-dh{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:54px;color:#d9cde8;text-decoration:none}
+.ax-dh b{font-size:17px;font-weight:800;color:#fdf6ff;padding:0 8px;border-radius:12px}
+.ax-dh-today b{background:#fdf6ff;color:#3b0764}
+.card-cream .ic{background:rgba(124,58,237,.14);color:#4c1d95}

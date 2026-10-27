@@ -3,13 +3,14 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import settings
 from auth import create_invite, current_admin, new_card_code
 from db import get_db
-from models import Admin, Client
+from models import Admin, CashbackLedger, Client, Package, PackageHoursLedger, PackageMember, Shoot
+from views import baku_today, day_bounds, iso
 
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
 
@@ -33,7 +34,29 @@ def wa_number(phone: str) -> str:
 
 @router.get("/clients")
 def list_clients(db: DB = Depends(get_db)):
-    return [client_out(c) for c in db.scalars(select(Client).order_by(Client.full_name))]
+    """Siyahı + keşbek balansı, aktiv paket, son çəkiliş (aqreqat sorğularla, N+1 yoxdur)."""
+    today = baku_today()
+    cash = dict(db.execute(select(CashbackLedger.client_id, func.sum(CashbackLedger.amount))
+                           .group_by(CashbackLedger.client_id)).all())
+    last = dict(db.execute(select(Shoot.client_id, func.max(Shoot.starts_at))
+                           .where(Shoot.status.in_(("confirmed", "completed")), Shoot.starts_at < day_bounds(today)[1])
+                           .group_by(Shoot.client_id)).all())
+    live = {p.id: p for p in db.scalars(select(Package).where(Package.starts_on <= today, Package.ends_on >= today)
+                                        .order_by(Package.ends_on, Package.id))}
+    used = dict(db.execute(select(PackageHoursLedger.package_id, func.sum(PackageHoursLedger.delta_minutes))
+                           .where(PackageHoursLedger.package_id.in_(live)).group_by(PackageHoursLedger.package_id)).all())
+    pairs = [(p.owner_client_id, p.id) for p in live.values()]
+    pairs += db.execute(select(PackageMember.client_id, PackageMember.package_id)
+                        .where(PackageMember.package_id.in_(live))).all()
+    order = {pid: i for i, pid in enumerate(live)}  # ən tez bitən paket əvvəl
+    pkg_of: dict[int, Package] = {}
+    for cid, pid in sorted(pairs, key=lambda x: order[x[1]]):
+        pkg_of.setdefault(cid, live[pid])
+    return [{
+        **client_out(c), "cashback_balance": cash.get(c.id) or 0, "last_shoot_at": iso(last.get(c.id)),
+        "package": {"title": pkg_of[c.id].title, "minutes_left": pkg_of[c.id].minutes_total + (used.get(pkg_of[c.id].id) or 0)}
+        if c.id in pkg_of else None,
+    } for c in db.scalars(select(Client).order_by(Client.full_name))]
 
 
 @router.post("/clients")

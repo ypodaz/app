@@ -1,0 +1,105 @@
+/* Müştəri PWA-ya xas əlavə qaydalar (ypod.css-dən sonra). */
+html,body{background:#0b0713}
+#root{min-height:100vh}
+.scr{min-height:100vh;min-height:100dvh}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* giriş/quraşdırma ekranları (shell-siz) */
+.au{max-width:480px;margin:0 auto;padding:calc(48px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:16px;min-height:100vh;min-height:100dvh}
+.au .grow{flex:1}
+.code-big{font-family:Unbounded,sans-serif;font-weight:900;font-size:36px;letter-spacing:.22em;text-align:center;padding:14px 0 14px .22em;border-radius:20px;background:rgba(253,246,255,.06);user-select:all}
+.codein{text-align:center;font-family:Unbounded,sans-serif;font-weight:900;font-size:28px;letter-spacing:.3em;padding-left:.3em}
+.stepn{width:32px;height:32px;border-radius:16px;background:#7c3aed;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+.logo-wrap{display:flex;align-items:center;gap:12px}
+
+/* ana səhifə */
+.hello{display:flex;flex-direction:column;gap:2px;min-width:0}
+.hello b{font-family:Unbounded,sans-serif;font-weight:900;font-size:26px;line-height:1.1;overflow-wrap:anywhere}
+.bell{position:relative}
+.badge{position:absolute;top:-3px;right:-3px;min-width:20px;height:20px;border-radius:10px;background:#f0abfc;color:#3b0764;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 5px}
+.offline{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:6px 12px;border-radius:999px;background:rgba(253,246,255,.08);border:1px solid rgba(253,246,255,.2);font-size:12px;font-weight:800;color:#e9e0f5}
+.big-link{text-decoration:none;color:#fdf6ff;background:#2e1065;border-radius:24px;padding:18px 20px;display:flex;align-items:center;gap:16px}
+.big-link:hover{color:#fdf6ff}
+.bubble{width:48px;height:48px;border-radius:24px;background:rgba(253,246,255,.14);color:#f5d0fe;display:flex;align-items:center;justify-content:center;flex:none}
+.tbig{position:relative;background:#150e22;border:1px solid rgba(168,85,247,.22);border-radius:24px;overflow:hidden}
+.tbig-main{display:flex;color:#fdf6ff;text-decoration:none}
+.tbig-main:hover{color:#fdf6ff}
+.tbig-date{width:88px;flex:none;background:rgba(168,85,247,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:18px 0;color:#f3e8ff}
+.tbig-date small{font-size:11px;font-weight:800;letter-spacing:1px}
+.tbig-date b{font-family:Unbounded,sans-serif;font-weight:900;font-size:42px;line-height:1.05}
+.tbig-body{flex:1;min-width:0;border-left:2px dashed rgba(253,246,255,.16);padding:16px;display:flex;flex-direction:column;gap:10px}
+.tbig-time{font-family:Unbounded,sans-serif;font-weight:900;font-size:34px;line-height:1.05;color:#c084fc}
+.tbig-foot{border-top:1px solid rgba(253,246,255,.08);padding:12px 16px 14px 18px;display:flex;flex-direction:column;gap:8px}
+.chipi{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:10px;background:rgba(253,246,255,.06);font-size:12px;font-weight:700}
+.link{font-size:13px;font-weight:700;color:#d8b4fe;text-decoration:none;display:inline-flex;align-items:center;min-height:44px;gap:4px}
+.cgrid a{min-height:68px;border-radius:18px;background:rgba(253,246,255,.05);color:#fdf6ff;text-decoration:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:700}
+.cgrid a .i{color:#d8b4fe}
+.cgrid a:hover{color:#fdf6ff}
+
+/* təqvim */
+.cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cal-wd,.cal-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px}
+.cal-wd span{text-align:center;font-size:11px;font-weight:700;color:#a99cbf;padding:4px 0}
+.cd{height:44px;border-radius:12px;border:1px solid transparent;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:14px;font-weight:700;color:#fdf6ff;padding:0}
+.cd-other{color:#6f6385}
+.cd-today{border-color:rgba(253,246,255,.6)}
+.cd-sel{background:#fdf6ff;color:#3b0764;font-weight:900;border-color:#fdf6ff}
+.dot{width:5px;height:5px;border-radius:3px;background:transparent}
+.dot-f{background:#c084fc;box-shadow:0 0 6px #a855f7}
+.dot-p{background:rgba(192,132,252,.38)}
+.cd-sel .dot-f,.cd-sel .dot-p{background:#7c3aed;box-shadow:none}
+.tcard.dim{opacity:.55}
+.tcard.dim .tk-time{text-decoration:line-through}
+.tk-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px}
+.tk-time{font-family:Unbounded,sans-serif;font-weight:900;font-size:19px;color:#c084fc}
+.tk-dur{font-size:12px;font-weight:700;color:#b9acd0}
+.tk-svc{font-size:13px;font-weight:700;color:#e9e0f5}
+.tk-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.mat,.pay{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#b9acd0}
+.mat{color:#d9cde8}.mat-ok{color:#f5d0fe}
+
+/* çəkiliş detalı */
+.tick{position:relative;background:#150e22;border:1px solid rgba(168,85,247,.25);border-radius:26px;overflow:hidden}
+.tick-top{display:flex}
+.tick-date{width:104px;flex:none;background:rgba(168,85,247,.18);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:22px 0;color:#f3e8ff}
+.tick-date small{font-size:12px;font-weight:800;letter-spacing:1px;text-align:center}
+.tick-date b{font-family:Unbounded,sans-serif;font-weight:900;font-size:52px;line-height:1}
+.tick-main{flex:1;min-width:0;border-left:2px dashed rgba(253,246,255,.16);padding:18px 16px 18px 18px;display:flex;flex-direction:column;gap:8px}
+.tick-time{font-family:Unbounded,sans-serif;font-weight:900;font-size:38px;line-height:1.05;color:#c084fc}
+.tick-cut{position:relative;height:22px}
+.tick-cut i{position:absolute;top:0;width:22px;height:22px;border-radius:11px;background:#0b0713;border:1px solid rgba(168,85,247,.25)}
+.tick-cut i:first-child{left:-11px}.tick-cut i:nth-child(2){right:-11px}
+.tick-cut u{position:absolute;left:18px;right:18px;top:10px;border-top:2px dashed rgba(253,246,255,.14)}
+.dl{margin:0;padding:4px 20px 20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 12px}
+.dl dt{font-size:11px;font-weight:800;letter-spacing:.6px;color:#a99cbf;text-transform:uppercase}
+.dl dd{margin:0;display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;min-width:0;overflow-wrap:anywhere}
+.paybox{display:flex;flex-direction:column;gap:6px;background:rgba(253,246,255,.05);border-radius:14px;padding:10px 12px;font-size:13px;font-weight:700;line-height:1.4}
+.step{display:flex;gap:14px;min-height:44px}
+.dotc{width:26px;display:flex;flex-direction:column;align-items:center;flex:none}
+.dot0{width:26px;height:26px;border-radius:13px;border:2px solid rgba(253,246,255,.25)}
+.dotdone{width:26px;height:26px;border-radius:13px;background:rgba(168,85,247,.35);color:#fdf6ff;display:flex;align-items:center;justify-content:center}
+.dotnow{width:26px;height:26px;border-radius:13px;background:#7c3aed;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 5px rgba(168,85,247,.22),0 0 18px rgba(168,85,247,.8)}
+.line{flex:1;width:2px;background:rgba(253,246,255,.14)}
+.btn-link{background:transparent}
+
+/* paket */
+.avatar{width:40px;height:40px;border-radius:20px;background:rgba(168,85,247,.2);color:#f3e8ff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none}
+
+/* bildirişlər */
+.nrow{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid rgba(253,246,255,.08);color:inherit;text-decoration:none}
+.nrow:last-child{border-bottom:0}.nrow:hover{color:inherit}
+.ndot{width:8px;height:8px;border-radius:4px;background:#f0abfc;flex:none;margin-top:8px}
+.ndot-off{background:transparent}
+
+/* QR kartı */
+.qrcard{background:linear-gradient(160deg,#2e1065,#150e22);border:1px solid rgba(168,85,247,.3);border-radius:28px;padding:24px 20px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
+.qrbox{background:#fff;border-radius:20px;padding:14px;display:flex}
+.qrbox img{display:block;width:min(240px,64vw);height:auto}
+a.card-cream,a.card-cream:hover{color:#1a0b2e}
+/* Ləğv qaydası: bağlı, kiçik */
+.rules{display:flex;flex-direction:column;gap:6px;text-align:center;margin-top:6px}
+.rules summary{cursor:pointer;list-style:none;text-decoration:underline;text-underline-offset:3px}
+.rules summary::-webkit-details-marker{display:none}
+.rules[open]{gap:8px}
+.rules>span{display:block}
+.rules[open] summary{margin-bottom:4px}

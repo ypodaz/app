@@ -1,0 +1,69 @@
+/* Y Pod — responsive qat. ypod.css-dən SONRA qoşulur; yalnız qayda əlavə edir.
+   <640: mobil dizayn (alt tab-lar) · 640–1023: ikon rail, məzmun ≤720px · ≥1024: B1/B3/B6-desk düzəni. */
+
+/* ümumi */
+html{-webkit-text-size-adjust:100%}
+.scr{width:100%;max-width:100%;overflow:clip}
+.card{min-width:0}
+.rs-nowrap,.num-xl,.num-l,.num-m,.num-s,.amt-plus,.amt-minus,.tk-date b,.stp .v{white-space:nowrap}
+/* açarın toxunma sahəsi ≥44px (görünən ölçü dəyişmir) */
+.tgl::before{content:"";position:absolute;inset:-8px -2px}
+
+/* ---------- AdminShell: mobil ---------- */
+.rs-shell{min-height:100vh;min-height:100dvh;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+.rs-shell .side{display:none}
+.rs-body{display:flex;flex-direction:column;min-width:0}
+.rs-main{padding:20px 20px 20px}
+.rs-inner{display:flex;flex-direction:column;gap:14px;width:100%;min-width:0}
+.rs-head{flex-wrap:wrap;gap:10px 12px}
+.rs-title{min-width:0;overflow-wrap:anywhere}
+.rs-actions{gap:8px;flex-wrap:wrap}
+.rs-detail{padding:0 20px 20px}
+.rs-nav{position:fixed;padding:8px 12px calc(10px + env(safe-area-inset-bottom))}
+.rs-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.rs-stat{gap:8px;min-height:120px}
+.rs-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
+
+/* ---------- ClientShell ---------- */
+.rs-client{min-height:100vh;min-height:100dvh}
+.rs-page{padding:calc(24px + env(safe-area-inset-top)) 20px calc(100px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+.rs-client .nav{justify-content:center}
+.rs-client .nav a{max-width:160px}
+
+/* ---------- Sheet ---------- */
+.rs-overlay{position:fixed;inset:0;z-index:50;background:rgba(5,2,10,.72);display:flex;align-items:flex-end;justify-content:center}
+.rs-sheet{width:100%;max-width:560px;max-height:88vh;max-height:88dvh;overflow:auto;background:#150e22;border:1px solid rgba(168,85,247,.22);border-bottom:0;border-radius:28px 28px 0 0;padding:12px 20px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;color:#fdf6ff;font-family:Manrope,sans-serif;outline:none}
+.rs-grab{width:40px;height:4px;border-radius:2px;background:rgba(253,246,255,.25);align-self:center;flex:none}
+
+/* ---------- 640–1023: ikon rail ---------- */
+@media (min-width:640px){
+  .rs-shell{display:flex;padding-bottom:0}
+  .rs-shell .side{display:flex;align-items:center;width:76px;padding:20px 12px;position:sticky;top:0;height:100vh;height:100dvh;align-self:flex-start}
+  .rs-shell .side a{width:52px;padding:0;justify-content:center}
+  .rs-shell .side a.rs-qr{margin-top:auto;min-height:52px;background:#fdf6ff;color:#3b0764;border-radius:26px}
+  .rs-lbl{display:none}
+  .rs-logo{padding:0 0 18px}
+  .rs-body{flex:1}
+  .rs-nav,.rs-qr-m{display:none}
+  .rs-main{padding:28px 32px}
+  .rs-inner,.rs-detail{max-width:720px;margin:0 auto}
+  .rs-detail{width:100%;padding:0 32px 28px}
+  .rs-cols{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+}
+
+/* ---------- ≥1024: tam yan panel, desktop ---------- */
+@media (min-width:1024px){
+  .rs-shell .side{width:240px;align-items:stretch;padding:28px 16px}
+  .rs-shell .side a{width:auto;padding:0 14px;justify-content:flex-start}
+  .rs-shell .side a.rs-qr{justify-content:center}
+  .rs-lbl{display:inline}
+  .rs-logo{padding:0 14px 22px}
+  .rs-body{flex-direction:row}
+  .rs-main{flex:1}
+  .rs-inner{max-width:none;margin:0}
+  .rs-detail{width:360px;max-width:none;flex:none;margin:0;padding:28px 24px;border-left:1px solid rgba(253,246,255,.08);position:sticky;top:0;height:100vh;overflow:auto;align-self:flex-start}
+  .rs-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+  .rs-overlay{align-items:center}
+  .rs-sheet{max-width:480px;border-radius:28px;border-bottom:1px solid rgba(168,85,247,.22);padding:24px}
+  .rs-grab{display:none}
+}
