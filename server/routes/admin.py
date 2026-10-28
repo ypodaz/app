@@ -28,7 +28,8 @@ class ClientEdit(BaseModel):
 
 def client_out(c: Client) -> dict:
     return {"id": c.id, "full_name": c.full_name, "phone": c.phone, "notes": c.notes,
-            "activated": c.activated_at is not None}
+            "activated": c.activated_at is not None, "app_seen_at": iso(c.app_seen_at),
+            "app_standalone": c.app_standalone, "push_permission": c.push_permission}
 
 
 def wa_number(phone: str) -> str:

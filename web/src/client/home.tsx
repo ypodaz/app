@@ -1,7 +1,8 @@
 import { Button, Card, Icon, Pill } from '../shared/ui';
 import { BookButtons, ErrorState, HOME_CACHE, Loading, OfflineBadge, Screen, useApi, XIcon } from './core';
+import { PushHint } from './push';
 import { Chips } from './shoots';
-import { ADDRESS, MAP_URL, PHONE_HREF, dayNum, fmtHours, money, monShort, relDay, standalone, statusKey, timeOf, waLink, weekday, dateLong, dur, type Shoot } from './util';
+import { ADDRESS, MAP_URL, PHONE_HREF, dayNum, isIOS, fmtHours, money, monShort, relDay, standalone, statusKey, timeOf, waLink, weekday, dateLong, dur, type Shoot } from './util';
 
 export type Pkg = { id: number; title: string; owner_name: string; minutes_total: number; minutes_left: number; cameras: number; starts_on: string; ends_on: string };
 export type HomeData = { full_name: string; cashback_balance: number; next_shoot: Shoot | null; package: Pkg | null; unread_notifications: number };
@@ -106,7 +107,9 @@ export function Home({ onLogout }: { onLogout: () => void }) {
 
           <BookButtons />
 
-          {!standalone && (
+          <PushHint />
+
+          {!standalone && !isIOS && (
             <a className="card" href="#/install" style={{ flexDirection: 'row', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
               <span className="ic"><Icon name="plus" size={20} /></span>
               <span className="col grow"><span className="t14 w8">Ana ekrana əlavə edin</span><span className="t12 muted">App kimi bir toxunuşla açılsın</span></span>

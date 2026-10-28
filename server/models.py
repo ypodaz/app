@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db import Base, now
@@ -19,6 +19,10 @@ class Client(Base):
     activated_at: Mapped[Optional[datetime]] = mapped_column(TS)
     deposit_required: Mapped[bool] = mapped_column(default=False)
     notes: Mapped[str] = mapped_column(Text, default="")
+    # app istifadəsi: app hər açılanda yenilənir
+    app_seen_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    app_standalone: Mapped[bool] = mapped_column(default=False, server_default=sa_false())  # ana ekrandan açılıb
+    push_permission: Mapped[Optional[str]] = mapped_column(String(12))  # default | granted | denied | unsupported
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
 
 

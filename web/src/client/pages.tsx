@@ -216,6 +216,7 @@ function describe(n: Notif): { title: string; sub?: string } {
     case 'shoot_cancelled': return { title: 'Çəkiliş ləğv olundu', sub: Number(p.refund) > 0 ? `${money(Number(p.refund))} geri qaytarılacaq` : undefined };
     case 'refunded': return { title: 'Ödəniş geri qaytarıldı', sub: p.amount ? money(Number(p.amount)) : undefined };
     case 'shoot_rescheduled': return { title: 'Çəkiliş vaxtı dəyişdi', sub: p.starts_at ? `Yeni vaxt: ${dateLong(String(p.starts_at))} · ${timeOf(String(p.starts_at))}` : undefined };
+    case 'shoot_updated': return { title: 'Çəkiliş məlumatı yeniləndi' };
     case 'materials_ready': return { title: 'Materiallar hazırdır' };
     case 'shoot_reminder': return { title: 'Sabah çəkilişiniz var' };
     case 'package_ending': return { title: 'Paketiniz bitmək üzrədir', sub: p.minutes_left !== undefined ? `Qalan ${fmtHours(Number(p.minutes_left))} saat${p.ends_on ? ` · ${plainDate(String(p.ends_on))} tarixinədək` : ''}` : undefined };

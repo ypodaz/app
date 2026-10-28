@@ -16,7 +16,9 @@ from models import (AuditLog, Block, CashbackLedger, Client, Notification, Packa
                     PackageMember, Shoot)
 
 MONEY_FIELDS = ("status", "total", "cashback_used", "deposit_expected", "deposit_amount", "deposit_waived",
-                "paid_at_studio", "retained_amount", "refund_amount", "duration_min", "starts_at", "discount")
+                "paid_at_studio", "retained_amount", "refund_amount", "duration_min", "starts_at", "discount",
+                # jurnalda düzəlişin nəyi dəyişdiyi görünsün
+                "kind", "tag", "location", "cameras", "editing", "reels_count", "prep_min", "wrap_min")
 
 
 class Rejected(ValueError):
@@ -280,6 +282,47 @@ def reschedule(db: DB, admin_id: int | None, s: Shoot, new_start: datetime, requ
     s.rescheduled_lt24 = s.rescheduled_lt24 or lt24
     _audit(db, admin_id, "reschedule", s, before)
     _notify(db, s.client_id, "shoot_rescheduled", shoot_id=s.id, starts_at=new_start.isoformat())
+
+
+def edit_shoot(db: DB, admin_id: int | None, s: Shoot, *, starts_at: datetime, duration_min: int, kind: str,
+               tag: str, location: str, cameras: int, editing: bool, reels_count: int = 0,
+               address: str | None = None, title: str | None = None, note: str | None = None, discount: int = 0,
+               discount_note: str | None = None, prep_min: int = 15, wrap_min: int = 0) -> None:
+    """Adminin düzəlişi (səhvi düzəltmək): qiymət və beh yenidən hesablanır, 24 saat qaydası tətbiq olunmur.
+    Müştəri, paket və keşbek istifadəsi dəyişmir (onlar üçün ləğv edib yenidən yaradılır)."""
+    _require(s, "confirmed")
+    _check_buffer(prep_min, wrap_min)
+    if kind in ("reels_pack", "studio_rent"):
+        editing, reels_count = False, 0
+    if kind == "studio_rent":
+        cameras, location, address = 0, "studio", None
+    pkg = None
+    if s.package_id:
+        pkg = db.get(Package, s.package_id)
+        if not pkg.starts_on <= aware(starts_at).date() <= pkg.ends_on:
+            raise Rejected("Yeni tarix paketin müddətinə düşmür")
+        if package_left(db, pkg) < duration_min:
+            raise Rejected(f"Paketdə {money.fmt_hours(package_left(db, pkg))} qalıb")
+    before = _snapshot(s)
+    old_start, old_total, old_duration = aware(s.starts_at), s.total, s.duration_min
+    s.starts_at, s.duration_min, s.kind, s.tag, s.location, s.address = starts_at, duration_min, kind, tag, location, address
+    s.cameras, s.editing, s.reels_count, s.title, s.note = cameras, editing, reels_count, title, note
+    s.discount, s.discount_note = discount, (discount_note or None) if discount else None
+    s.prep_min, s.wrap_min = prep_min, wrap_min
+    _apply_price(s, _price(s, pkg))
+    if s.cashback_used > s.total:
+        raise Rejected(f"Bu çəkilişdə {money.fmt(s.cashback_used)} keşbek istifadə olunub, yeni məbləğ ondan azdır")
+    if s.deposit_amount > money.to_pay(s.total, s.cashback_used):
+        raise Rejected(f"Alınmış beh ({money.fmt(s.deposit_amount)}) yeni ödəniləcək məbləğdən çoxdur")
+    s.deposit_expected = money.deposit_expected(s.total, s.cashback_used, pkg is not None)
+    moved = aware(starts_at) != old_start
+    if moved:
+        s.reminded_at = None  # yeni vaxt üçün xatırlatma yenidən getsin
+    _audit(db, admin_id, "edit", s, before)
+    if moved:
+        _notify(db, s.client_id, "shoot_rescheduled", shoot_id=s.id, starts_at=aware(starts_at).isoformat())
+    elif s.total != old_total or s.duration_min != old_duration:
+        _notify(db, s.client_id, "shoot_updated", shoot_id=s.id)
 
 
 def add_months(d: date, months: int) -> date:

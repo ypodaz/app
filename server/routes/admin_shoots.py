@@ -15,7 +15,7 @@ import booking
 import money
 from auth import current_admin
 from db import get_db, now
-from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, Shoot
+from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot
 from routes.admin import client_out
 from views import (baku_today, day_bounds, iso, material_out, materials_of, payment_line, shoot_core,
                    studio_balance, utc)
@@ -39,6 +39,24 @@ class ShootIn(BaseModel):
     title: Optional[str] = Field(default=None, max_length=120)
     note: Optional[str] = Field(default=None, max_length=2000)
     source_note: Optional[str] = Field(default=None, max_length=2000)
+    discount: int = Field(default=0, ge=0)
+    discount_note: Optional[str] = Field(default=None, max_length=255)
+    prep_min: int = Field(default=15, ge=0, le=240)
+    wrap_min: int = Field(default=0, ge=0, le=240)
+
+
+class ShootEditIn(BaseModel):
+    starts_at: AwareDatetime
+    duration_min: int = Field(ge=15, le=720)
+    kind: Literal["shoot", "reels_pack", "studio_rent"]
+    tag: Literal["podcast", "reels", "other"]
+    location: Literal["studio", "onsite"]
+    cameras: int = Field(ge=0, le=3)
+    editing: bool
+    reels_count: int = Field(default=0, ge=0, le=100)
+    address: Optional[str] = Field(default=None, max_length=255)
+    title: Optional[str] = Field(default=None, max_length=120)
+    note: Optional[str] = Field(default=None, max_length=2000)
     discount: int = Field(default=0, ge=0)
     discount_note: Optional[str] = Field(default=None, max_length=255)
     prep_min: int = Field(default=15, ge=0, le=240)
@@ -165,9 +183,26 @@ def create_shoot(body: ShootIn, db: DB = Depends(get_db), admin: Admin = Depends
         exclude_id=s.id)}
 
 
+@router.patch("/shoots/{shoot_id}")
+def edit_shoot(shoot_id: int, body: ShootEditIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
+    """Təsdiqlənmiş çəkilişin düzəlişi. Qiyməti öncədən görmək üçün /shoots/quote-a çəkilişin client_id və
+    package_id-si ilə müraciət olunur."""
+    s = get_shoot(db, shoot_id)
+    data = body.model_dump()
+    data["starts_at"] = utc(body.starts_at)
+    try:
+        booking.edit_shoot(db, admin.id, s, **data)
+    except booking.Rejected as e:
+        reject(db, e)
+    db.commit()
+    return {**shoot_out(db, s), "conflicts": booking.conflicts(
+        db, starts_at=s.starts_at, duration_min=s.duration_min, prep_min=s.prep_min, wrap_min=s.wrap_min,
+        exclude_id=s.id)}
+
+
 @router.post("/shoots/quote")
-def quote(body: ShootIn, db: DB = Depends(get_db)):
-    """Qiymət hesabı, bazaya yazmır."""
+def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_db)):
+    """Qiymət hesabı, bazaya yazmır. Düzəlişdə exclude_id=çəkilişin öz id-si (özü ilə toqquşma sayılmasın)."""
     client = db.get(Client, body.client_id)
     if not client:
         raise HTTPException(404, "Müştəri tapılmadı")
@@ -196,7 +231,7 @@ def quote(body: ShootIn, db: DB = Depends(get_db)):
         "base": p.base, "editing": p.editing, "reels": p.reels, "extra_camera": p.extra_camera,
         "discount": p.discount, "gross": p.gross, "total": p.total,
         "conflicts": booking.conflicts(db, starts_at=utc(body.starts_at), duration_min=body.duration_min,
-                                       prep_min=body.prep_min, wrap_min=body.wrap_min),
+                                       prep_min=body.prep_min, wrap_min=body.wrap_min, exclude_id=exclude_id),
         "deposit_expected": money.deposit_expected(p.total, body.cashback_use, pkg is not None),
         "cashback_earn": earn, "cashback_kind": kind, "first_shoot_bonus": first,
         "cashback_balance": balance, "deposit_required": client.deposit_required,
@@ -481,7 +516,17 @@ def dashboard(db: DB = Depends(get_db)):
     awaiting = db.scalars(select(Shoot.id).where(Shoot.status == "completed", Shoot.editing.is_(True),
                                                  Shoot.production != "ready")).all()
     return {"deposit_pending": shoots_out(db, list(pending)), "today": shoots_out(db, list(today)),
-            "unclosed_count": len(unclosed), "awaiting_material_count": len(awaiting)}
+            "unclosed_count": len(unclosed), "awaiting_material_count": len(awaiting), "app_usage": app_usage(db)}
+
+
+def app_usage(db: DB) -> dict:
+    """Neçə müştəri app-a qoşulub, ana ekrana əlavə edib, bildirişi açıb, son 7 gündə açıb."""
+    clients = db.scalars(select(Client)).all()
+    subscribed = set(db.scalars(select(PushSubscription.client_id)))
+    week = now() - timedelta(days=7)
+    return {"clients": len(clients), "joined": sum(c.activated_at is not None for c in clients),
+            "home_screen": sum(c.app_standalone for c in clients), "push_on": len(subscribed),
+            "active_7d": sum(c.app_seen_at is not None and utc(c.app_seen_at) >= week for c in clients)}
 
 
 def _month(month: str) -> tuple[datetime, datetime]:

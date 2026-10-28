@@ -49,6 +49,7 @@ function Routes() {
     case 'shoots':
       if (b === 'new') return <ShootForm key={location.hash} query={query} />;
       if (!num) break;
+      if (c === 'edit') return <ShootForm key={num} query={query} editId={num} />;
       if (c === 'close') return <CloseShoot id={num} />;
       if (c === 'cancel') return <CancelShoot id={num} />;
       return <ShootPage key={num} id={num} />;

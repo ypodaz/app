@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Card, Icon, Sheet, formatMoney } from '../../shared/ui';
 import { useAction, useAuth, useLoad } from '../ctx';
-import { bakuParts, dateShort, parseAzn } from '../format';
+import { appLine, bakuParts, dateShort, parseAzn } from '../format';
 import type { ClientDetail, InviteOut, LedgerRow } from '../types';
 import { Avatar, Err, Field, ShootRow } from './common';
 
@@ -38,6 +38,7 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
         </span>
         <button type="button" className="iconbtn" aria-label="Redaktə et" title="Redaktə et" onClick={() => setEdit(true)}><Icon name="edit" size={20} /></button>
       </div>
+      <span className="t13 soft" data-testid="app-line">{appLine(c)}</span>
       {c.notes && <p className="t13 soft lh" style={{ overflowWrap: 'anywhere' }}>{c.notes}</p>}
       <a className="btn btn-primary btn-sm" href={`#/shoots/new?client=${c.id}`}><Icon name="plus" size={18} /> Çəkiliş əlavə et</a>
       {c.deposit_required && <div className="banner"><Icon name="alert" size={18} /><span><b>Beh mütləqdir</b> — müştəri əvvəl gəlməyib.</span></div>}

@@ -97,3 +97,16 @@ export function addMin(time: string, min: number): string {
 export function busyRange(time: string, dur: number, prep: number, wrap: number): string {
   return `${addMin(time, -prep)}–${addMin(time, dur + wrap)}`;
 }
+
+/** Müştərinin app vəziyyəti: "App: son açılış 2 gün əvvəl · ana ekranda · bildiriş açıq". */
+export function appLine(c: { activated: boolean; app_seen_at: string | null; app_standalone: boolean; push_permission: string | null }): string {
+  if (!c.activated) return 'App-a qoşulmayıb';
+  let seen = 'hələ açmayıb';
+  if (c.app_seen_at) {
+    const t = bakuToday(), d = bakuParts(c.app_seen_at).date;
+    const n = Math.round((Date.parse(t) - Date.parse(d)) / 86400000);
+    seen = `son açılış ${n <= 0 ? 'bu gün' : n === 1 ? 'dünən' : `${n} gün əvvəl`}`;
+  }
+  const push = c.push_permission === 'granted' ? 'bildiriş açıq' : c.push_permission === 'denied' ? 'bildiriş bağlı' : c.push_permission === 'unsupported' ? 'bildiriş dəstəklənmir' : 'bildiriş soruşulmayıb';
+  return `App: ${seen}${c.app_standalone ? ' · ana ekranda' : ''} · ${push}`;
+}

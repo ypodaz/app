@@ -4,7 +4,7 @@ import { Avatar, BackLink, Err } from '../components/common';
 import { ClientCard } from '../components/ClientCard';
 import { NewClientForm } from '../components/ClientPicker';
 import { useLoad } from '../ctx';
-import { bakuParts, bakuToday, dateShort } from '../format';
+import { appLine, bakuParts, bakuToday, dateShort } from '../format';
 import { go, useDesktop } from '../router';
 import type { ClientRow } from '../types';
 
@@ -43,7 +43,7 @@ export function Clients({ id }: { id?: number }) {
             <tbody>
               {list.map((c) => (
                 <tr key={c.id} className={c.id === id ? 'on' : undefined} aria-selected={c.id === id}>
-                  <td><a href={`#/clients/${c.id}`} style={{ color: 'inherit', textDecoration: 'none', display: 'block', minHeight: 44 }}><span className="w8">{c.full_name}</span><br /><span className="t12 muted">{c.phone || 'telefon yoxdur'}{!c.activated && ' · qoşulmayıb'}</span></a></td>
+                  <td><a href={`#/clients/${c.id}`} style={{ color: 'inherit', textDecoration: 'none', display: 'block', minHeight: 44 }}><span className="w8">{c.full_name}</span><br /><span className="t12 muted">{c.phone || 'telefon yoxdur'}{!c.activated && ' · qoşulmayıb'}</span><br /><span className="t12 soft">{appLine(c)}</span></a></td>
                   <td>{c.package ? <span className="tag">{pkgLine(c)}</span> : <span className="muted">—</span>}</td>
                   <td className="w7">{formatMoney(c.cashback_balance)}</td>
                   <td className="w7">{lastShoot(c)}</td>
@@ -59,6 +59,7 @@ export function Clients({ id }: { id?: number }) {
                 <span className="col grow" style={{ gap: 2 }}>
                   <span className="t15 w8">{c.full_name}</span>
                   <span className="t12 muted">{c.phone || 'telefon yoxdur'}</span>
+                  <span className="t12 soft">{appLine(c)}</span>
                   <span className="t12 soft">{[pkgLine(c), c.cashback_balance > 0 && `keşbek ${formatMoney(c.cashback_balance)}`, c.last_shoot_at && `son çəkiliş ${lastShoot(c).toLowerCase()}`].filter(Boolean).join(' · ') || 'Hələ çəkiliş yoxdur'}</span>
                 </span>
                 {!c.activated && <span className="tag">qoşulmayıb</span>}

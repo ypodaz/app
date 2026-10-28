@@ -1,5 +1,6 @@
 // API cavablarının tipləri (server/routes/admin*.py). Məbləğlər tam qəpikdir.
-export type Client = { id: number; full_name: string; phone: string; notes?: string | null; activated: boolean };
+export type PushPerm = 'default' | 'granted' | 'denied' | 'unsupported' | null;
+export type Client = { id: number; full_name: string; phone: string; notes?: string | null; activated: boolean; app_seen_at: string | null; app_standalone: boolean; push_permission: PushPerm };
 export type ClientRow = Client & { cashback_balance: number; package: { title: string; minutes_left: number } | null; last_shoot_at: string | null };
 export type Block = { id: number; starts_at: string; ends_at: string; reason: string | null };
 export type InviteOut = { url: string; whatsapp_url: string | null };
@@ -40,7 +41,8 @@ export type ClientDetail = Client & {
   cashback_rows: LedgerRow[]; packages: Package[]; shoots: Shoot[];
 };
 
-export type Dashboard = { deposit_pending: Shoot[]; today: Shoot[]; unclosed_count: number; awaiting_material_count: number };
+export type AppUsage = { clients: number; joined: number; home_screen: number; push_on: number; active_7d: number };
+export type Dashboard = { deposit_pending: Shoot[]; today: Shoot[]; unclosed_count: number; awaiting_material_count: number; app_usage: AppUsage };
 
 export type Conflict =
   | { type: 'shoot'; id: number; client_id: number; starts_at: string; duration_min: number }

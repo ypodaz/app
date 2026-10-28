@@ -41,6 +41,7 @@ def message(db: DB, n: Notification) -> dict:
         "shoot_created": ("Yeni çəkiliş", f"{when} sizi gözləyirik"),
         "deposit_received": ("Beh qəbul olundu", f"{money.fmt(p.get('amount', 0))} · {when}"),
         "shoot_rescheduled": ("Çəkiliş vaxtı dəyişdi", f"Yeni vaxt: {when}"),
+        "shoot_updated": ("Çəkiliş yeniləndi", f"{when} çəkilişinin məlumatı dəyişdi"),
         "shoot_cancelled": ("Çəkiliş ləğv olundu", f"{when} çəkilişi ləğv edildi"),
         "refunded": ("Ödəniş qaytarıldı", money.fmt(p.get("amount", 0))),
         "shoot_closed": ("Keşbek yazıldı", f"+{money.fmt(p.get('cashback', 0))} balansınıza əlavə olundu")

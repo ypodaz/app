@@ -4,6 +4,8 @@ Bütün məbləğlər qəpiklə tam ədəddir (7550 = 75,50 AZN).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Literal
+
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session as DB
@@ -152,6 +154,20 @@ def notifications(client: Client = Depends(current_client), db: DB = Depends(get
 def notifications_read(client: Client = Depends(current_client), db: DB = Depends(get_db)):
     db.execute(update(Notification).where(Notification.client_id == client.id, Notification.read_at.is_(None))
                .values(read_at=now()))
+    db.commit()
+    return {"ok": True}
+
+
+class PingIn(BaseModel):
+    standalone: bool
+    permission: Literal["default", "granted", "denied", "unsupported"]
+
+
+@router.post("/ping")
+def ping(body: PingIn, client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    """App açılanda: ana ekrandan açılıb-açılmadığı və bildiriş icazəsi (admin statistikası üçün)."""
+    client.app_seen_at, client.push_permission = now(), body.permission
+    client.app_standalone = client.app_standalone or body.standalone  # bir dəfə ana ekrandan açıldısa, quraşdırılıb
     db.commit()
     return {"ok": True}
 

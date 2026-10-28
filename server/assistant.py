@@ -14,7 +14,7 @@ import ai
 import booking
 import money
 from db import aware, now
-from models import Block, Client, Shoot
+from models import Block, Client, Package, Shoot
 from views import BAKU, day_bounds, payment_line
 
 MAX_ROUNDS = 6
@@ -199,6 +199,67 @@ class Run:
             return self._propose("reschedule", "POST", f"/admin/shoots/{s.id}/reschedule",
                                  {"starts_at": ns.isoformat()}, f"{head}: vaxtı dəyiş → {_label(ns)}")
         return {"error": "Naməlum əməliyyat"}
+
+    def propose_edit_shoot(self, shoot_id=None, date=None, start=None, end=None, duration_min=None, kind=None,
+                           tag=None, location=None, address=None, cameras=None, editing=None, reels_count=None,
+                           discount_azn=None, discount_percent=None, discount_note=None, prep_min=None,
+                           wrap_min=None, note=None, title=None) -> dict:
+        s = self._shoot(shoot_id)
+        if s.status != "confirmed":
+            return {"error": "Bu çəkiliş artıq bağlanıb və ya ləğv olunub"}
+        old = aware(s.starts_at).astimezone(BAKU)
+        starts = _when(date or f"{old:%Y-%m-%d}", start or f"{old:%H:%M}")
+        duration = (int((_when(date or f"{old:%Y-%m-%d}", end) - starts).total_seconds() // 60) if end
+                    else int(duration_min or s.duration_min))
+        kind = kind or s.kind
+        v = {"location": location or s.location, "cameras": int(s.cameras if cameras is None else cameras),
+             "editing": bool(s.editing if editing is None else editing),
+             "reels_count": int(s.reels_count if reels_count is None else reels_count)}
+        tag = tag or s.tag
+        if kind == "studio_rent":
+            v.update(cameras=0, editing=False, reels_count=0, location="studio")
+        if kind == "reels_pack":
+            v.update(editing=False, reels_count=0)
+        pkg = self.db.get(Package, s.package_id) if s.package_id else None
+        try:
+            args = dict(kind=kind, duration_min=duration, package_cameras=pkg.cameras if pkg else None, **v)
+            gross = money.price(**args).gross
+            discount = (money.percent(gross, int(round(float(discount_percent)))) if discount_percent
+                        else _azn(discount_azn) if discount_azn is not None else min(s.discount, gross))
+            p = money.price(**args, discount=discount)
+        except ValueError as e:
+            return {"error": str(e)}
+        body = {"starts_at": starts.isoformat(), "duration_min": duration, "kind": kind, "tag": tag,
+                "address": address if address is not None else s.address, **v, "discount": discount,
+                "discount_note": (discount_note or s.discount_note) if discount else None,
+                "prep_min": int(s.prep_min if prep_min is None else prep_min),
+                "wrap_min": int(s.wrap_min if wrap_min is None else wrap_min),
+                "note": note if note is not None else s.note, "title": title if title is not None else s.title}
+        who = self.db.get(Client, s.client_id).full_name
+        end_t = starts + timedelta(minutes=duration)
+        changes = []
+        if starts != old:
+            changes.append(f"vaxt → {_label(starts)}")
+        if duration != s.duration_min:
+            changes.append(f"müddət → {money.fmt_hours(duration)}")
+        if v["cameras"] != s.cameras:
+            changes.append(f"{v['cameras']} kamera")
+        if v["editing"] != s.editing or v["reels_count"] != s.reels_count:
+            changes.append("montaj" + (f" + {v['reels_count']} Reels" if v["reels_count"] else "") if v["editing"]
+                           else "montajsız")
+        if kind != s.kind:
+            changes.append(KIND[kind])
+        if discount != s.discount:
+            changes.append(f"endirim {money.fmt(discount)}")
+        warn = ""
+        if s.deposit_amount > money.to_pay(p.total, s.cashback_used):
+            warn = f"Alınmış beh ({money.fmt(s.deposit_amount)}) yeni məbləğdən çoxdur — server qəbul etməyəcək"
+        elif booking.conflicts(self.db, starts_at=starts, duration_min=duration, prep_min=body["prep_min"],
+                               wrap_min=body["wrap_min"], exclude_id=s.id):
+            warn = "Yeni vaxt başqa qeydlə üst-üstə düşür (hazırlıq/yığışdırma daxil)"
+        summary = (f"{who} · {_label(old)} çəkilişini düzəlt: " + (", ".join(changes) or "dəyişiklik yoxdur")
+                   + f" · {_label(starts)}–{end_t:%H:%M} · {money.fmt(s.total)} → {money.fmt(p.total)}")
+        return self._propose("edit_shoot", "PATCH", f"/admin/shoots/{s.id}", body, summary, warn)
 
     def propose_block(self, date: str = "", start: str = "", end: str = "", reason=None) -> dict:
         a, b = _when(date, start), _when(date, end)

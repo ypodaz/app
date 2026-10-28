@@ -10,6 +10,7 @@ import { Calendar } from './calendar';
 import { AuthCtx, Loading, TOKEN_KEY, useRoute } from './core';
 import { ShootDetail } from './detail';
 import { Home } from './home';
+import { PushGate } from './push';
 import { Cashback, Materials, Notifications, PackagePage, QrCard } from './pages';
 import { standalone } from './util';
 
@@ -69,7 +70,7 @@ function App() {
     <AuthCtx.Provider value={{ token, signOut }}>
       {stage === 'welcome' ? <Welcome name={name} onNext={() => (standalone ? toApp() : setStage('install'))} />
         : stage === 'install' ? <Install token={token} pair={pair} setPair={setPair} onDone={toApp} />
-        : <Routes onLogout={logout} pair={pair} setPair={setPair} token={token} />}
+        : <><Routes onLogout={logout} pair={pair} setPair={setPair} token={token} /><PushGate /></>}
     </AuthCtx.Provider>
   );
 }

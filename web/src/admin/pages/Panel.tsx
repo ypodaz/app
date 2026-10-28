@@ -65,6 +65,18 @@ export function Panel() {
           </Card>
         )}
       </div>
+      {d && (
+        <Card>
+          <span className="h3">App istifadəsi</span>
+          <div className="g2" data-testid="app-usage">
+            <div className="col" style={{ gap: 2 }}><span className="num-s">{d.app_usage.joined}<span className="unit"> / {d.app_usage.clients}</span></span><span className="t13 soft">Qoşulub</span></div>
+            <div className="col" style={{ gap: 2 }}><span className="num-s">{d.app_usage.home_screen}</span><span className="t13 soft">Ana ekranda</span></div>
+            <div className="col" style={{ gap: 2 }}><span className="num-s">{d.app_usage.push_on}</span><span className="t13 soft">Bildiriş açıq</span></div>
+            <div className="col" style={{ gap: 2 }}><span className="num-s">{d.app_usage.active_7d}</span><span className="t13 soft">Son 7 gündə açıb</span></div>
+          </div>
+          <span className="hint">Ana ekran və 7 gün yeni versiyadan sonra yığılır.</span>
+        </Card>
+      )}
       <DepositSheet shoot={dep} onClose={() => setDep(null)} onDone={reload} />
     </AdminShell>
   );

@@ -92,6 +92,7 @@ export function ShootDetail({ id }: { id: number }) {
             <Button variant="cream" onClick={() => setResched(true)}>Vaxtı dəyiş</Button>
             <a className="btn btn-danger" href={`#/shoots/${s.id}/cancel`}>Ləğv et</a>
           </div>
+          <a className="btn btn-out" href={`#/shoots/${s.id}/edit`}><Icon name="edit" size={18} /> Düzəlt</a>
           <Button variant="ghost" onClick={noShow} disabled={act.busy}>Gəlmədi</Button>
         </>
       )}

@@ -130,3 +130,21 @@ def test_assistant_audio_and_bad_tool(api, gemini):
     bad = api.post("/api/admin/assistant", json={"audio": "AAAA", "mime": "video/mp4"}, headers=bearer(adm))
     assert bad.status_code == 422
     assert api.post("/api/admin/assistant", json={"text": " "}, headers=bearer(adm)).status_code == 422
+
+
+def test_assistant_edit_shoot_keeps_unchanged_fields(api, gemini):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Zərifə Abbasova")
+    s = make_shoot(api, adm, cid)
+    gemini(call("propose_edit_shoot", shoot_id=s["id"], duration_min=180, cameras=3),
+           [{"text": "Hazırdır."}])
+    out = api.post("/api/admin/assistant", json={"text": "Zərifənin çəkilişini 3 saat, 3 kamera et"},
+                   headers=bearer(adm)).json()
+    (p,) = out["proposals"]
+    assert p["method"] == "PATCH" and p["path"] == f"/admin/shoots/{s['id']}"
+    assert p["body"]["duration_min"] == 180 and p["body"]["cameras"] == 3
+    assert p["body"]["kind"] == s["kind"] and p["body"]["editing"] == s["editing"]
+    assert "3 saat" in p["summary"] and "3 kamera" in p["summary"]
+    r = api.request(p["method"], "/api" + p["path"], json=p["body"], headers=bearer(adm))
+    assert r.status_code == 200, r.text
+    assert r.json()["total"] > s["total"]
