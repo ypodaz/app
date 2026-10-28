@@ -5,7 +5,7 @@ import '../shared/ypod.css';
 import '../shared/responsive.css';
 import { AdminShell, Button, Card, ClientShell, EmptyState, Icon, Money, Pill, Segmented, Sheet, Stat, Stepper, type AdminTab, type ClientTab, type IconName } from '../shared/ui';
 
-const ICONS: IconName[] = ['grid', 'calendar', 'users', 'building', 'media', 'qr', 'plus', 'minus', 'chevron', 'close', 'check', 'clock', 'home', 'sparkle', 'wallet', 'camera', 'alert', 'pin', 'link', 'scissors'];
+const ICONS: IconName[] = ['grid', 'calendar', 'users', 'building', 'media', 'plus', 'minus', 'chevron', 'close', 'check', 'clock', 'home', 'sparkle', 'wallet', 'camera', 'alert', 'pin', 'link', 'scissors'];
 
 function Components() {
   const [place, setPlace] = useState<'studio' | 'site'>('studio');

@@ -12,6 +12,5 @@ input { min-height: 44px; border-radius: 12px; border: 1px solid #3b2d55; backgr
 .err { color: #fca5a5; }
 .muted { color: #9d8fb5; font-size: 14px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.qr { background: #fff; border-radius: 16px; padding: 12px; align-self: center; }
 video { width: 100%; border-radius: 16px; background: #000; }
 ol { margin: 0; padding-left: 20px; line-height: 1.6; color: #d8cfe6; }

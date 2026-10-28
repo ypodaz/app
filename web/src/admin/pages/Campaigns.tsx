@@ -17,7 +17,7 @@ export function Campaigns({ tab: first = 'new' }: { tab?: TabKey }) {
   const [tab, setTab] = useState<TabKey>(first);
   const hist = useLoad<Campaign[]>('/campaigns');
   return (
-    <AdminShell active="campaigns" title="Kampaniyalar" hrefFor={(t) => `#/${t}`} qrHref="#/qr">
+    <AdminShell active="campaigns" title="Kampaniyalar" hrefFor={(t) => `#/${t}`}>
       <Segmented<TabKey> label="Bölmə" options={TABS} value={tab} onChange={(t) => { setTab(t); if (t === 'hist') hist.reload(); }} />
       {tab === 'new' && <CampaignCompose onSent={() => { hist.reload(); }} onHistory={() => setTab('hist')} />}
       {tab === 'hist' && <History list={hist.data} err={hist.err} />}

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Card, Icon, Sheet, formatMoney } from '../../shared/ui';
 import { useAction, useAuth, useLoad } from '../ctx';
-import { appLine, bakuParts, dateFull, dateShort, parseAzn } from '../format';
+import { appLine, aznInput, bakuParts, dateFull, dateShort, parseAzn } from '../format';
 import type { ClientDetail, InviteOut, LedgerRow } from '../types';
 import { Avatar, Err, Field, ShootRow, sourceName } from './common';
 import { ProfileSheet } from './ProfileSheet';
@@ -20,6 +20,7 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
   const err = detail.err;
   const reload = () => detail.reload();
   const [cb, setCb] = useState(false);
+  const [row, setRow] = useState<LedgerRow | null>(null);
   const [edit, setEdit] = useState(false);
   const [prof, setProf] = useState(false);
   const [inv, setInv] = useState<InviteOut | null>(null);
@@ -79,13 +80,18 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
       <Card>
         <span className="h3">Keşbek tarixçəsi</span>
         <div className="list">
-          {c.cashback_rows.map((r) => (
-            <div key={r.id} className="li">
-              <span className={r.amount < 0 ? 'amt-minus' : 'amt-plus'} style={{ minWidth: 70 }}>{r.amount > 0 ? '+' : ''}{azn(r.amount)}</span>
-              <span className="col grow" style={{ gap: 2 }}><span className="t14 w7">{KIND[r.kind]}</span>{r.note && <span className="t12 muted">{r.note}</span>}</span>
-              <span className="t12 muted">{dateShort(bakuParts(r.created_at).date)}</span>
-            </div>
-          ))}
+          {c.cashback_rows.map((r) => {
+            const body = (
+              <>
+                <span className={r.amount < 0 ? 'amt-minus' : 'amt-plus'} style={{ minWidth: 70 }}>{r.amount > 0 ? '+' : ''}{azn(r.amount)}</span>
+                <span className="col grow" style={{ gap: 2 }}><span className="t14 w7">{KIND[r.kind]}</span>{r.note && <span className="t12 muted">{r.note}</span>}</span>
+                <span className="t12 muted">{dateShort(bakuParts(r.created_at).date)}</span>
+              </>
+            );
+            return r.kind === 'manual'
+              ? <button key={r.id} type="button" className="li li-edit" aria-label={`${KIND[r.kind]} — redaktə et`} onClick={() => setRow(r)}>{body}<Icon name="edit" size={16} /></button>
+              : <div key={r.id} className="li">{body}</div>;
+          })}
           {!c.cashback_rows.length && <p className="t13 muted">Hələ keşbek yoxdur.</p>}
         </div>
       </Card>
@@ -120,6 +126,7 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
       <EditSheet open={edit} c={c} onClose={() => setEdit(false)} onDone={() => { reload(); onChanged?.(); }} />
       <ProfileSheet open={prof} c={c} onClose={() => setProf(false)} onDone={() => { reload(); onChanged?.(); }} />
       <CashbackSheet open={cb} id={id} onClose={() => setCb(false)} onDone={reload} />
+      <RowSheet row={row} onClose={() => setRow(null)} onDone={() => { reload(); onChanged?.(); }} />
     </div>
   );
 }
@@ -145,6 +152,32 @@ function CashbackSheet({ open, id, onClose, onDone }: { open: boolean; id: numbe
       <Field label="Səbəb" id="cb-n"><input id="cb-n" className="inp" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       <Err msg={err} />
       <Button disabled={!q || busy} onClick={submit}>Yaz</Button>
+    </Sheet>
+  );
+}
+
+function RowSheet({ row, onClose, onDone }: { row: LedgerRow | null; onClose: () => void; onDone: () => void }) {
+  const { call } = useAuth();
+  const { busy, err, setErr, run } = useAction();
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  useEffect(() => { if (row) { setAmount(`${row.amount < 0 ? '-' : ''}${aznInput(row.amount)}`); setNote(row.note ?? ''); setErr(''); } }, [row]);
+  const q = parseAzn(amount, true);
+  async function save() {
+    if (!row || !q) return;
+    if (await run(() => call(`/cashback/${row.id}`, { method: 'PATCH', body: { amount: q, note: note.trim() } })) !== undefined) { onClose(); onDone(); }
+  }
+  async function remove() {
+    if (!row || !confirm('Bu sətir silinsin? Balans dəyişəcək.')) return;
+    if (await run(() => call(`/cashback/${row.id}`, { method: 'DELETE' })) !== undefined) { onClose(); onDone(); }
+  }
+  return (
+    <Sheet open={!!row} onClose={onClose} title="Əl ilə düzəliş">
+      <Field label="Məbləğ (AZN)" id="cr-a" hint="Mənfi də ola bilər, məs. −5"><input id="cr-a" className="inp" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+      <Field label="Səbəb" id="cr-n"><input id="cr-n" className="inp" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+      <Err msg={err} />
+      <Button disabled={!q || busy} onClick={save}>Yadda saxla</Button>
+      <Button variant="danger" disabled={busy} onClick={remove}>Sil</Button>
     </Sheet>
   );
 }

@@ -12,6 +12,26 @@ html,body{background:#0b0713}
 .stepn{width:32px;height:32px;border-radius:16px;background:#7c3aed;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
 .logo-wrap{display:flex;align-items:center;gap:12px}
 
+/* ana ekrana əlavə et */
+.ins{gap:12px;padding-top:calc(24px + env(safe-area-inset-top));padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+.ins-h{font-size:21px}
+.ins-list{display:flex;flex-direction:column;gap:8px}
+.ins-step{display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:18px;background:rgba(253,246,255,.06)}
+.ins-n{width:36px;height:36px;border-radius:18px;font-size:17px}
+.ins-t{gap:2px;font-size:16px;font-weight:600;line-height:1.3;min-width:0}
+.ins-t b{font-weight:800;color:#f5d0fe}
+.ins-sub{font-size:13px;font-weight:600;color:#a99cbf}
+.ins-ic{width:48px;height:48px;border-radius:14px;background:rgba(168,85,247,.2);color:#f3e8ff;display:flex;align-items:center;justify-content:center;flex:none}
+.ins-big{min-height:60px;font-size:19px;font-weight:800}
+.ins-pair{gap:8px;padding:14px 16px}
+.ins-pair .code-big{font-size:30px;padding:10px 0 10px .22em}
+.ins-wait{opacity:.4}
+.ins-ok{font-size:16px;line-height:1.4}
+.ins-arrow{position:fixed;left:0;right:0;bottom:calc(8px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:0;padding-top:28px;background:linear-gradient(rgba(11,7,19,0),#0b0713 55%);color:#f0abfc;pointer-events:none;animation:ins-bob 1.1s ease-in-out infinite}
+.ins-arrow b{font-size:13px;font-weight:800}
+@keyframes ins-bob{0%,100%{transform:translateY(-8px)}50%{transform:translateY(4px)}}
+@media (prefers-reduced-motion:reduce){.ins-arrow{animation:none}}
+
 /* ana səhifə */
 .hello{display:flex;flex-direction:column;gap:2px;min-width:0}
 .hello b{font-family:Unbounded,sans-serif;font-weight:900;font-size:26px;line-height:1.1;overflow-wrap:anywhere}
@@ -91,10 +111,9 @@ html,body{background:#0b0713}
 .ndot{width:8px;height:8px;border-radius:4px;background:#f0abfc;flex:none;margin-top:8px}
 .ndot-off{background:transparent}
 
-/* QR kartı */
-.qrcard{background:linear-gradient(160deg,#2e1065,#150e22);border:1px solid rgba(168,85,247,.3);border-radius:28px;padding:24px 20px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
-.qrbox{background:#fff;border-radius:20px;padding:14px;display:flex}
-.qrbox img{display:block;width:min(240px,64vw);height:auto}
+/* keşbek irəliləmə zolağı */
+.cbbar{height:8px;border-radius:4px;background:rgba(253,246,255,.18);overflow:hidden}
+.cbbar i{display:block;height:100%;border-radius:4px;background:#f0abfc}
 a.card-cream,a.card-cream:hover{color:#1a0b2e}
 /* Ləğv qaydası: bağlı, kiçik */
 .rules{display:flex;flex-direction:column;gap:6px;text-align:center;margin-top:6px}

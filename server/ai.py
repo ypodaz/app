@@ -129,7 +129,7 @@ Qiymətlər:
 Ödəniş və qaydalar:
 - Rezervasiyada ödəniləcək məbləğin 50%-i beh kimi ödənir, qalanı studiyada nağd və ya kartla.
 - Ləğv: 24 saatdan çox qalıbsa, pulsuz ləğv və ya vaxt dəyişikliyi, beh tam qaytarılır. 24 saatdan az qalıbsa, beh qaytarılmır, istifadə olunmuş keşbek balansa qayıdır, ya da bir dəfə başqa vaxta keçmək olar.
-- Keşbek: çəkiliş bağlananda məbləğin 10%-i keşbek balansına yazılır, app-a qoşulduqdan sonrakı ilk çəkilişdə 50%. Keşbeklə istənilən xidmətin bir hissəsini ödəmək olar, nağd pul kimi qaytarılmır, müddəti yoxdur.
+- Keşbek: çəkiliş bağlananda məbləğin 10%-i keşbek balansına yazılır, app-a qoşulduqdan sonrakı ilk çəkilişdə 50%. Balans 70 AZN-ə çatanda keşbek istifadə olunur və növbəti çəkilişdə bir dəfəyə tam çıxılır (çəkilişin məbləğindən çox olmamaqla); 70 AZN-dən az balans hissə-hissə istifadə olunmur. Nağd pul kimi qaytarılmır, müddəti yoxdur.
 - Hazır materiallar app-ın «Materiallar» bölməsinə Google Drive linki kimi gəlir.
 
 Sən nə edirsən:

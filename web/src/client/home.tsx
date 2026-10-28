@@ -74,7 +74,6 @@ export function Home({ onLogout }: { onLogout: () => void }) {
           <header className="top" style={{ marginBottom: 6 }}>
             <div className="hello"><span className="t14 muted w6">Salam,</span><b>{d.full_name.split(' ')[0]}</b></div>
             <div className="row">
-              <a className="iconbtn iconbtn-cream" href="#/qr" aria-label="QR müştəri kartı"><Icon name="qr" size={22} strokeWidth={2} /></a>
               <a className="iconbtn bell" href="#/notifications" aria-label={`Bildirişlər${d.unread_notifications ? `, ${d.unread_notifications} oxunmamış` : ''}`}>
                 <XIcon name="bell" size={22} />
                 {d.unread_notifications > 0 && <span className="badge">{d.unread_notifications}</span>}

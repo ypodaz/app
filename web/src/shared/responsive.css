@@ -40,11 +40,10 @@ html{-webkit-text-size-adjust:100%}
   .rs-shell{display:flex;padding-bottom:0}
   .rs-shell .side{display:flex;align-items:center;width:76px;padding:20px 12px;position:sticky;top:0;height:100vh;height:100dvh;align-self:flex-start}
   .rs-shell .side a{width:52px;padding:0;justify-content:center}
-  .rs-shell .side a.rs-qr{margin-top:auto;min-height:52px;background:#fdf6ff;color:#3b0764;border-radius:26px}
   .rs-lbl{display:none}
   .rs-logo{padding:0 0 18px}
   .rs-body{flex:1}
-  .rs-nav,.rs-qr-m{display:none}
+  .rs-nav{display:none}
   .rs-main{padding:28px 32px}
   .rs-inner,.rs-detail{max-width:720px;margin:0 auto}
   .rs-detail{width:100%;padding:0 32px 28px}
@@ -55,7 +54,6 @@ html{-webkit-text-size-adjust:100%}
 @media (min-width:1024px){
   .rs-shell .side{width:240px;align-items:stretch;padding:28px 16px}
   .rs-shell .side a{width:auto;padding:0 14px;justify-content:flex-start}
-  .rs-shell .side a.rs-qr{justify-content:center}
   .rs-lbl{display:inline}
   .rs-logo{padding:0 14px 22px}
   .rs-body{flex-direction:row}

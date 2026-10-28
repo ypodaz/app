@@ -4,7 +4,8 @@ import { api, storedToken, storeToken } from '../shared/api';
 import '../shared/ypod.css';
 import '../shared/responsive.css';
 import './client.css';
-import { Install, CodeEntry, InvalidInvite, Welcome } from './auth';
+import { CodeEntry, InvalidInvite, Welcome } from './auth';
+import { InAppScreen, Install } from './install';
 import { AiChat } from './ai';
 import { Calendar } from './calendar';
 import { AuthCtx, Loading, TOKEN_KEY, useRoute } from './core';
@@ -12,12 +13,15 @@ import { ShootDetail } from './detail';
 import { Home } from './home';
 import { PushGate } from './push';
 import { OfferPage, ProfilePage } from './profile';
-import { Cashback, Materials, Notifications, PackagePage, QrCard } from './pages';
-import { standalone } from './util';
+import { Cashback, Materials, Notifications, PackagePage } from './pages';
+import { env, needInstall, standalone } from './util';
 
 // Dəvət tokeni ünvandan dərhal götürülür ki, tarixçədə və ekran şəklində qalmasın.
+// Instagram/WhatsApp kimi daxili brauzerdə link sərf olunmur: istifadəçi onu real brauzerdə açacaq.
 const inviteToken = new URLSearchParams(location.search).get('i');
-if (inviteToken) history.replaceState(null, '', location.pathname);
+const inviteUrl = location.href;
+const inApp = env === 'inapp' && !standalone;
+if (inviteToken && !inApp) history.replaceState(null, '', location.pathname);
 
 type Stage = 'app' | 'welcome' | 'install';
 
@@ -30,11 +34,10 @@ function Routes({ onLogout, pair, setPair, token }: { onLogout: () => void; pair
     case 'cashback': return <Cashback />;
     case 'package': return <PackagePage />;
     case 'materials': return <Materials />;
-    case 'qr': return <QrCard />;
     case 'notifications': return <Notifications />;
     case 'profile': return <ProfilePage />;
     case 'offer': return <OfferPage id={r1} key={r1} />;
-    case 'install': return <Install token={token} pair={pair} setPair={setPair} onDone={() => { location.hash = '#/'; }} />;
+    case 'install': return <Install token={token} pair={pair} setPair={setPair} required={needInstall} onDone={() => { location.hash = '#/'; }} />;
     default: return <Home onLogout={onLogout} />;
   }
 }
@@ -44,7 +47,7 @@ function App() {
   const [pair, setPair] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [stage, setStage] = useState<Stage>('app');
-  const [busy, setBusy] = useState(!!inviteToken);
+  const [busy, setBusy] = useState(!!inviteToken && !inApp);
   const [badInvite, setBadInvite] = useState(false);
   const redeemed = useRef(false);
 
@@ -55,7 +58,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (!inviteToken || redeemed.current) return;
+    if (!inviteToken || inApp || redeemed.current) return;
     redeemed.current = true;
     api<{ token: string; pair_code: string; full_name?: string }>('/auth/redeem', { body: { token: inviteToken } })
       .then((r) => { signIn(r.token); setPair(r.pair_code); setName(r.full_name ?? ''); setStage('welcome'); })
@@ -64,6 +67,7 @@ function App() {
   }, []);
 
   if (busy) return <main className="scr"><div className="au"><Loading /></div></main>;
+  if (inApp) return <InAppScreen url={inviteToken ? inviteUrl : `${location.origin}${location.pathname}`} />;
   if (!token) return badInvite ? <InvalidInvite onCode={() => setBadInvite(false)} /> : <CodeEntry onToken={signIn} />;
 
   const logout = async () => { await api('/me/logout', { token, body: {} }).catch(() => {}); signOut(); };
@@ -72,7 +76,7 @@ function App() {
   return (
     <AuthCtx.Provider value={{ token, signOut }}>
       {stage === 'welcome' ? <Welcome name={name} onNext={() => (standalone ? toApp() : setStage('install'))} />
-        : stage === 'install' ? <Install token={token} pair={pair} setPair={setPair} onDone={toApp} />
+        : stage === 'install' || needInstall ? <Install token={token} pair={pair} setPair={setPair} required={needInstall} onDone={toApp} />
         : <><Routes onLogout={logout} pair={pair} setPair={setPair} token={token} /><PushGate /></>}
     </AuthCtx.Provider>
   );

@@ -29,6 +29,7 @@ PACKAGES = {
 }
 
 CASHBACK_PERCENT = 10
+CASHBACK_MIN_USE = 70 * AZN  # bundan az balans istifadə olunmur
 FIRST_SHOOT_PERCENT = 50
 PROFILE_BONUS = 5 * AZN  # profil tam doldurulanda, bir dəfə
 REFERRAL_BONUS = 20 * AZN  # dəvət olunan dostun ilk çəkilişi bağlananda hər ikisinə
@@ -142,13 +143,25 @@ def _gross_price(*, kind, location, cameras, duration_min, editing, reels_count,
     return Price(base, editing_price, reels_price, 0)
 
 
-def check_cashback_use(amount: int, balance: int, total: int) -> None:
+def cashback_usable(balance: int, payable: int) -> int:
+    """Keşbek balans CASHBACK_MIN_USE-a çatanda istifadə olunur və bir dəfəyə tam çıxılır
+    (ödəniləcək məbləğdən çox olmamaq şərtilə). Hissə-hissə istifadə yoxdur."""
+    return max(0, min(balance, payable)) if balance >= CASHBACK_MIN_USE else 0
+
+
+def check_cashback_use(amount: int, balance: int, payable: int) -> None:
     if amount < 0:
         raise ValueError("Keşbek məbləği mənfi ola bilməz")
+    if not amount:
+        return
     if amount > balance:
         raise ValueError(f"Keşbek balansı kifayət etmir: {fmt(balance)}")
-    if amount > total:
+    if balance < CASHBACK_MIN_USE:
+        raise ValueError(f"Keşbek balans {fmt(CASHBACK_MIN_USE)}-a çatanda istifadə olunur (indi {fmt(balance)})")
+    if amount > payable:
         raise ValueError("Keşbek çəkilişin məbləğindən çox ola bilməz")
+    if amount != cashback_usable(balance, payable):
+        raise ValueError(f"Keşbek bir dəfəyə tam istifadə olunur: {fmt(cashback_usable(balance, payable))}")
 
 
 def to_pay(total: int, cashback_used: int) -> int:

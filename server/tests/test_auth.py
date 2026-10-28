@@ -146,16 +146,6 @@ def test_client_token_cannot_use_admin_api(api):
     assert api.get("/api/admin/clients").status_code == 401
 
 
-def test_admin_finds_client_by_card(api):
-    adm = admin_token(api)
-    _, inv = invite_link(api, adm)
-    tok = api.post("/api/auth/redeem", json={"token": token_of(inv["url"])}).json()["token"]
-    card = api.get("/api/me", headers=bearer(tok)).json()["card_code"]
-    r = api.get(f"/api/admin/cards/{card}", headers=bearer(adm))
-    assert r.status_code == 200 and r.json()["activated"] is True
-    assert api.get("/api/admin/cards/yoxdur", headers=bearer(adm)).status_code == 404
-
-
 def test_logout_ends_session(api):
     adm = admin_token(api)
     _, inv = invite_link(api, adm)

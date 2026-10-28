@@ -20,7 +20,6 @@ import { Materials } from './pages/Materials';
 import { PackageForm, Packages } from './pages/Packages';
 import { Panel } from './pages/Panel';
 import { Report } from './pages/Report';
-import { Scan } from './pages/Scan';
 import { ShootForm } from './pages/ShootForm';
 import { useDesktop, useRoute } from './router';
 import type { Shoot } from './types';
@@ -44,7 +43,6 @@ function Routes() {
   const [a, b, c] = path;
   const num = Number(b);
   switch (a) {
-    case 'qr': return <Scan />;
     case 'calendar': return <Calendar query={query} />;
     case 'clients': return <Clients id={num || undefined} />;
     case 'shoots':

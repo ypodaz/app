@@ -49,16 +49,18 @@ def shoot(db, c, **kw):
 def test_aysel_b9_cashback_spend_and_close(db):
     c = client(db, "Aysel", activated=at(1, 10, month=10))
     b.manual_cashback(db, None, c.id, 76 * A, "Əvvəlki keşbek")
-    s = shoot(db, c, cameras=2, editing=True, cashback_use=20 * A)
-    assert (s.total, s.cashback_used, s.deposit_expected) == (220 * A, 20 * A, 100 * A)
-    assert b.cashback_balance(db, c.id) == 56 * A
-    b.receive_deposit(db, None, s, 100 * A)
+    with pytest.raises(b.Rejected, match="tam istifadə"):  # hissə-hissə yox
+        shoot(db, c, cameras=2, editing=True, cashback_use=20 * A)
+    s = shoot(db, c, cameras=2, editing=True, cashback_use=76 * A)
+    assert (s.total, s.cashback_used, s.deposit_expected) == (220 * A, 76 * A, 72 * A)
+    assert b.cashback_balance(db, c.id) == 0
+    b.receive_deposit(db, None, s, 72 * A)
     # Aysel artıq earn_first almış sayılsın deyə əvvəlki bağlanmış çəkiliş
     db.add(CashbackLedger(client_id=c.id, kind="earn_first", amount=0))
     earned = b.close_shoot(db, None, s, duration_min=60, paid_method="cash")
     assert earned == 22 * A
-    assert (s.status, s.paid_at_studio) == ("completed", 100 * A)
-    assert b.cashback_balance(db, c.id) == 78 * A
+    assert (s.status, s.paid_at_studio) == ("completed", 72 * A)
+    assert b.cashback_balance(db, c.id) == 22 * A
 
 
 def test_leyla_b4a_first_shoot_two_hours(db):
@@ -114,12 +116,13 @@ def test_package_rules(db):
 
 def test_b8_cancel_gt24_refund_and_cashback_back(db):
     c = client(db, "Tural")
-    b.manual_cashback(db, None, c.id, 10 * A, "")
-    s = shoot(db, c, starts_at=at(4, 14), cashback_use=10 * A)
+    b.manual_cashback(db, None, c.id, 80 * A, "")
+    s = shoot(db, c, starts_at=at(4, 14), cameras=2, editing=True, cashback_use=80 * A)
+    assert b.cashback_balance(db, c.id) == 0
     b.receive_deposit(db, None, s, 30 * A)
     r = b.cancel_shoot(db, None, s, at(28, 11, month=10))
     assert (r.window, r.refund, r.retained) == ("gt24", 30 * A, 0)
-    assert b.cashback_balance(db, c.id) == 10 * A
+    assert b.cashback_balance(db, c.id) == 80 * A
     b.mark_refunded(db, None, s)
     with pytest.raises(b.Rejected):
         b.mark_refunded(db, None, s)

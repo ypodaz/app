@@ -22,11 +22,10 @@ type Props = {
   /** ≥1024px-də sağ detal paneli; daha dar ekranda məzmunun altında. */
   detail?: ReactNode;
   hrefFor?: (tab: AdminTab) => string;
-  qrHref?: string;
   children: ReactNode;
 };
 
-export function AdminShell({ active, title, actions, detail, hrefFor = (t) => `#${t}`, qrHref = '#qr', children }: Props) {
+export function AdminShell({ active, title, actions, detail, hrefFor = (t) => `#${t}`, children }: Props) {
   return (
     <div className="scr rs-shell">
       <aside className="side" aria-label="Əsas menyu">
@@ -37,10 +36,6 @@ export function AdminShell({ active, title, actions, detail, hrefFor = (t) => `#
             <span className="rs-lbl">{it.label}</span>
           </a>
         ))}
-        <a className="btn btn-cream rs-qr" href={qrHref} aria-label="QR oxut" title="QR oxut">
-          <Icon name="qr" />
-          <span className="rs-lbl">QR oxut</span>
-        </a>
       </aside>
       <div className="rs-body">
         <main className="main rs-main">
@@ -48,7 +43,6 @@ export function AdminShell({ active, title, actions, detail, hrefFor = (t) => `#
             <div className="top rs-head">
               <h1 className="h2 rs-title">{title}</h1>
               <div className="row rs-actions">
-                <a className="btn btn-cream btn-sm btn-auto rs-qr-m" href={qrHref} aria-label="QR oxut"><Icon name="qr" size={18} /><span className="rs-txt"> QR oxut</span></a>
                 {actions}
               </div>
             </div>

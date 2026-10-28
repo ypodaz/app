@@ -122,7 +122,14 @@ def test_validation():
         m.check_cashback_use(80 * A, 76 * A, 220 * A)
     with pytest.raises(ValueError, match="çox ola bilməz"):
         m.check_cashback_use(80 * A, 100 * A, 70 * A)
-    m.check_cashback_use(20 * A, 76 * A, 220 * A)
+    with pytest.raises(ValueError, match="70,00 AZN-a çatanda|çatanda"):
+        m.check_cashback_use(15 * A, 15 * A, 220 * A)  # 70-dən az balans istifadə olunmur
+    with pytest.raises(ValueError, match="tam istifadə"):
+        m.check_cashback_use(20 * A, 76 * A, 220 * A)
+    m.check_cashback_use(76 * A, 76 * A, 220 * A)
+    m.check_cashback_use(70 * A, 100 * A, 70 * A)  # balans çəkilişdən çoxdursa, çəkilişin məbləği qədər
+    m.check_cashback_use(0, 15 * A, 220 * A)
+    assert (m.cashback_usable(69 * A, 220 * A), m.cashback_usable(100 * A, 70 * A)) == (0, 70 * A)
 
 
 def test_b8_cancel_more_than_24h():

@@ -13,7 +13,7 @@ export function CloseShoot({ id }: { id: number }) {
   const s = shoot.data;
   const client = useLoad<ClientDetail>(s ? `/clients/${s.client_id}` : null).data;
   const [dur, setDur] = useState<number | null>(null);
-  const [cbText, setCbText] = useState('');
+  const [useCb, setUseCb] = useState(false);
   const [discText, setDiscText] = useState<string | null>(null);
   const [exRows, setExRows] = useState<ExtraRow[] | null>(null);
   const [method, setMethod] = useState<'cash' | 'card'>('cash');
@@ -24,7 +24,6 @@ export function CloseShoot({ id }: { id: number }) {
 
   const minutes = dur ?? s?.duration_min ?? 60;
   const reels = s?.kind === 'reels_pack';
-  const extra = parseAzn(cbText) ?? 0;
   const discP = discText === null ? (s?.discount ?? 0) : discText.trim() ? parseAzn(discText) : 0;
   const discBad = discP === null, disc = discP ?? 0;
 
@@ -50,7 +49,9 @@ export function CloseShoot({ id }: { id: number }) {
 
   const pkg = client?.packages.find((p) => p.id === s.package_id);
   const deposit = s.deposit_received_at ? s.deposit_amount : 0;
-  const maxCb = quote ? Math.min(quote.cashback_balance, quote.total - s.cashback_used) : 0;
+  const payable = quote ? Math.max(0, quote.total - s.cashback_used - deposit) : 0;
+  const usable = quote && quote.cashback_balance >= quote.cashback_min_use ? Math.min(quote.cashback_balance, payable) : 0;
+  const extra = useCb ? usable : 0;
   const due = quote ? Math.max(0, quote.total - s.cashback_used - extra - deposit) : 0;
 
   async function close() {
@@ -105,10 +106,14 @@ export function CloseShoot({ id }: { id: number }) {
             </div>
           ) : <p className="t13 muted">{qerr || 'Hesablanır…'}</p>}
           <Err msg={qerr && quote ? qerr : ''} />
-          {maxCb > 0 && (
-            <Field label="Keşbekdən istifadə (AZN)" id="cl-cb" hint={`Keşbek balansı: ${formatMoney(quote?.cashback_balance ?? 0)} · ən çoxu ${formatMoney(maxCb)}`}>
-              <input id="cl-cb" className="inp" inputMode="decimal" value={cbText} onChange={(e) => setCbText(e.target.value)} placeholder="0" onBlur={() => extra > maxCb && setCbText(aznInput(maxCb))} />
-            </Field>
+          {quote && (
+            <div className="trow" style={{ minHeight: 48 }}>
+              <span className="col grow" style={{ gap: 2 }}>
+                <span className="t15 w8">{usable > 0 ? `Keşbekdən istifadə et · ${formatMoney(usable)}` : 'Keşbekdən istifadə'}</span>
+                {usable === 0 && quote.cashback_balance > 0 && <span className="t12 soft">Keşbek balansı {formatMoney(quote.cashback_balance)} — {formatMoney(quote.cashback_min_use)}-ə çatanda istifadə olunur</span>}
+              </span>
+              <button type="button" className={`tgl${extra > 0 ? ' tgl-on' : ''}`} role="switch" aria-checked={extra > 0} aria-label="Keşbekdən istifadə" disabled={usable === 0} onClick={() => setUseCb(!useCb)} />
+            </div>
           )}
           {quote && <div className="sum"><div className="sum-r sum-tot"><span><b>Qalıq: {formatMoney(due)}</b>{due > 0 ? ' · nağd / kart' : ''}</span></div></div>}
           {due > 0 && (

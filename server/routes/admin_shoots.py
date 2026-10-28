@@ -242,6 +242,7 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         "conflicts": booking.conflicts(db, starts_at=utc(body.starts_at), duration_min=body.duration_min,
                                        prep_min=body.prep_min, wrap_min=body.wrap_min, exclude_id=exclude_id),
         "deposit_expected": money.deposit_expected(p.total, body.cashback_use, pkg is not None),
+        "cashback_usable": money.cashback_usable(balance, p.total), "cashback_min_use": money.CASHBACK_MIN_USE,
         "cashback_earn": earn, "cashback_kind": kind, "first_shoot_bonus": first,
         "cashback_balance": balance, "deposit_required": client.deposit_required,
     }
@@ -487,6 +488,36 @@ def manual_cashback(client_id: int, body: CashbackIn, db: DB = Depends(get_db),
         raise HTTPException(404, "Müştəri tapılmadı")
     try:
         booking.manual_cashback(db, admin.id, client_id, body.amount, body.note.strip())
+    except booking.Rejected as e:
+        reject(db, e)
+    db.commit()
+    return {"balance": booking.cashback_balance(db, client_id)}
+
+
+def _manual_row(db: DB, row_id: int) -> CashbackLedger:
+    row = db.get(CashbackLedger, row_id)
+    if not row:
+        raise HTTPException(404, "Sətir tapılmadı")
+    return row
+
+
+@router.patch("/cashback/{row_id}")
+def edit_manual_cashback(row_id: int, body: CashbackIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
+    row = _manual_row(db, row_id)
+    try:
+        booking.edit_manual_cashback(db, admin.id, row, body.amount, body.note.strip())
+    except booking.Rejected as e:
+        reject(db, e)
+    db.commit()
+    return {"balance": booking.cashback_balance(db, row.client_id)}
+
+
+@router.delete("/cashback/{row_id}")
+def delete_manual_cashback(row_id: int, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
+    row = _manual_row(db, row_id)
+    client_id = row.client_id
+    try:
+        booking.edit_manual_cashback(db, admin.id, row, None, "")
     except booking.Rejected as e:
         reject(db, e)
     db.commit()

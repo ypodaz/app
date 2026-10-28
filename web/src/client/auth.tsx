@@ -2,7 +2,7 @@ import { FormEvent, useState } from 'react';
 import { api, ApiError } from '../shared/api';
 import { Button, Icon, Logo } from '../shared/ui';
 import { XIcon } from './core';
-import { PHONE_HREF, isIOS, waLink } from './util';
+import { PHONE_HREF, waLink } from './util';
 
 export function Brand() {
   return <div className="logo-wrap"><Logo height={36} /><span className="h2">Y Pod</span></div>;
@@ -48,39 +48,6 @@ export function InvalidInvite({ onCode }: { onCode: () => void }) {
       <a className="btn btn-primary" href={waLink('Salam, app üçün yeni giriş linki istəyirəm.')} target="_blank" rel="noopener"><XIcon name="wa" size={18} />Y Pod-a WhatsApp-da yazın</a>
       <a className="btn btn-out" href={PHONE_HREF}><XIcon name="phone" size={18} />Zəng edin</a>
       <Button variant="ghost" auto className="mt" onClick={onCode}>Telefonda kodum var</Button>
-    </div></main>
-  );
-}
-
-/** A2: ana ekrana əlavə et + 6 rəqəmli kod (ana ekrandakı app-a daxil olmaq üçün). */
-export function Install({ token, pair, setPair, onDone }: { token: string; pair: string | null; setPair: (c: string) => void; onDone: () => void }) {
-  const [err, setErr] = useState('');
-  async function fresh() {
-    setErr('');
-    try { setPair((await api<{ pair_code: string }>('/me/pair-code', { token, body: {} })).pair_code); }
-    catch (e) { setErr((e as ApiError).message); }
-  }
-  const steps = isIOS
-    ? ['Aşağıda «Paylaş» düyməsinə basın.', 'Açılan menyuda «Ana ekrana əlavə et» seçin.', 'Ana ekrandakı Y Pod-u açın və bu kodu yazın.']
-    : ['Brauzerin menyusunu (⋮) açın.', '«Ana ekrana əlavə et» və ya «Quraşdır» seçin.', 'Ana ekrandakı Y Pod-u açın. Kod istəsə, bu kodu yazın.'];
-  return (
-    <main className="scr"><div className="au">
-      <div className="top"><Brand /></div>
-      <h1 className="h1">Ana ekrana əlavə edin</h1>
-      <p className="t14 soft lh">App kimi bir toxunuşla açılsın, brauzer çubuğu olmadan.</p>
-      <div className="list">
-        {steps.map((t, i) => (
-          <div key={t} className="li"><span className="stepn">{i + 1}</span><span className="t15 w7 lh grow">{t}</span></div>
-        ))}
-      </div>
-      <div className="card">
-        {pair ? <div className="code-big" aria-label="Giriş kodu">{pair}</div> : null}
-        <p className="hint">Kod 15 dəqiqə etibarlıdır.</p>
-        <Button variant="out" small onClick={fresh}>{pair ? 'Yeni kod' : 'Kod al'}</Button>
-        {err && <p className="err">{err}</p>}
-      </div>
-      <div className="grow" />
-      <Button onClick={onDone}>Anladım</Button>
     </div></main>
   );
 }

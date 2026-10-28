@@ -241,3 +241,36 @@ def test_report_growth(api):
     g = api.get("/api/admin/report", params={"month": month}, headers=bearer(adm)).json()
     assert g["growth"]["new_clients"] == 1 and g["growth"]["by_source"] == {"instagram": 1}
     assert g["cashback"]["bonuses"] == 500
+
+
+def test_manual_cashback_row_edit_and_delete(api):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Aysel Məmmədova")
+    api.post(f"/api/admin/clients/{cid}/cashback", json={"amount": 3500, "note": "Başlanğıc keşbek"}, headers=bearer(adm))
+    row = api.get(f"/api/admin/clients/{cid}", headers=bearer(adm)).json()["cashback_rows"][0]
+    r = api.patch(f"/api/admin/cashback/{row['id']}", json={"amount": 4000, "note": "Düzəliş"}, headers=bearer(adm))
+    assert r.status_code == 200 and r.json()["balance"] == 4000
+    assert api.patch(f"/api/admin/cashback/{row['id']}", json={"amount": -100}, headers=bearer(adm)).status_code == 400
+    assert api.delete(f"/api/admin/cashback/{row['id']}", headers=bearer(adm)).json()["balance"] == 0
+    s = make_shoot(api, adm, cid)
+    close(api, adm, s)
+    earn = api.get(f"/api/admin/clients/{cid}", headers=bearer(adm)).json()["cashback_rows"][0]
+    assert earn["kind"] == "earn_first"
+    assert api.delete(f"/api/admin/cashback/{earn['id']}", headers=bearer(adm)).status_code == 400  # çəkiliş keşbeki dəyişmir
+    assert api.get("/api/admin/cards/X", headers=bearer(adm)).status_code == 404  # QR axtarışı silinib
+
+
+def test_quote_cashback_min_rule(api):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Aysel Məmmədova")
+    api.post(f"/api/admin/clients/{cid}/cashback", json={"amount": 1500}, headers=bearer(adm))
+    body = {"client_id": cid, "starts_at": slot(5), "duration_min": 120, "kind": "shoot", "tag": "podcast",
+            "location": "studio", "cameras": 1, "editing": True}
+    q = api.post("/api/admin/shoots/quote", json=body, headers=bearer(adm)).json()
+    assert (q["cashback_usable"], q["cashback_min_use"]) == (0, 7000)
+    assert api.post("/api/admin/shoots", json={**body, "cashback_use": 1500}, headers=bearer(adm)).status_code == 400
+    api.post(f"/api/admin/clients/{cid}/cashback", json={"amount": 8500}, headers=bearer(adm))
+    q = api.post("/api/admin/shoots/quote", json=body, headers=bearer(adm)).json()
+    assert q["cashback_usable"] == 10000
+    r = api.post("/api/admin/shoots", json={**body, "cashback_use": 10000}, headers=bearer(adm))
+    assert r.status_code == 200 and r.json()["cashback_used"] == 10000

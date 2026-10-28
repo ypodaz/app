@@ -75,7 +75,8 @@ def _spend_cashback(db: DB, s: Shoot, amount: int) -> None:
     if not amount:
         return
     try:
-        money.check_cashback_use(amount, cashback_balance(db, s.client_id), s.total - s.cashback_used)
+        paid = s.cashback_used + (s.deposit_amount if s.deposit_received_at else 0)
+        money.check_cashback_use(amount, cashback_balance(db, s.client_id), s.total - paid)
     except ValueError as e:
         raise Rejected(str(e)) from e
     s.cashback_used += amount
@@ -398,3 +399,21 @@ def manual_cashback(db: DB, admin_id: int | None, client_id: int, amount: int, n
     db.flush()
     db.add(AuditLog(admin_id=admin_id, action="manual", entity="cashback", entity_id=row.id,
                     after={"client_id": client_id, "amount": amount}))
+
+
+def edit_manual_cashback(db: DB, admin_id: int | None, row: CashbackLedger, amount: int | None, note: str) -> None:
+    """Əl ilə yazılmış sətri düzəldir (amount=None — silir). Çəkilişdən gələn sətirlər dəyişmir.
+    Balans mənfiyə düşə bilməz (keşbekin bir hissəsi artıq istifadə olunubsa)."""
+    if row.kind != "manual":
+        raise Rejected("Yalnız əl ilə yazılmış keşbek dəyişdirilə bilər")
+    if amount == 0:
+        raise Rejected("Məbləğ 0 ola bilməz — sətri silin")
+    if cashback_balance(db, row.client_id) - row.amount + (amount or 0) < 0:
+        raise Rejected("Bu dəyişiklikdən sonra balans mənfi olar")
+    before = {"amount": row.amount, "note": row.note}
+    if amount is None:
+        db.delete(row)
+    else:
+        row.amount, row.note = amount, note or "Əvvəlki keşbek"
+    db.add(AuditLog(admin_id=admin_id, action="delete" if amount is None else "edit", entity="cashback",
+                    entity_id=row.id, before=before, after=None if amount is None else {"amount": amount, "note": row.note}))

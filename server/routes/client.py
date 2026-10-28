@@ -113,7 +113,7 @@ def my_shoot(shoot_id: int, client: Client = Depends(current_client), db: DB = D
 def my_cashback(client: Client = Depends(current_client), db: DB = Depends(get_db)):
     rows = db.execute(select(CashbackLedger, Shoot.title).outerjoin(Shoot, Shoot.id == CashbackLedger.shoot_id)
                       .where(CashbackLedger.client_id == client.id).order_by(CashbackLedger.id.desc())).all()
-    return {"balance": booking.cashback_balance(db, client.id),
+    return {"balance": booking.cashback_balance(db, client.id), "min_use": money.CASHBACK_MIN_USE,
             "rows": [{"kind": r.kind, "amount": r.amount, "note": r.note, "created_at": iso(r.created_at),
                       "shoot_title": title} for r, title in rows]}
 

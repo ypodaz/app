@@ -22,7 +22,6 @@ export function Panel() {
       active="panel"
       title={dateLong(today)}
       hrefFor={(t) => `#/${t}`}
-      qrHref="#/qr"
       actions={<><Button variant="ghost" small auto onClick={signOut}>Çıxış</Button><a className="btn btn-primary btn-sm btn-auto" href="#/shoots/new"><Icon name="plus" size={18} strokeWidth={2.4} /> Çəkiliş</a></>}
     >
       <Err msg={dash.err} />

@@ -61,7 +61,7 @@ export type Conflict =
 export type Quote = {
   base: number; editing: number; reels: number; extra_camera: number; extras: number; gross: number; discount: number; total: number; deposit_expected: number;
   conflicts: Conflict[];
-  cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; deposit_required: boolean;
+  cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; cashback_usable: number; cashback_min_use: number; deposit_required: boolean;
 };
 
 // Kampaniyalar və avtomatik bildirişlər

@@ -10,11 +10,12 @@ textarea.inp{font-family:inherit}
 select.inp{appearance:auto}
 input[type=date].inp,input[type=time].inp{color-scheme:dark}
 
-/* giriş və QR */
+/* basılan keşbek sətri */
+button.li-edit{width:100%;background:transparent;border:0;border-bottom:1px solid rgba(253,246,255,.08);border-radius:0;padding:8px 0;text-align:left;color:inherit;-webkit-tap-highlight-color:transparent}
+button.li-edit .i{color:#a99cbf;flex:none}
+/* giriş */
 .ax-login{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(180deg,#2e1065 0%,#12051f 45%,#0b0713 100%)}
 .ax-login-card{width:100%;max-width:400px;padding:28px;gap:16px}
-.ax-scan{min-height:100vh;min-height:100dvh;background:linear-gradient(180deg,#2e1065 0%,#12051f 45%,#0b0713 100%)}
-.ax-scan-body{display:flex;flex-direction:column;align-items:center;gap:22px;padding:10px 20px 40px}
 .ax-frame{position:relative;width:260px;height:260px;border-radius:18px;background:rgba(253,246,255,.03)}
 .ax-frame video{width:100%;height:100%;object-fit:cover;border-radius:18px;display:block}
 .ax-frame i{position:absolute;width:52px;height:52px;border:0 solid #c084fc}

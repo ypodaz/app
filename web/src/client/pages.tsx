@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
 import { api } from '../shared/api';
 import { Card, EmptyState, Icon, Pill } from '../shared/ui';
 import { AuthCtx, BookButtons, ErrorState, HOME_CACHE, Loading, OfflineBadge, Screen, TopBar, useApi, XIcon } from './core';
@@ -17,8 +16,9 @@ const KIND: Record<string, string> = {
 };
 
 export function Cashback() {
-  const q = useApi<{ balance: number; rows: CbRow[] }>('/me/cashback', 'ypod.cashback');
+  const q = useApi<{ balance: number; min_use?: number; rows: CbRow[] }>('/me/cashback', 'ypod.cashback');
   const d = q.data;
+  const min = d?.min_use ?? 7000;
   return (
     <Screen tab="home">
       <TopBar title="Keşbekim" />
@@ -28,6 +28,12 @@ export function Cashback() {
           <Card tone="violet">
             <span className="t13 w8" style={{ color: '#e9d5ff' }}>Keşbek balansı</span>
             <span className="num-xl" style={{ fontSize: 44 }}>{money(d.balance).replace(' AZN', '')}<span className="unit">AZN</span></span>
+            {d.balance < min ? (
+              <>
+                <div className="cbbar" role="progressbar" aria-valuemin={0} aria-valuemax={min} aria-valuenow={Math.max(0, d.balance)}><i style={{ width: `${Math.max(0, Math.min(100, (d.balance / min) * 100))}%` }} /></div>
+                <span className="t13 w7" style={{ color: '#e9d5ff' }}>Balans {money(min)}-ə çatanda növbəti çəkilişdə istifadə olunur · daha {money(min - d.balance)} qalıb</span>
+              </>
+            ) : <span className="t13 w7" style={{ color: '#e9d5ff' }}>Növbəti çəkilişdə istifadə edə bilərsiniz</span>}
           </Card>
           <Card>
             <span className="h3">Qaydalar</span>
@@ -35,7 +41,7 @@ export function Cashback() {
               <li>İlk çəkilişə 50% keşbek</li>
               <li>Hər çəkilişdən məbləğin 10%-i keşbek</li>
               <li>Keşbek çəkiliş bağlananda yazılır</li>
-              <li>İstənilən xidmətə xərcləyə bilərsiniz</li>
+              <li>Balans {money(min)}-ə çatanda istifadə olunur; istifadə olunanda bir dəfəyə tam xərclənir</li>
               <li>Podcastdan Reels: hər biri 10 AZN (montajla birlikdə)</li>
               <li>Müddətsizdir · pul kimi qaytarılmır</li>
             </ul>
@@ -172,35 +178,6 @@ export function Materials() {
           ))}
         </Card>
       ))}
-    </Screen>
-  );
-}
-
-// ---------- QR kart (D4) ----------
-export function QrCard() {
-  const q = useApi<{ full_name: string; card_code: string; cashback_balance: number }>('/me', 'ypod.me');
-  const home = useApi<HomeData>('/me/home', HOME_CACHE);
-  const [src, setSrc] = useState('');
-  const code = q.data?.card_code;
-  useEffect(() => { if (code) QRCode.toDataURL(code, { margin: 1, width: 480 }).then(setSrc).catch(() => {}); }, [code]);
-  const n = home.data?.next_shoot;
-  return (
-    <Screen tab="home">
-      <TopBar title="Müştəri kartı" />
-      {q.offline && q.data && <OfflineBadge />}
-      {!q.data ? (q.loading ? <Loading /> : <ErrorState q={q} />) : (
-        <>
-          <div className="qrcard">
-            <span className="lbl">Müştəri</span>
-            <span className="h2" style={{ overflowWrap: 'anywhere' }}>{q.data.full_name}</span>
-            <div className="qrbox">{src ? <img src={src} alt="Müştəri QR kodu" /> : <div className="sk" style={{ width: 240, height: 240 }} />}</div>
-            <span className="num-s" style={{ letterSpacing: 2 }}>{q.data.card_code}</span>
-            <span className="t13 soft">Keşbek · <b>{money(q.data.cashback_balance)}</b></span>
-            {n && <span className="t13 muted">Növbəti çəkiliş: {dateLong(n.starts_at)} · {timeOf(n.starts_at)}</span>}
-          </div>
-          <p className="t13 muted lh ctr" style={{ textAlign: 'center' }}>Studiyada bu kodu göstərin. Əməkdaşımız oxuyacaq, gəlişiniz və keşbekiniz qeyd olunacaq.</p>
-        </>
-      )}
     </Screen>
   );
 }

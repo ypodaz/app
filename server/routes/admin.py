@@ -177,14 +177,6 @@ def invite(client_id: int, db: DB = Depends(get_db)):
     return {"url": url, "whatsapp_url": f"https://wa.me/{number}?text={quote(text)}" if number else None}
 
 
-@router.get("/cards/{card_code}")
-def by_card(card_code: str, db: DB = Depends(get_db)):
-    c = db.scalar(select(Client).where(Client.card_code == card_code))
-    if not c:
-        raise HTTPException(404, "Kart tapılmadı")
-    return client_out(c)
-
-
 @router.get("/whoami")
 def whoami(admin: Admin = Depends(current_admin)):
     return {"name": admin.name}

@@ -35,7 +35,6 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
   const [payWanted, setPayWanted] = useState<'paid' | 'package'>('paid');
   const [pkgSel, setPkgSel] = useState<number | null>(null);
   const [useCb, setUseCb] = useState(false);
-  const [cbText, setCbText] = useState('');
   const [depositNow, setDepositNow] = useState(false);
   const [note, setNote] = useState('');
   const [extraRowsSt, setExtraRows] = useState<ExtraRow[]>([]);
@@ -75,7 +74,8 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
   const pay = edit ? (o?.package_id ? 'package' : 'paid') : payWanted === 'package' && pkgs.length && kind === 'shoot' ? 'package' : 'paid';
   const pkgId = edit ? (o?.package_id ?? null) : pay === 'package' ? (pkgs.find((p) => p.id === pkgSel) ?? pkgs[0]).id : null;
   const reelsN = editing && kind === 'shoot' ? reels : 0;
-  const cashback = edit ? 0 : useCb ? (parseAzn(cbText) ?? 0) : 0;
+  const usable = quote?.cashback_usable ?? 0;
+  const cashback = edit ? 0 : useCb ? usable : 0;
   const cbShown = edit ? (o?.cashback_used ?? 0) : cashback;
   const depPaid = edit ? (o?.deposit_amount ?? 0) : 0;
 
@@ -100,10 +100,6 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
   }, [key]);
 
   const balance = detail?.cashback_balance ?? 0;
-  function toggleCb(on: boolean) {
-    setUseCb(on);
-    if (on) setCbText(aznInput(Math.min(balance, quote?.total ?? balance)));
-  }
   const depositExpected = quote?.deposit_expected ?? 0;
   const ready = !!quote && !qerr && !submit.busy;
 
@@ -235,11 +231,12 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
           {discount > 0 && <Field label="Səbəb" id="sf-dn" hint="Yalnız admin görür."><input id="sf-dn" className="inp" value={discNote} onChange={(e) => setDiscNote(e.target.value)} maxLength={255} placeholder="məs. daimi müştəri" /></Field>}
 
           {!edit && <div className="trow" style={{ minHeight: 48 }}>
-            <span className="col grow" style={{ gap: 2 }}><span className="t15 w8">Keşbekdən istifadə</span><span className="t12 soft">Müştərinin keşbeki: {formatMoney(balance)}</span></span>
-            <button type="button" className={`tgl${useCb ? ' tgl-on' : ''}`} role="switch" aria-checked={useCb} aria-label="Keşbekdən istifadə" disabled={!balance} onClick={() => toggleCb(!useCb)} />
+            <span className="col grow" style={{ gap: 2 }}>
+              <span className="t15 w8">{usable > 0 ? `Keşbekdən istifadə et · ${formatMoney(usable)}` : 'Keşbekdən istifadə'}</span>
+              {usable === 0 && balance > 0 && <span className="t12 soft">Keşbek balansı {formatMoney(balance)} — {formatMoney(quote?.cashback_min_use ?? 7000)}-ə çatanda istifadə olunur</span>}
+            </span>
+            <button type="button" className={`tgl${useCb && usable > 0 ? ' tgl-on' : ''}`} role="switch" aria-checked={useCb && usable > 0} aria-label="Keşbekdən istifadə" disabled={usable === 0} onClick={() => setUseCb(!useCb)} />
           </div>}
-          {useCb && !edit && <Field label="Keşbek məbləği (AZN)" id="sf-cb" hint={`Ən çoxu ${formatMoney(balance)}`}><input id="sf-cb" className="inp" inputMode="decimal" value={cbText} onChange={(e) => setCbText(e.target.value)} /></Field>}
-
           {!edit && quote?.deposit_required && <div className="banner"><Icon name="alert" size={18} /><span><b>Beh mütləqdir</b> — müştəri əvvəl gəlməyib. Behi mütləq alın.</span></div>}
           {!edit && depositExpected > 0 && (
             <>

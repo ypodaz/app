@@ -113,6 +113,30 @@ export function downloadIcs(s: Shoot) {
 export const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 export const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
+/** Quraşdırma mühiti: user agent-dən. 'desktop' = mobil olmayan cihaz (quraşdırma məcburi deyil). */
+export type Env = 'desktop' | 'ios-safari' | 'ios-chrome' | 'ios-other' | 'inapp' | 'android-chrome' | 'android-samsung' | 'android-other';
+function detectEnv(): Env {
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const android = /Android/.test(ua);
+  if (!ios && !android) return 'desktop';
+  // Daxili brauzerlər (Instagram, Facebook, WhatsApp, Telegram...): ana ekrana əlavə mümkün deyil.
+  // iOS WKWebView-də "Safari/" yoxdur (Telegram kimi); Android WebView-də "; wv)" var.
+  if (/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Messenger|WhatsApp|Telegram|Snapchat|TikTok|musical_ly|BytedanceWebview|Line\/|LinkedInApp|Twitter|Pinterest/i.test(ua)) return 'inapp';
+  if (ios) {
+    if (/CriOS/.test(ua)) return 'ios-chrome';
+    if (/FxiOS|EdgiOS|OPiOS|OPT\/|DuckDuckGo|YaBrowser|Brave|GSA\//.test(ua)) return 'ios-other';
+    return /Safari\//.test(ua) ? 'ios-safari' : 'inapp';
+  }
+  if (/; wv\)/.test(ua)) return 'inapp';
+  if (/SamsungBrowser/.test(ua)) return 'android-samsung';
+  if (/Chrome\//.test(ua) && !/EdgA|OPR\/|Firefox|YaBrowser|DuckDuckGo|UCBrowser|Vivaldi/.test(ua)) return 'android-chrome';
+  return 'android-other';
+}
+export const env = detectEnv();
+/** Mobil cihazda app ana ekrana əlavə olunmayıbsa, app-ın içinə buraxılmır. */
+export const needInstall = env !== 'desktop' && !standalone;
+
 /** VAPID açarı (base64url) → pushManager.subscribe üçün bayt massivi. */
 export function urlBase64ToUint8Array(b64: string): Uint8Array {
   const pad = '='.repeat((4 - (b64.length % 4)) % 4);
