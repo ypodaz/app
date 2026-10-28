@@ -13,12 +13,14 @@ export type Production = 'none' | 'editing' | 'ready';
 
 export type Material = { id: number; title: string; drive_url: string };
 
+export type Extra = { name: string; amount: number };
+
 export type Shoot = {
   id: number; client_id: number; client_name: string | null; package_id: number | null;
   starts_at: string; duration_min: number; kind: Kind; tag: Tag; location: Location; address: string | null;
   cameras: number; editing: boolean; reels_count: number; title: string | null; status: ShootStatus;
   production: Production; delivery_on: string | null;
-  price_base: number; price_editing: number; price_reels: number; price_extra_camera: number; discount: number; discount_note: string | null; prep_min: number; wrap_min: number; total: number;
+  price_base: number; price_editing: number; price_reels: number; price_extra_camera: number; discount: number; discount_note: string | null; extras: Extra[]; prep_min: number; wrap_min: number; total: number;
   note: string | null; source_note: string | null; cashback_used: number;
   deposit_expected: number; deposit_amount: number; deposit_received_at: string | null; deposit_waived: boolean;
   paid_at_studio: number; paid_method: 'cash' | 'card' | null; closed_at: string | null;
@@ -49,7 +51,7 @@ export type Conflict =
   | { type: 'block'; id: number; starts_at: string; ends_at: string; reason: string | null };
 
 export type Quote = {
-  base: number; editing: number; reels: number; extra_camera: number; gross: number; discount: number; total: number; deposit_expected: number;
+  base: number; editing: number; reels: number; extra_camera: number; extras: number; gross: number; discount: number; total: number; deposit_expected: number;
   conflicts: Conflict[];
   cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; deposit_required: boolean;
 };

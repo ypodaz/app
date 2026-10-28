@@ -38,6 +38,23 @@ def _when(d: str, hm: str) -> datetime:
         raise booking.Rejected("Tarix və ya saat başa düşülmədi") from e
 
 
+def _extras(items) -> list[dict]:
+    out = []
+    for e in items or []:
+        try:
+            name, amount = str(e.get("name", "")).strip()[:80], _azn(e.get("amount_azn", 0))
+        except (AttributeError, TypeError, ValueError):
+            name, amount = "", 0
+        if not name or amount <= 0:
+            raise booking.Rejected("Əlavə xərcin adı və məbləği lazımdır")
+        out.append({"name": name, "amount": amount})
+    return out
+
+
+def _extras_line(extras: list[dict]) -> str:
+    return ", ".join(f"{e['name']} {money.fmt(e['amount'])}" for e in extras)
+
+
 def _label(dt: datetime) -> str:
     t = aware(dt).astimezone(BAKU)
     return f"{ai.WD[t.weekday()]} {t:%d.%m} · {t:%H:%M}"
@@ -89,7 +106,9 @@ class Run:
             Client.id.in_({s.client_id for s in rows})))}
         out = [{"shoot_id": s.id, "client": names[s.client_id], "start": f"{aware(s.starts_at).astimezone(BAKU):%H:%M}",
                 "duration_min": s.duration_min, "kind": s.kind, "status": s.status, "payment": payment_line(s),
-                "deposit_expected_azn": s.deposit_expected / 100} for s in rows]
+                "deposit_expected_azn": s.deposit_expected / 100, "total_azn": s.total / 100,
+                "extras": [{"name": e["name"], "amount_azn": e["amount"] / 100} for e in s.extras or []]}
+               for s in rows]
         blocks = [{"block_id": bl.id, "start": f"{aware(bl.starts_at).astimezone(BAKU):%H:%M}",
                    "end": f"{aware(bl.ends_at).astimezone(BAKU):%H:%M}", "reason": bl.reason}
                   for bl in self.db.scalars(select(Block).where(Block.starts_at < b, Block.ends_at > a))]
@@ -117,7 +136,7 @@ class Run:
                              client_id=None, new_client_index=None, kind="shoot", tag="podcast", location="studio",
                              address=None, cameras=1, editing=False, reels_count=0, discount_azn=None,
                              discount_percent=None, discount_note=None, prep_min=15, wrap_min=0, note=None,
-                             title=None) -> dict:
+                             title=None, extras=None) -> dict:
         starts = _when(date, start)
         if end:
             duration = int((_when(date, end) - starts).total_seconds() // 60)
@@ -135,26 +154,31 @@ class Run:
         else:
             c = self._client(client_id)
             ref, who = c.id, c.full_name
+        extras = _extras(extras)
         try:
             gross = money.price(kind=kind, location=location, cameras=int(cameras), duration_min=duration,
-                                editing=bool(editing), reels_count=int(reels_count or 0)).gross
+                                editing=bool(editing), reels_count=int(reels_count or 0),
+                                extras=booking.extras_total(extras)).gross
             discount = (money.percent(gross, int(round(float(discount_percent)))) if discount_percent
                         else _azn(discount_azn) if discount_azn else 0)
             p = money.price(kind=kind, location=location, cameras=int(cameras), duration_min=duration,
-                            editing=bool(editing), reels_count=int(reels_count or 0), discount=discount)
+                            editing=bool(editing), reels_count=int(reels_count or 0), discount=discount,
+                            extras=booking.extras_total(extras))
         except ValueError as e:
             return {"error": str(e)}
         body = {"client_id": ref, "starts_at": starts.isoformat(), "duration_min": duration, "kind": kind, "tag": tag,
                 "location": location, "address": address, "cameras": int(cameras), "editing": bool(editing),
                 "reels_count": int(reels_count or 0), "discount": discount,
                 "discount_note": discount_note if discount else None, "prep_min": int(prep_min),
-                "wrap_min": int(wrap_min), "note": note, "title": title}
+                "wrap_min": int(wrap_min), "note": note, "title": title, "extras": extras}
         what = KIND[kind] + (f" · {TAG[tag]}" if kind == "shoot" else "")
         extra = []
         if kind == "shoot":
             extra.append(f"{cameras} kamera" + (" · sizin məkanda" if location == "onsite" else ""))
             if editing:
                 extra.append("montaj" + (f" + {reels_count} Reels" if reels_count else ""))
+        if extras:
+            extra.append(_extras_line(extras))
         end_t = starts + timedelta(minutes=duration)
         money_part = money.fmt(p.total) + (f" (endirim {money.fmt(discount)})" if discount else "")
         summary = (f"{who} · {_label(starts)}–{end_t:%H:%M} · {what}" + "".join(f" · {x}" for x in extra)
@@ -203,7 +227,7 @@ class Run:
     def propose_edit_shoot(self, shoot_id=None, date=None, start=None, end=None, duration_min=None, kind=None,
                            tag=None, location=None, address=None, cameras=None, editing=None, reels_count=None,
                            discount_azn=None, discount_percent=None, discount_note=None, prep_min=None,
-                           wrap_min=None, note=None, title=None) -> dict:
+                           wrap_min=None, note=None, title=None, add_extras=None, remove_extras=None) -> dict:
         s = self._shoot(shoot_id)
         if s.status != "confirmed":
             return {"error": "Bu çəkiliş artıq bağlanıb və ya ləğv olunub"}
@@ -220,9 +244,13 @@ class Run:
             v.update(cameras=0, editing=False, reels_count=0, location="studio")
         if kind == "reels_pack":
             v.update(editing=False, reels_count=0)
+        drop = {_fold(str(n).strip()) for n in remove_extras or []}
+        added = _extras(add_extras)
+        extras = [e for e in s.extras or [] if _fold(e["name"]) not in drop] + added
         pkg = self.db.get(Package, s.package_id) if s.package_id else None
         try:
-            args = dict(kind=kind, duration_min=duration, package_cameras=pkg.cameras if pkg else None, **v)
+            args = dict(kind=kind, duration_min=duration, package_cameras=pkg.cameras if pkg else None,
+                        extras=booking.extras_total(extras), **v)
             gross = money.price(**args).gross
             discount = (money.percent(gross, int(round(float(discount_percent)))) if discount_percent
                         else _azn(discount_azn) if discount_azn is not None else min(s.discount, gross))
@@ -234,7 +262,8 @@ class Run:
                 "discount_note": (discount_note or s.discount_note) if discount else None,
                 "prep_min": int(s.prep_min if prep_min is None else prep_min),
                 "wrap_min": int(s.wrap_min if wrap_min is None else wrap_min),
-                "note": note if note is not None else s.note, "title": title if title is not None else s.title}
+                "note": note if note is not None else s.note, "title": title if title is not None else s.title,
+                "extras": extras}
         who = self.db.get(Client, s.client_id).full_name
         end_t = starts + timedelta(minutes=duration)
         changes = []
@@ -249,6 +278,10 @@ class Run:
                            else "montajsız")
         if kind != s.kind:
             changes.append(KIND[kind])
+        if added:
+            changes.append("+ " + _extras_line(added))
+        if len(extras) - len(added) < len(s.extras or []):
+            changes.append("əlavə xərc silindi")
         if discount != s.discount:
             changes.append(f"endirim {money.fmt(discount)}")
         warn = ""

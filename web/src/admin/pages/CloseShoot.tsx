@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AdminShell, Button, Card, Icon, Segmented, Stepper, formatHours, formatMoney } from '../../shared/ui';
 import { BackLink, Err, Field, ShootTicket } from '../components/common';
+import { ExtrasEditor, extraRows, extrasOf, type ExtraRow } from '../components/ExtrasEditor';
 import { errMsg, useAction, useAuth, useLoad } from '../ctx';
 import { aznInput, parseAzn } from '../format';
 import type { ClientDetail, CloseOut, Quote, Shoot } from '../types';
@@ -14,6 +15,7 @@ export function CloseShoot({ id }: { id: number }) {
   const [dur, setDur] = useState<number | null>(null);
   const [cbText, setCbText] = useState('');
   const [discText, setDiscText] = useState<string | null>(null);
+  const [exRows, setExRows] = useState<ExtraRow[] | null>(null);
   const [method, setMethod] = useState<'cash' | 'card'>('cash');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [qerr, setQerr] = useState('');
@@ -26,19 +28,23 @@ export function CloseShoot({ id }: { id: number }) {
   const discP = discText === null ? (s?.discount ?? 0) : discText.trim() ? parseAzn(discText) : 0;
   const discBad = discP === null, disc = discP ?? 0;
 
+  const rows = exRows ?? extraRows(s?.extras ?? []);
+  const { list: extras, bad: extrasBad } = extrasOf(rows);
+  const extrasKey = JSON.stringify(extras);
+
   // Faktiki müddətlə yeni qiymət (keşbek 0: artıq istifadə olunanı server özü nəzərə alır)
   useEffect(() => {
-    if (!s) return;
+    if (!s || extrasBad) return;
     let live = true;
     const t = setTimeout(() => {
       call<Quote>('/shoots/quote', { body: {
         client_id: s.client_id, starts_at: s.starts_at, duration_min: minutes, kind: s.kind, tag: s.tag, location: s.location,
         cameras: s.cameras, editing: s.editing, reels_count: s.reels_count, package_id: s.package_id, cashback_use: 0, address: s.address,
-        discount: disc, prep_min: s.prep_min, wrap_min: s.wrap_min,
+        extras, discount: disc, prep_min: s.prep_min, wrap_min: s.wrap_min,
       } }).then((q) => live && (setQuote(q), setQerr(''))).catch((e) => live && (setQuote(null), setQerr(errMsg(e))));
     }, 250);
     return () => { live = false; clearTimeout(t); };
-  }, [s, minutes, disc]);
+  }, [s, minutes, disc, extrasKey, extrasBad]);
 
   if (!s) return <AdminShell active="calendar" title="Çəkilişi bağla"><Err msg={shoot.err} /></AdminShell>;
 
@@ -48,7 +54,7 @@ export function CloseShoot({ id }: { id: number }) {
   const due = quote ? Math.max(0, quote.total - s.cashback_used - extra - deposit) : 0;
 
   async function close() {
-    const r = await act.run(() => call<CloseOut>(`/shoots/${id}/close`, { body: { duration_min: minutes, cashback_use: extra, discount: disc, paid_method: due > 0 ? method : null } }));
+    const r = await act.run(() => call<CloseOut>(`/shoots/${id}/close`, { body: { duration_min: minutes, cashback_use: extra, extras, discount: disc, paid_method: due > 0 ? method : null } }));
     if (r) setDone(r);
   }
 
@@ -84,11 +90,14 @@ export function CloseShoot({ id }: { id: number }) {
           </Card>
         )}
         <Card>
+          <span className="lbl">Əlavə xərclər</span>
+          <ExtrasEditor rows={rows} onChange={setExRows} />
           <Field label="Endirim (AZN)" id="cl-disc" hint={discBad ? 'Məbləği düzgün yazın, məs. 50 və ya 12,5' : 'Boş qalsa endirim yoxdur.'}>
             <input id="cl-disc" className={`inp${discBad ? ' inp-err' : ''}`} inputMode="decimal" value={discText ?? (s.discount ? aznInput(s.discount) : '')} onChange={(e) => setDiscText(e.target.value)} placeholder="0" />
           </Field>
           {quote ? (
             <div className="sum">
+              {extras.map((x, i) => <div key={i} className="sum-r"><span>{x.name}</span><span>{formatMoney(x.amount)}</span></div>)}
               {quote.discount > 0 && <><div className="sum-r"><span>Cəmi</span><span>{formatMoney(quote.gross)}</span></div><div className="sum-r"><span>Endirim</span><span>{formatMoney(-quote.discount)}</span></div></>}
               <div className="sum-r sum-tot" style={{ borderTop: 0, paddingTop: 0 }}><span className="w8">{pkg ? 'Pullu əlavələr' : quote.discount > 0 ? 'Yekun' : 'Cəmi'}</span><span className="num-s">{formatMoney(quote.total)}</span></div>
               {deposit > 0 && <div className="sum-r"><span>Beh ödənib</span><span>{formatMoney(deposit)}</span></div>}
@@ -115,7 +124,7 @@ export function CloseShoot({ id }: { id: number }) {
           </Card>
         )}
         <Err msg={act.err} />
-        <Button disabled={!quote || discBad || act.busy} onClick={close}><Icon name="check" size={20} /> Bağla</Button>
+        <Button disabled={!quote || discBad || extrasBad || act.busy} onClick={close}><Icon name="check" size={20} /> Bağla</Button>
       </div>
     </AdminShell>
   );

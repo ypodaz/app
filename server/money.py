@@ -57,10 +57,11 @@ class Price:
     reels: int
     extra_camera: int
     discount: int = 0
+    extras: int = 0  # adminin sərbəst yazdığı əlavə xərclər (mikrofon icarəsi və s.)
 
     @property
     def gross(self) -> int:
-        return self.base + self.editing + self.reels + self.extra_camera
+        return self.base + self.editing + self.reels + self.extra_camera + self.extras
 
     @property
     def total(self) -> int:
@@ -70,7 +71,7 @@ class Price:
     @property
     def paid_extras(self) -> int:
         """Paketdən çəkilişdə pulla ödənən hissə."""
-        return self.editing + self.reels + self.extra_camera
+        return self.editing + self.reels + self.extra_camera + self.extras
 
 
 def price(
@@ -83,14 +84,18 @@ def price(
     reels_count: int = 0,
     package_cameras: int | None = None,
     discount: int = 0,
+    extras: int = 0,
 ) -> Price:
     """Çəkilişin qiyməti. package_cameras verilirsə, çəkiliş paketdəndir: saatlar paketdən
     çıxılır, yalnız montaj, Reels və əlavə kamera pulla ödənir. discount məbləğdən çıxılır."""
     p = _gross_price(kind=kind, location=location, cameras=cameras, duration_min=duration_min, editing=editing,
                      reels_count=reels_count, package_cameras=package_cameras)
-    if discount < 0 or discount > p.gross:
-        raise ValueError(f"Endirim 0 ilə {fmt(p.gross)} arasında olmalıdır")
-    return Price(p.base, p.editing, p.reels, p.extra_camera, discount)
+    if extras < 0:
+        raise ValueError("Əlavə xərc mənfi ola bilməz")
+    gross = p.gross + extras
+    if discount < 0 or discount > gross:
+        raise ValueError(f"Endirim 0 ilə {fmt(gross)} arasında olmalıdır")
+    return Price(p.base, p.editing, p.reels, p.extra_camera, discount, extras)
 
 
 def _gross_price(*, kind, location, cameras, duration_min, editing, reels_count, package_cameras) -> Price:

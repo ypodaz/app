@@ -38,6 +38,7 @@ function Payment({ s }: { s: Shoot }) {
   if (s.price_extra_camera) rows.push(['Əlavə kamera', s.price_extra_camera]);
   if (s.price_editing) rows.push(['Montaj', s.price_editing]);
   if (s.price_reels) rows.push([`Reels · ${s.reels_count} əd.`, s.price_reels]);
+  for (const x of s.extras ?? []) rows.push([x.name, x.amount]);
   const earn = s.cashback_earned ?? 0;
   return (
     <Card>

@@ -129,6 +129,7 @@ class Shoot(Base):
     price_reels: Mapped[int] = mapped_column(Integer, default=0)
     price_extra_camera: Mapped[int] = mapped_column(Integer, default=0)
     discount: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    extras: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{name, amount}]
     discount_note: Mapped[Optional[str]] = mapped_column(String(255))  # yalnız admin görür
     total: Mapped[int] = mapped_column(Integer, default=0)
     # ödəniş (qəpik)

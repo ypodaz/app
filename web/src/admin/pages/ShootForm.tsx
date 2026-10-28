@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AdminShell, Button, Card, Icon, Segmented, Stepper, formatHours, formatMin, formatMoney } from '../../shared/ui';
 import { Avatar, BackLink, CountStepper, Err, Field, TAG } from '../components/common';
 import { ClientPickerSheet } from '../components/ClientPicker';
+import { ExtrasEditor, extraRows, extrasOf, type ExtraRow } from '../components/ExtrasEditor';
 import { DATA_CHANGED, errMsg, useAction, useAuth, useLoad } from '../ctx';
 import { addMin, aznInput, bakuParts, bakuToday, minutesOf, parseAzn, timeRange, toIso } from '../format';
 import { go } from '../router';
@@ -37,6 +38,7 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
   const [cbText, setCbText] = useState('');
   const [depositNow, setDepositNow] = useState(false);
   const [note, setNote] = useState('');
+  const [extraRowsSt, setExtraRows] = useState<ExtraRow[]>([]);
   const [discText, setDiscText] = useState('');
   const [discPct, setDiscPct] = useState(false);
   const [discNote, setDiscNote] = useState('');
@@ -51,10 +53,13 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
     setClientId(o.client_id); setDate(p.date); setTime(p.time); setDur(o.duration_min); setPrep(o.prep_min); setWrap(o.wrap_min);
     setKind(o.kind); setTag(o.tag); setLoc(o.location); setAddress(o.address ?? ''); setCameras(o.cameras || 1);
     setEditing(o.editing); setReels(o.reels_count); setNote(o.note ?? '');
+    setExtraRows(extraRows(o.extras ?? []));
     if (o.discount > 0) { setDiscText(aznInput(o.discount)); setDiscNote(o.discount_note ?? ''); }
     setHydrated(true);
   }, [o, hydrated]);
 
+  const { list: extras, bad: extrasBad } = extrasOf(extraRowsSt);
+  const extrasKey = JSON.stringify(extras);
   const detail = useLoad<ClientDetail>(clientId && !edit ? `/clients/${clientId}` : null).data;
   const clients = useLoad<ClientRow[]>('/clients').data;
   const reelsPack = kind === 'reels_pack', rent = kind === 'studio_rent';
@@ -74,12 +79,12 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
   const cbShown = edit ? (o?.cashback_used ?? 0) : cashback;
   const depPaid = edit ? (o?.deposit_amount ?? 0) : 0;
 
-  const body = useMemo(() => (clientId && (!edit || hydrated) && date && time && !discBad ? {
+  const body = useMemo(() => (clientId && (!edit || hydrated) && date && time && !discBad && !extrasBad ? {
     client_id: clientId, starts_at: toIso(date, time), duration_min: dur, kind, tag: rent ? 'other' : reelsPack ? 'reels' : tag,
     location: loc, cameras: rent ? 0 : reelsPack ? 1 : cameras, editing: kind === 'shoot' ? editing : false, reels_count: reelsN,
     package_id: pkgId, cashback_use: cashback, address: loc === 'onsite' ? address.trim() || null : null, note: note.trim() || null,
-    discount, discount_note: discount > 0 ? discNote.trim() || null : null, prep_min: prep, wrap_min: wrap,
-  } : null), [clientId, hydrated, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, reelsPack, rent, pkgId, cashback, note, discBad, discount, discNote, prep, wrap]);
+    extras, discount, discount_note: discount > 0 ? discNote.trim() || null : null, prep_min: prep, wrap_min: wrap,
+  } : null), [clientId, hydrated, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, reelsPack, rent, pkgId, cashback, note, discBad, extrasBad, extrasKey, discount, discNote, prep, wrap]);
 
   // Qiymət: 250ms gecikmə ilə serverdən
   const key = JSON.stringify(body);
@@ -216,6 +221,10 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
           <span className="hint">{pkgs.length ? 'Paketdən seçiləndə əlavə kamera (saatda 50 AZN) avtomatik hesablanır.' : 'Müştərinin aktiv saat paketi yoxdur.'}</span>
           </>}
 
+          <span className="flabel mt">Əlavə xərclər</span>
+          <ExtrasEditor rows={extraRowsSt} onChange={setExtraRows} />
+          <span className="hint">Ad və məbləği özünüz yazın, məs. «Mikrofon icarəsi · 20 AZN».</span>
+
           <span className="flabel mt">Endirim</span>
           <Field label={`Endirim (${discPct ? '%' : 'AZN'})`} id="sf-disc" hint={discBad ? (discPct ? 'Faizi 0–100 arasında yazın' : 'Məbləği düzgün yazın, məs. 50 və ya 12,5') : discPct && discount > 0 ? `= ${formatMoney(discount)}` : 'Boş qalsa endirim yoxdur.'}>
             <div className="row" style={{ alignItems: 'stretch' }}>
@@ -250,6 +259,7 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
                 {quote.extra_camera > 0 && moneyRow('Əlavə kamera', quote.extra_camera)}
                 {reelsN > 0 || (editing && kind === 'shoot') ? moneyRow('Montaj', quote.editing) : null}
                 {reelsN > 0 && moneyRow(`Podcastdan Reels · ${reelsN} əd.`, quote.reels)}
+                {extras.map((x, i) => <div key={i} className="sum-r"><span className="muted">{x.name}</span><span>{formatMoney(x.amount)}</span></div>)}
                 {quote.discount > 0 && <>{moneyRow('Cəmi', quote.gross)}{moneyRow('Endirim', -quote.discount)}</>}
                 <div className="sum-r sum-tot"><span className="w8">{quote.discount > 0 ? 'Yekun' : 'Cəmi'}</span><span className="num-m">{formatMoney(quote.total).replace(' AZN', '')}<span className="unit">AZN</span></span></div>
                 {cbShown > 0 && moneyRow('Keşbekdən', -cbShown)}

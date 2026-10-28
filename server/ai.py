@@ -192,6 +192,7 @@ Necə işləyirsən:
 - Yeni müştəri və onun çəkilişi birlikdə istənəndə əvvəl propose_create_client çağır, sonra propose_create_shoot-da client_id yerinə new_client_index ver (həmin alətin cavabındakı nömrə).
 - Mövcud çəkilişlə iş üçün (beh, bağla, ləğv, vaxtı dəyiş, düzəliş) əvvəl list_shoots ilə çəkilişi tap.
 - Səhvi düzəltmək (müddət, kamera, montaj, endirim, xidmət, saat) üçün propose_edit_shoot: yalnız dəyişən sahələri ver, qalanı olduğu kimi qalır. Müştərinin xahişi ilə başqa vaxta keçmək isə propose_shoot_action reschedule-dur.
+- Sərbəst əlavə xərc (mikrofon icarəsi 20 AZN, əlavə montaj və s.) yeni çəkilişdə extras, mövcud çəkilişdə propose_edit_shoot add_extras ilə yazılır.
 - Tarixləri «Bu gün» sətrinə görə hesabla («sabah», «cümə», «gələn həftə çərşənbə»). Saatlar Bakı vaxtıdır, 24 saat formatında.
 - Danışıq dilindəki rəqəmlər: «onda» = 10:00, «ikidə» = 14:00 (iş saatı 08–22 olduğu üçün 1–7 arası saatlar günortadan sonradır), «yarım saat» = 30 dəqiqə, «saat yarım» = 90 dəqiqə.
 - Xidmətlər: shoot (çəkiliş: podcast/reels/other, studio/onsite, 1–3 kamera, montaj, podcastdan Reels sayı), reels_pack (Reels paketi, başlama və bitmə saatı ilə), studio_rent (studiya icarəsi, videoqraflar üçün, kamera və montaj yoxdur).
@@ -217,6 +218,8 @@ SHOOT_PROPS = {
     "address": S, "cameras": I, "editing": B, "reels_count": I,
     "discount_azn": N, "discount_percent": N, "discount_note": S,
     "prep_min": I, "wrap_min": I, "note": S, "title": S,
+    "extras": {"type": "ARRAY", "description": "Əlavə xərclər (mikrofon icarəsi, əlavə montaj və s.)",
+               "items": _obj({"name": S, "amount_azn": N}, ["name", "amount_azn"])},
 }
 
 ADMIN_TOOLS = [
@@ -241,7 +244,10 @@ ADMIN_TOOLS = [
     {"name": "propose_edit_shoot",
      "description": "Təsdiqlənmiş çəkilişin məlumatını düzəltməyi təklif edir (yalnız dəyişən sahələr)",
      "parameters": _obj({"shoot_id": I, **{k: v for k, v in SHOOT_PROPS.items()
-                                            if k not in ("client_id", "new_client_index")}}, ["shoot_id"])},
+                                            if k not in ("client_id", "new_client_index", "extras")},
+                         "add_extras": SHOOT_PROPS["extras"],
+                         "remove_extras": {"type": "ARRAY", "items": {"type": S},
+                                           "description": "Silinəcək əlavə xərclərin adları"}}, ["shoot_id"])},
     {"name": "propose_block", "description": "Təqvimdə vaxtı bloklamağı təklif edir (texniki iş, şəxsi və s.)",
      "parameters": _obj({"date": S, "start": S, "end": S, "reason": S}, ["date", "start", "end"])},
 ]

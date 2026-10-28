@@ -148,3 +148,21 @@ def test_assistant_edit_shoot_keeps_unchanged_fields(api, gemini):
     r = api.request(p["method"], "/api" + p["path"], json=p["body"], headers=bearer(adm))
     assert r.status_code == 200, r.text
     assert r.json()["total"] > s["total"]
+
+
+def test_assistant_extras_on_create_and_edit(api, gemini):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Zərifə Abbasova")
+    s = make_shoot(api, adm, cid)
+    day = s["starts_at"][:10]
+    gemini(call("propose_edit_shoot", shoot_id=s["id"], add_extras=[{"name": "Mikrofon icarəsi", "amount_azn": 20}])
+           + call("propose_create_shoot", client_id=cid, date=day, start="18:00", duration_min=60,
+                  extras=[{"name": "İşıq", "amount_azn": 15.5}]),
+           [{"text": "Hazırdır."}])
+    edit, new = api.post("/api/admin/assistant", json={"text": "mikrofon əlavə et"}, headers=bearer(adm)).json()["proposals"]
+    assert edit["body"]["extras"] == [{"name": "Mikrofon icarəsi", "amount": 2000}]
+    assert "Mikrofon icarəsi 20 AZN" in edit["summary"] and new["body"]["extras"][0]["amount"] == 1550
+    for p in (edit, new):
+        r = api.request(p["method"], "/api" + p["path"], json=p["body"], headers=bearer(adm))
+        assert r.status_code == 200, r.text
+    assert r.json()["total"] == 7000 + 1550

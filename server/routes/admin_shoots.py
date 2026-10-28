@@ -23,6 +23,11 @@ from views import (baku_today, day_bounds, iso, material_out, materials_of, paym
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
 
 
+class ExtraIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    amount: int = Field(ge=1, le=10_000_00)  # qəpik, 10 000 AZN-dək
+
+
 class ShootIn(BaseModel):
     client_id: int
     starts_at: AwareDatetime
@@ -43,6 +48,7 @@ class ShootIn(BaseModel):
     discount_note: Optional[str] = Field(default=None, max_length=255)
     prep_min: int = Field(default=15, ge=0, le=240)
     wrap_min: int = Field(default=0, ge=0, le=240)
+    extras: list[ExtraIn] = Field(default_factory=list, max_length=20)
 
 
 class ShootEditIn(BaseModel):
@@ -61,6 +67,7 @@ class ShootEditIn(BaseModel):
     discount_note: Optional[str] = Field(default=None, max_length=255)
     prep_min: int = Field(default=15, ge=0, le=240)
     wrap_min: int = Field(default=0, ge=0, le=240)
+    extras: list[ExtraIn] = Field(default_factory=list, max_length=20)
 
 
 class DepositIn(BaseModel):
@@ -72,6 +79,7 @@ class CloseIn(BaseModel):
     paid_method: Optional[Literal["cash", "card"]] = None
     cashback_use: int = Field(default=0, ge=0)
     discount: Optional[int] = Field(default=None, ge=0)  # verilməsə, endirim dəyişmir
+    extras: Optional[list[ExtraIn]] = Field(default=None, max_length=20)  # verilməsə, dəyişmir
 
 
 class CancelIn(BaseModel):
@@ -220,7 +228,7 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
     try:
         p = money.price(kind=body.kind, location=location, cameras=body.cameras, duration_min=body.duration_min,
                         editing=editing, reels_count=reels, package_cameras=pkg.cameras if pkg else None,
-                        discount=body.discount)
+                        discount=body.discount, extras=sum(e.amount for e in body.extras))
         money.check_cashback_use(body.cashback_use, balance, p.total)
         draft = Shoot(client_id=client.id, starts_at=utc(body.starts_at), kind=body.kind)
         first = booking.is_first_shoot(db, client, draft)
@@ -229,7 +237,7 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         raise HTTPException(400, str(e))
     return {
         "base": p.base, "editing": p.editing, "reels": p.reels, "extra_camera": p.extra_camera,
-        "discount": p.discount, "gross": p.gross, "total": p.total,
+        "discount": p.discount, "extras": p.extras, "gross": p.gross, "total": p.total,
         "conflicts": booking.conflicts(db, starts_at=utc(body.starts_at), duration_min=body.duration_min,
                                        prep_min=body.prep_min, wrap_min=body.wrap_min, exclude_id=exclude_id),
         "deposit_expected": money.deposit_expected(p.total, body.cashback_use, pkg is not None),
@@ -278,7 +286,8 @@ def close(shoot_id: int, body: CloseIn, db: DB = Depends(get_db), admin: Admin =
     try:
         earned = booking.close_shoot(db, admin.id, s, duration_min=body.duration_min,
                                      paid_method=body.paid_method, cashback_use=body.cashback_use,
-                                     discount=body.discount)
+                                     discount=body.discount,
+                                     extras=None if body.extras is None else [e.model_dump() for e in body.extras])
     except booking.Rejected as e:
         reject(db, e)
     db.commit()

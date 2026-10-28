@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from test_api_faza1 import iso, make_shoot, new_client  # noqa: F401,I001  (env-i əvvəl qurur)
+from test_api_faza1 import iso, make_shoot, new_client, shoot_body  # noqa: F401,I001  (env-i əvvəl qurur)
 from test_auth import admin_token, api, bearer  # noqa: F401,I001
 
 from sqlalchemy import select  # noqa: E402
@@ -138,3 +138,37 @@ def test_ping_and_app_usage(api):
     c = next(x for x in api.get("/api/admin/clients", headers=bearer(adm)).json() if x["id"] == cid)
     assert c["app_standalone"] is True and c["push_permission"] == "granted" and c["app_seen_at"]
     assert api.post("/api/me/ping", json={"standalone": True, "permission": "x"}, headers=bearer(tok)).status_code == 422
+
+
+MIC = {"name": "Mikrofon icarəsi", "amount": 2000}
+
+
+def test_extras_in_price_cashback_and_discount(api):
+    adm = admin_token(api)
+    cid, tok = new_client(api, adm, "Zərifə Abbasova")
+    q = api.post("/api/admin/shoots/quote", json=shoot_body(cid, extras=[MIC], discount=2600),
+                 headers=bearer(adm)).json()
+    assert (q["extras"], q["gross"], q["total"]) == (2000, 26000, 23400)  # endirim əlavə daxil məbləğdən
+    s = make_shoot(api, adm, cid, extras=[MIC], discount=2600)
+    assert s["total"] == 23400 and s["extras"] == [MIC]
+    mine = api.get(f"/api/me/shoots/{s['id']}", headers=bearer(tok)).json()
+    assert mine["extras"] == [MIC] and mine["total"] == 23400
+    # düzəliş: əlavəni silmək; bağlanışda yeni əlavə (əlavə montaj) — keşbek əlavələrdən də yazılır
+    e = api.patch(f"/api/admin/shoots/{s['id']}", json=edit_body(s, discount=0, extras=[]), headers=bearer(adm)).json()
+    assert e["total"] == 24000 and e["extras"] == []
+    edit = {"name": "Əlavə montaj", "amount": 5000}
+    c = api.post(f"/api/admin/shoots/{s['id']}/close", json={"duration_min": 120, "paid_method": "cash",
+                 "extras": [edit]}, headers=bearer(adm)).json()
+    assert c["total"] == 29000 and c["extras"] == [edit] and c["cashback_earned"] == 14500  # ilk çəkiliş: 50%
+    bad = api.post("/api/admin/shoots/quote", json=shoot_body(cid, extras=[{"name": "", "amount": 100}]),
+                   headers=bearer(adm))
+    assert bad.status_code == 422
+
+
+def test_extras_from_package_are_paid(api):
+    import money
+    p = money.price(kind="shoot", location="studio", cameras=1, duration_min=60, editing=False,
+                    package_cameras=1, extras=2000)
+    assert (p.total, p.paid_extras) == (2000, 2000)
+    _, earned = money.cashback_earned(p, from_package=True, first_shoot=False)
+    assert earned == 200

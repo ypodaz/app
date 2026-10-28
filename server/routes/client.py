@@ -45,7 +45,8 @@ def shoots_view(db: DB, client: Client, shoots: list[Shoot]) -> list[dict]:
         expected = None
         if mine and s.status == "confirmed":
             # bağlananda yazılacaq keşbekin proqnozu: ilk çəkilişdə 50%, sonra 10%
-            p = money.Price(s.price_base, s.price_editing, s.price_reels, s.price_extra_camera, s.discount)
+            p = money.Price(s.price_base, s.price_editing, s.price_reels, s.price_extra_camera, s.discount,
+                            booking.extras_total(s.extras))
             kind, amount = money.cashback_earned(p, from_package=s.package_id is not None,
                                                  first_shoot=booking.is_first_shoot(db, client, s))
             expected = {"amount": amount, "first_shoot": kind == "earn_first"}

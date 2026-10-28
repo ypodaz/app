@@ -18,7 +18,7 @@ from models import (AuditLog, Block, CashbackLedger, Client, Notification, Packa
 MONEY_FIELDS = ("status", "total", "cashback_used", "deposit_expected", "deposit_amount", "deposit_waived",
                 "paid_at_studio", "retained_amount", "refund_amount", "duration_min", "starts_at", "discount",
                 # jurnalda düzəlişin nəyi dəyişdiyi görünsün
-                "kind", "tag", "location", "cameras", "editing", "reels_count", "prep_min", "wrap_min")
+                "kind", "tag", "location", "cameras", "editing", "reels_count", "prep_min", "wrap_min", "extras")
 
 
 class Rejected(ValueError):
@@ -56,9 +56,14 @@ def _price(s: Shoot, pkg: Package | None) -> money.Price:
     try:
         return money.price(kind=s.kind, location=s.location, cameras=s.cameras, duration_min=s.duration_min,
                            editing=s.editing, reels_count=s.reels_count,
-                           package_cameras=pkg.cameras if pkg else None, discount=s.discount)
+                           package_cameras=pkg.cameras if pkg else None, discount=s.discount,
+                           extras=extras_total(s.extras))
     except ValueError as e:
         raise Rejected(str(e)) from e
+
+
+def extras_total(extras: list[dict] | None) -> int:
+    return sum(e["amount"] for e in extras or [])
 
 
 def _apply_price(s: Shoot, p: money.Price) -> None:
@@ -142,7 +147,7 @@ def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: dat
                  package_id: int | None = None, cashback_use: int = 0, address: str | None = None,
                  title: str | None = None, note: str | None = None, source_note: str | None = None,
                  discount: int = 0, discount_note: str | None = None, prep_min: int = 15,
-                 wrap_min: int = 0) -> Shoot:
+                 wrap_min: int = 0, extras: list[dict] = ()) -> Shoot:
     client = db.get(Client, client_id)
     if not client:
         raise Rejected("Müştəri tapılmadı")
@@ -156,7 +161,7 @@ def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: dat
               starts_at=starts_at, duration_min=duration_min, cameras=cameras, editing=editing,
               reels_count=reels_count, title=title, note=note, source_note=source_note, created_by=admin_id,
               discount=discount, discount_note=(discount_note or None) if discount else None,
-              prep_min=prep_min, wrap_min=wrap_min)
+              prep_min=prep_min, wrap_min=wrap_min, extras=list(extras))
     _apply_price(s, _price(s, pkg))
     db.add(s)
     db.flush()
@@ -201,15 +206,17 @@ def is_first_shoot(db: DB, client: Client, s: Shoot) -> bool:
 
 
 def close_shoot(db: DB, admin_id: int | None, s: Shoot, *, duration_min: int, paid_method: str | None,
-                cashback_use: int = 0, discount: int | None = None) -> int:
+                cashback_use: int = 0, discount: int | None = None, extras: list[dict] | None = None) -> int:
     """Çəkilişi bağlayır: faktiki müddətlə qiymət yenilənir, paket saatı çıxılır, keşbek yazılır.
-    discount verilirsə, endirim dəyişdirilir. Yazılan keşbeki qaytarır."""
+    discount və ya extras verilirsə, onlar dəyişdirilir. Yazılan keşbeki qaytarır."""
     _require(s, "confirmed")
     before = _snapshot(s)
     pkg = db.get(Package, s.package_id) if s.package_id else None
     s.duration_min = duration_min
     if discount is not None:
         s.discount = discount
+    if extras is not None:
+        s.extras = list(extras)
     p = _price(s, pkg)
     if p.total < s.cashback_used + (s.deposit_amount if s.deposit_received_at else 0):
         raise Rejected("Yeni məbləğ artıq ödəniləndən azdır, əvvəl məbləği yoxlayın")
@@ -287,7 +294,8 @@ def reschedule(db: DB, admin_id: int | None, s: Shoot, new_start: datetime, requ
 def edit_shoot(db: DB, admin_id: int | None, s: Shoot, *, starts_at: datetime, duration_min: int, kind: str,
                tag: str, location: str, cameras: int, editing: bool, reels_count: int = 0,
                address: str | None = None, title: str | None = None, note: str | None = None, discount: int = 0,
-               discount_note: str | None = None, prep_min: int = 15, wrap_min: int = 0) -> None:
+               discount_note: str | None = None, prep_min: int = 15, wrap_min: int = 0,
+               extras: list[dict] = ()) -> None:
     """Adminin düzəlişi (səhvi düzəltmək): qiymət və beh yenidən hesablanır, 24 saat qaydası tətbiq olunmur.
     Müştəri, paket və keşbek istifadəsi dəyişmir (onlar üçün ləğv edib yenidən yaradılır)."""
     _require(s, "confirmed")
@@ -308,7 +316,7 @@ def edit_shoot(db: DB, admin_id: int | None, s: Shoot, *, starts_at: datetime, d
     s.starts_at, s.duration_min, s.kind, s.tag, s.location, s.address = starts_at, duration_min, kind, tag, location, address
     s.cameras, s.editing, s.reels_count, s.title, s.note = cameras, editing, reels_count, title, note
     s.discount, s.discount_note = discount, (discount_note or None) if discount else None
-    s.prep_min, s.wrap_min = prep_min, wrap_min
+    s.prep_min, s.wrap_min, s.extras = prep_min, wrap_min, list(extras)
     _apply_price(s, _price(s, pkg))
     if s.cashback_used > s.total:
         raise Rejected(f"Bu çəkilişdə {money.fmt(s.cashback_used)} keşbek istifadə olunub, yeni məbləğ ondan azdır")

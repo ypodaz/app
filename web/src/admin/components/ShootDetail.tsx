@@ -49,6 +49,7 @@ export function ShootDetail({ id }: { id: number }) {
         <span className="lbl">Ödəniş</span>
         <div className="sum">
           {lines.filter(([, v]) => v > 0).map(([l, v]) => <div key={l} className="sum-r"><span className="soft">{l}</span><span>{formatMoney(v)}</span></div>)}
+          {(s.extras ?? []).map((x, i) => <div key={i} className="sum-r"><span className="soft">{x.name}</span><span>{formatMoney(x.amount)}</span></div>)}
           {s.discount > 0 && <>
             <div className="sum-r"><span className="soft">Cəmi</span><span>{formatMoney(s.total + s.discount)}</span></div>
             <div className="sum-r"><span className="soft">Endirim{s.discount_note ? ` · ${s.discount_note}` : ''}</span><span>{formatMoney(-s.discount)}</span></div>
