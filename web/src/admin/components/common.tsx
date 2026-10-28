@@ -94,3 +94,13 @@ export function CountStepper({ value, onChange, max = 50, disabled, label }: { v
     </div>
   );
 }
+
+export const SOURCES: [string, string][] = [
+  ['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['google', 'Google'], ['youtube', 'YouTube'], ['referral', 'Dost tövsiyəsi'], ['other', 'Digər'],
+];
+export const sourceName = (s: string | null | undefined) => SOURCES.find(([k]) => k === s)?.[1] ?? '';
+
+/** Açar (switch) — mövcud .tgl üslubu. */
+export function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return <button type="button" className={`tgl${on ? ' tgl-on' : ''}`} role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)} />;
+}

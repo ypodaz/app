@@ -15,6 +15,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DB
 
 import booking
+import growth
 import money
 import settings
 from db import SessionLocal, aware, now
@@ -51,6 +52,16 @@ def message(db: DB, n: Notification) -> dict:
         "package_ending": ("Paketiniz bitmək üzrədir",
                            f"{money.fmt_hours(p.get('minutes_left', 0))} saat qalıb, {p.get('ends_on', '')}-dək"),
     }
+    if n.type == "campaign":
+        return {"title": p.get("title") or "Y Pod", "body": p.get("body") or "", "url": f"#/offer/{p.get('campaign_id')}",
+                "tag": f"campaign-{p.get('campaign_id')}"}
+    if n.type == "bonus":
+        amount = money.fmt(p.get("amount", 0))
+        texts["bonus"] = {
+            "profile_bonus": ("Profil bonusu", f"+{amount} keşbek balansınıza yazıldı. Təşəkkür edirik!"),
+            "referral": ("Dostunuz gəldi 🎉", f"{p.get('friend', 'Dostunuz')} ilə birlikdə +{amount} keşbek qazandınız"),
+        }.get(p.get("kind"), ("Bonus", f"+{amount} keşbek balansınıza yazıldı"))
+        url = "#/cashback"
     title, body = texts.get(n.type, ("Y Pod", "Yeni bildiriş"))
     if n.type == "materials_ready":
         url = "#/materials"
@@ -111,6 +122,8 @@ def make_reminders(db: DB) -> None:
 def tick() -> None:
     with SessionLocal() as db:
         make_reminders(db)
+        growth.run_daily(db)  # gündə bir dəfə avtomatik bildirişlər
+        db.commit()
         send_pending(db)
 
 

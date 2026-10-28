@@ -11,6 +11,7 @@ import { AuthCtx, Loading, TOKEN_KEY, useRoute } from './core';
 import { ShootDetail } from './detail';
 import { Home } from './home';
 import { PushGate } from './push';
+import { OfferPage, ProfilePage } from './profile';
 import { Cashback, Materials, Notifications, PackagePage, QrCard } from './pages';
 import { standalone } from './util';
 
@@ -31,6 +32,8 @@ function Routes({ onLogout, pair, setPair, token }: { onLogout: () => void; pair
     case 'materials': return <Materials />;
     case 'qr': return <QrCard />;
     case 'notifications': return <Notifications />;
+    case 'profile': return <ProfilePage />;
+    case 'offer': return <OfferPage id={r1} key={r1} />;
     case 'install': return <Install token={token} pair={pair} setPair={setPair} onDone={() => { location.hash = '#/'; }} />;
     default: return <Home onLogout={onLogout} />;
   }

@@ -107,6 +107,12 @@ export function Home({ onLogout }: { onLogout: () => void }) {
 
           <BookButtons />
 
+          <a className="card" href="#/profile" style={{ flexDirection: 'row', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+            <span className="ic"><Icon name="users" size={20} /></span>
+            <span className="col grow"><span className="t14 w8">Profilim · Dostunu gətir</span><span className="t12 muted">Profili doldurun, dostunuzu dəvət edin — keşbek qazanın</span></span>
+            <Icon name="chevron" size={18} />
+          </a>
+
           <PushHint />
 
           {!standalone && !isIOS && (

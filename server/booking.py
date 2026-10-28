@@ -237,7 +237,24 @@ def close_shoot(db: DB, admin_id: int | None, s: Shoot, *, duration_min: int, pa
     s.status, s.closed_at = "completed", now()
     _audit(db, admin_id, "close", s, before)
     _notify(db, s.client_id, "shoot_closed", shoot_id=s.id, cashback=earned)
+    _referral_reward(db, client, s)
     return earned
+
+
+def _referral_reward(db: DB, client: Client, s: Shoot) -> None:
+    """Dəvətlə gələn müştərinin ilk bağlanan çəkilişi: ona və dəvət edənə REFERRAL_BONUS."""
+    if not client.referred_by_id or client.referral_rewarded_at:
+        return
+    earlier = db.scalar(select(func.count()).select_from(Shoot).where(
+        Shoot.client_id == client.id, Shoot.status == "completed", Shoot.id != s.id))
+    friend = db.get(Client, client.referred_by_id)
+    if earlier or not friend:
+        return
+    client.referral_rewarded_at = now()
+    for who, other in ((client, friend), (friend, client)):
+        db.add(CashbackLedger(client_id=who.id, shoot_id=s.id if who is client else None, kind="referral",
+                              amount=money.REFERRAL_BONUS, note=f"Dəvət bonusu: {other.full_name}"))
+        _notify(db, who.id, "bonus", kind="referral", amount=money.REFERRAL_BONUS, friend=other.full_name.split()[0])
 
 
 def no_show(db: DB, admin_id: int | None, s: Shoot) -> None:

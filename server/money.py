@@ -30,6 +30,9 @@ PACKAGES = {
 
 CASHBACK_PERCENT = 10
 FIRST_SHOOT_PERCENT = 50
+PROFILE_BONUS = 5 * AZN  # profil tam doldurulanda, bir dəfə
+REFERRAL_BONUS = 20 * AZN  # dəvət olunan dostun ilk çəkilişi bağlananda hər ikisinə
+BONUS_KINDS = ("profile_bonus", "referral", "birthday")
 
 
 def percent(amount: int, pct: int) -> int:

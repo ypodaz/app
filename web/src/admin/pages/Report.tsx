@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AdminShell, Card, Icon, formatHours, formatMoney } from '../../shared/ui';
-import { Err } from '../components/common';
+import { Err, SOURCES } from '../components/common';
 import { useLoad } from '../ctx';
 import { bakuToday } from '../format';
 
@@ -10,7 +10,12 @@ type ReportData = {
   cash: { deposits: number; at_studio: number; packages: number; refunds: number; net: number };
   shoots: { completed: number; cancelled: number; no_show: number; upcoming: number; minutes: number; revenue: number; discounts: number; retained: number; by_kind: Partial<Record<'shoot' | 'reels_pack' | 'studio_rent', ByKind>> };
   packages_sold: number;
-  cashback: { earned: number; manual: number; spent: number; liability: number };
+  cashback: { earned: number; manual: number; spent: number; liability: number; bonuses?: number };
+  growth?: {
+    new_clients: number; by_source: Record<string, number>; referrals: number; repeat_rate: number; avg_check: number; avg_client_value: number;
+    bonuses: { profile_bonus?: number; referral?: number; birthday?: number };
+    campaigns: { count: number; recipients: number; opened: number; booked_14d: number };
+  };
 };
 
 const MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun', 'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr'];
@@ -24,6 +29,41 @@ function shiftMonth(m: string, n: number): string {
 
 function Row({ label, value, bold }: { label: string; value: string | number; bold?: boolean }) {
   return <div className="sum-r"><span className={bold ? 'w8' : 'muted'}>{label}</span><span>{value}</span></div>;
+}
+
+const BONUS: [keyof NonNullable<ReportData['growth']>['bonuses'], string][] = [['profile_bonus', 'Profil bonusu'], ['referral', 'Dəvət bonusu'], ['birthday', 'Ad günü hədiyyəsi']];
+const srcName = (k: string) => (k === 'unknown' ? 'Bilinmir' : SOURCES.find(([s]) => s === k)?.[1] ?? k);
+
+function Growth({ g }: { g: NonNullable<ReportData['growth']> }) {
+  const src = Object.entries(g.by_source).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const c = g.campaigns;
+  return (
+    <Card>
+      <span className="h3">Artım</span>
+      <div className="ax-rows" data-testid="growth">
+        <Row label="Yeni müştəri" value={g.new_clients} />
+        <Row label="Dəvətlə gələn" value={g.referrals} />
+        <Row label="Təkrar müştəri" value={`${g.repeat_rate}%`} />
+        <Row label="Orta çek" value={formatMoney(g.avg_check)} />
+        <Row label="Müştəri başına orta gəlir" value={formatMoney(g.avg_client_value)} bold />
+      </div>
+      {src.length > 0 && (
+        <>
+          <span className="lbl">Haradan gəliblər</span>
+          <div className="ax-rows">{src.map(([k, n]) => <Row key={k} label={srcName(k)} value={n} />)}</div>
+        </>
+      )}
+      <span className="lbl">Bonuslar</span>
+      <div className="ax-rows">{BONUS.map(([k, label]) => <Row key={k} label={label} value={formatMoney(g.bonuses[k] ?? 0)} />)}</div>
+      <span className="lbl">Kampaniyalar</span>
+      <div className="ax-rows">
+        <Row label="Göndərilən" value={c.count} />
+        <Row label="Alıcı" value={c.recipients} />
+        <Row label="Açan" value={c.opened} />
+        <Row label="14 gündə yazılan" value={c.booked_14d} />
+      </div>
+    </Card>
+  );
 }
 
 // Aylıq hesabat: kassa, çəkilişlər, keşbek. Məbləğlər qəpikdir.
@@ -80,10 +120,12 @@ export function Report() {
               <Row label="Yazılan" value={formatMoney(d.cashback.earned)} />
               <Row label="Əl ilə" value={formatMoney(d.cashback.manual)} />
               <Row label="Xərclənən" value={formatMoney(d.cashback.spent)} />
+              {d.cashback.bonuses !== undefined && <Row label="Bonuslar" value={formatMoney(d.cashback.bonuses)} />}
               <Row label="Ümumi öhdəlik" value={formatMoney(d.cashback.liability)} bold />
             </div>
             <p className="t12 muted">Öhdəlik: müştərilərin balansındakı keşbek.</p>
           </Card>
+          {d.growth && <Growth g={d.growth} />}
         </div>
       )}
     </AdminShell>

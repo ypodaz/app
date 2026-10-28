@@ -12,11 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 import booking
+import growth
 import money
 from auth import current_admin
 from db import get_db, now
 from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot
-from routes.admin import client_out
+from routes.admin import client_full, client_out
 from views import (baku_today, day_bounds, iso, material_out, materials_of, payment_line, shoot_core,
                    studio_balance, utc)
 
@@ -504,7 +505,7 @@ def client_detail(client_id: int, db: DB = Depends(get_db)):
     packages = [package_out(db, p) for p in db.scalars(select(Package).where(Package.id.in_(pids)).order_by(Package.id))]
     recent = db.scalars(select(Shoot).where(Shoot.client_id == c.id).order_by(Shoot.starts_at.desc()).limit(20)).all()
     return {
-        **client_out(c), "notes": c.notes, "deposit_required": c.deposit_required,
+        **client_full(db, c), "notes": c.notes, "deposit_required": c.deposit_required,
         "cashback_balance": booking.cashback_balance(db, c.id),
         "cashback_rows": [{"id": r.id, "kind": r.kind, "amount": r.amount, "note": r.note, "shoot_id": r.shoot_id,
                            "created_at": iso(r.created_at)} for r in ledger],
@@ -583,6 +584,8 @@ def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db
         "packages_sold": len(pkgs),
         "cashback": {"earned": sum(r.amount for r in in_month if r.kind in ("earn", "earn_first")),
                      "manual": sum(r.amount for r in in_month if r.kind == "manual"),
+                     "bonuses": sum(r.amount for r in in_month if r.kind in money.BONUS_KINDS),
                      "spent": -sum(r.amount for r in in_month if r.kind in ("spend", "spend_return")),
                      "liability": sum(r.amount for r in ledger)},
+        "growth": growth.growth_report(db, a, b),
     }

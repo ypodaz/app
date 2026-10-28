@@ -13,6 +13,7 @@ import { dateFull, dateLong, dateShort, daysBetween, fmtHours, money, plainDate,
 type CbRow = { kind: string; amount: number; note: string | null; created_at: string; shoot_title: string | null };
 const KIND: Record<string, string> = {
   earn: 'Çəkiliş', earn_first: 'İlk çəkiliş bonusu', spend: 'Çəkilişdə istifadə olundu', spend_return: 'Keşbek qaytarıldı', manual: 'Əvvəlki keşbek',
+  profile_bonus: 'Profil bonusu', referral: 'Dost dəvəti bonusu', birthday: 'Ad günü hədiyyəsi',
 };
 
 export function Cashback() {
@@ -220,6 +221,11 @@ function describe(n: Notif): { title: string; sub?: string } {
     case 'materials_ready': return { title: 'Materiallar hazırdır' };
     case 'shoot_reminder': return { title: 'Sabah çəkilişiniz var' };
     case 'package_ending': return { title: 'Paketiniz bitmək üzrədir', sub: p.minutes_left !== undefined ? `Qalan ${fmtHours(Number(p.minutes_left))} saat${p.ends_on ? ` · ${plainDate(String(p.ends_on))} tarixinədək` : ''}` : undefined };
+    case 'campaign': return { title: String(p.title || 'Yeni təklif'), sub: p.body ? String(p.body) : undefined };
+    case 'bonus': return {
+      title: p.kind === 'referral' ? `Dostunuz gəldi 🎉${p.friend ? ` · ${p.friend}` : ''}` : p.kind === 'birthday' ? 'Ad günü hədiyyəsi' : 'Profil bonusu',
+      sub: p.amount ? `+${money(Number(p.amount))} keşbek yazıldı` : undefined,
+    };
     default: return { title: 'Yeni bildiriş' };
   }
 }
@@ -256,7 +262,7 @@ export function Notifications() {
                   </span>
                 </>
               );
-              const href = sid ? `#/shoots/${sid}` : n.type === 'materials_ready' ? '#/materials' : n.type === 'package_ending' ? '#/package' : '';
+              const href = n.type === 'campaign' ? `#/offer/${n.payload.campaign_id}` : n.type === 'bonus' ? '#/cashback' : sid ? `#/shoots/${sid}` : n.type === 'materials_ready' ? '#/materials' : n.type === 'package_ending' ? '#/package' : '';
               return href ? <a key={n.id} className="nrow" href={href}>{body}</a> : <div key={n.id} className="nrow">{body}</div>;
             })}
           </div>

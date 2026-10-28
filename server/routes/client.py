@@ -11,13 +11,15 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session as DB
 
 import booking
+import growth
 import money
 import push
 import settings
 from auth import create_pair_code, current_client, digest
 from db import get_db, now
-from models import (CashbackLedger, Client, Notification, Package, PackageHoursLedger, PackageMember,
+from models import (Campaign, CashbackLedger, Client, Notification, Package, PackageHoursLedger, PackageMember,
                     PushSubscription, Session, Shoot)
+from routes.admin import ProfileIn, apply_profile
 from views import baku_today, iso, member_package_ids, materials_of, payment_line, shoot_core, studio_balance
 
 router = APIRouter(prefix="/api/me")
@@ -200,6 +202,55 @@ def push_unsubscribe(body: PushIn, client: Client = Depends(current_client), db:
                                               PushSubscription.client_id == client.id))
     db.commit()
     return {"ok": True}
+
+
+def profile_out(c: Client) -> dict:
+    return {"profession": c.profession, "workplace": c.workplace, "instagram": c.instagram, "niche": c.niche,
+            "birthday": c.birthday.isoformat() if c.birthday else None, "source": c.source,
+            "marketing_opt_in": c.marketing_opt_in, "complete": growth.profile_complete(c),
+            "bonus": money.PROFILE_BONUS, "bonus_received": c.profile_bonus_at is not None}
+
+
+@router.get("/profile")
+def my_profile(client: Client = Depends(current_client)):
+    return profile_out(client)
+
+
+@router.patch("/profile")
+def edit_profile(body: ProfileIn, client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    """Müştəri profilini özü doldurur; ilk dəfə tam dolduranda bir dəfəlik keşbek bonusu."""
+    apply_profile(client, body)
+    granted = growth.grant_profile_bonus(db, client)
+    db.commit()
+    return {**profile_out(client), "granted": granted}
+
+
+@router.get("/referral")
+def my_referral(client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    """Dəvət kodu və dəvət etdiyi dostlar (yalnız ad, ödəniş məlumatı yox)."""
+    code = growth.referral_code(db, client)
+    db.commit()
+    invited = db.scalars(select(Client).where(Client.referred_by_id == client.id).order_by(Client.id)).all()
+    return {"code": code, "bonus": money.REFERRAL_BONUS,
+            "invited": [{"name": c.full_name.split()[0], "rewarded": c.referral_rewarded_at is not None}
+                        for c in invited]}
+
+
+@router.get("/campaigns/{campaign_id}")
+def my_campaign(campaign_id: int, client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    """Təklif səhifəsi: mətn müştəriyə gedən bildirişdən götürülür (ad, balans kimi dəyişənlər dolu).
+    Açılış qeyd olunur (kampaniya statistikası üçün)."""
+    n = db.scalar(select(Notification).where(Notification.client_id == client.id, Notification.type == "campaign",
+                                             Notification.payload["campaign_id"].as_integer() == campaign_id)
+                  .order_by(Notification.id.desc()).limit(1))
+    camp = db.get(Campaign, campaign_id)
+    if not n or not camp:
+        raise HTTPException(404, "Təklif tapılmadı")
+    growth.mark_opened(db, client.id, campaign_id)
+    db.commit()
+    p = n.payload
+    return {"id": camp.id, "kind": camp.kind, "title": p.get("title"), "body": p.get("body"), "url": p.get("url"),
+            "created_at": iso(n.created_at)}
 
 
 @router.post("/pair-code")

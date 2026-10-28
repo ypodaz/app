@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, false as sa_false
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, false as sa_false, true as sa_true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db import Base, now
@@ -23,7 +23,37 @@ class Client(Base):
     app_seen_at: Mapped[Optional[datetime]] = mapped_column(TS)
     app_standalone: Mapped[bool] = mapped_column(default=False, server_default=sa_false())  # ana ekrandan açılıb
     push_permission: Mapped[Optional[str]] = mapped_column(String(12))  # default | granted | denied | unsupported
+    # profil: həm müştəri özü, həm admin doldurur (kampaniya seçimləri üçün)
+    profession: Mapped[Optional[str]] = mapped_column(String(80))
+    workplace: Mapped[Optional[str]] = mapped_column(String(120))
+    instagram: Mapped[Optional[str]] = mapped_column(String(80))
+    niche: Mapped[Optional[str]] = mapped_column(String(120))
+    birthday: Mapped[Optional[date]] = mapped_column(Date)
+    source: Mapped[Optional[str]] = mapped_column(String(16))  # instagram | tiktok | google | youtube | referral | other
+    marketing_opt_in: Mapped[bool] = mapped_column(default=True, server_default=sa_true())  # «Təkliflər» açarı
+    profile_bonus_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    # «Dostunu gətir»: dostun ilk çəkilişi bağlananda hər ikisinə bonus
+    referral_code: Mapped[Optional[str]] = mapped_column(String(8), unique=True)
+    referred_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), index=True)
+    referral_rewarded_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    # avtomatik bildirişlərin son göndərilmə vaxtı (təkrar getməsin)
+    winback_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    cashback_nudge_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    birthday_year: Mapped[Optional[int]] = mapped_column(Integer)
+    review_asked_at: Mapped[Optional[datetime]] = mapped_column(TS)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(40), unique=True)
+
+
+class ClientTag(Base):
+    __tablename__ = "client_tags"
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True, index=True)
 
 
 class Admin(Base):
@@ -176,7 +206,8 @@ class CashbackLedger(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
     shoot_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shoots.id", ondelete="SET NULL"), index=True)
-    kind: Mapped[str] = mapped_column(String(16))  # earn | earn_first | spend | spend_return | manual
+    # earn | earn_first | spend | spend_return | manual | profile_bonus | referral | birthday
+    kind: Mapped[str] = mapped_column(String(16))
     amount: Mapped[int] = mapped_column(Integer)  # qəpik, işarəli
     note: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
@@ -241,3 +272,25 @@ class PushSubscription(Base):
     p256dh: Mapped[str] = mapped_column(String(255))
     auth: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class Campaign(Base):
+    """Toplu bildiriş: adminin göndərdiyi və ya avtomatik (kind = winback | cashback | birthday | review)."""
+    __tablename__ = "campaigns"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), default="manual")
+    title: Mapped[str] = mapped_column(String(80))
+    body: Mapped[str] = mapped_column(String(400))
+    url: Mapped[Optional[str]] = mapped_column(String(500))
+    filters: Mapped[dict] = mapped_column(JSON, default=dict)
+    recipients: Mapped[int] = mapped_column(Integer, default=0)
+    push_on: Mapped[int] = mapped_column(Integer, default=0)  # göndərilən anda bildirişi açıq olanlar
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("admins.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class CampaignRecipient(Base):
+    __tablename__ = "campaign_recipients"
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True, index=True)
+    opened_at: Mapped[Optional[datetime]] = mapped_column(TS)

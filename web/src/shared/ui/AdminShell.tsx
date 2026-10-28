@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { Logo } from './Logo';
 
-export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'report';
+export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'campaigns' | 'report';
 
 const ITEMS: { key: AdminTab; label: string; icon: IconName; mobile: boolean }[] = [
   { key: 'panel', label: 'Panel', icon: 'grid', mobile: true },
@@ -10,6 +10,7 @@ const ITEMS: { key: AdminTab; label: string; icon: IconName; mobile: boolean }[]
   { key: 'clients', label: 'Müştərilər', icon: 'users', mobile: true },
   { key: 'packages', label: 'Paketlər', icon: 'building', mobile: true },
   { key: 'materials', label: 'Materiallar', icon: 'media', mobile: false },
+  { key: 'campaigns', label: 'Kampaniyalar', icon: 'send', mobile: false },
   { key: 'report', label: 'Hesabat', icon: 'chart', mobile: true },
 ];
 

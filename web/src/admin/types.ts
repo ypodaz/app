@@ -1,6 +1,14 @@
 // API cavablarının tipləri (server/routes/admin*.py). Məbləğlər tam qəpikdir.
 export type PushPerm = 'default' | 'granted' | 'denied' | 'unsupported' | null;
-export type Client = { id: number; full_name: string; phone: string; notes?: string | null; activated: boolean; app_seen_at: string | null; app_standalone: boolean; push_permission: PushPerm };
+export type Source = 'instagram' | 'tiktok' | 'google' | 'youtube' | 'referral' | 'other';
+export type ClientTag = { id: number; name: string };
+export type TagRow = ClientTag & { count: number };
+export type ClientProfile = {
+  profession: string | null; workplace: string | null; instagram: string | null; niche: string | null; birthday: string | null;
+  source: Source | null; marketing_opt_in: boolean; profile_complete: boolean;
+  referral_code: string | null; referred_by_id: number | null; referred_by: { id: number; full_name: string } | null; tags: ClientTag[];
+};
+export type Client = { id: number; full_name: string; phone: string; notes?: string | null; activated: boolean; app_seen_at: string | null; app_standalone: boolean; push_permission: PushPerm } & Partial<ClientProfile>;
 export type ClientRow = Client & { cashback_balance: number; package: { title: string; minutes_left: number } | null; last_shoot_at: string | null };
 export type Block = { id: number; starts_at: string; ends_at: string; reason: string | null };
 export type InviteOut = { url: string; whatsapp_url: string | null };
@@ -37,7 +45,7 @@ export type Package = {
   cameras: number; starts_on: string; ends_on: string; price_paid: number; members: Member[];
 };
 
-export type LedgerRow = { id: number; kind: 'earn' | 'earn_first' | 'spend' | 'spend_return' | 'manual'; amount: number; note: string; shoot_id: number | null; created_at: string };
+export type LedgerRow = { id: number; kind: 'earn' | 'earn_first' | 'spend' | 'spend_return' | 'manual' | 'profile_bonus' | 'referral' | 'birthday'; amount: number; note: string; shoot_id: number | null; created_at: string };
 export type ClientDetail = Client & {
   notes: string | null; deposit_required: boolean; cashback_balance: number;
   cashback_rows: LedgerRow[]; packages: Package[]; shoots: Shoot[];
@@ -54,4 +62,27 @@ export type Quote = {
   base: number; editing: number; reels: number; extra_camera: number; extras: number; gross: number; discount: number; total: number; deposit_expected: number;
   conflicts: Conflict[];
   cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; deposit_required: boolean;
+};
+
+// Kampaniyalar və avtomatik bildirişlər
+export type ServiceKey = 'podcast' | 'reels' | 'other' | 'reels_pack' | 'studio_rent';
+export type Filters = {
+  client_ids?: number[]; tag_ids?: number[]; professions?: string[]; services?: ServiceKey[]; sources?: string[];
+  inactive_days?: number; has_package?: boolean; min_cashback?: number; birthday_month?: number;
+  app_joined?: boolean; push_on?: boolean; preset?: 'package_candidates' | 'podcast_no_reels';
+};
+export type Preview = { count: number; push_on: number; opted_out: number; recently_messaged: number; sample: { id: number; full_name: string }[] };
+export type CampaignKind = 'manual' | 'winback' | 'cashback' | 'birthday' | 'review';
+export type Campaign = {
+  id: number; kind: CampaignKind; title: string; body: string; url: string | null; filters: Filters;
+  recipients: number; push_on: number; created_at: string; created_by: string | null; opened: number; booked_14d: number;
+};
+export type CampaignDetail = Campaign & { list: { id: number; full_name: string; opened_at: string | null }[] };
+export type Slot = { start: string; end: string };
+export type Automations = {
+  send_hour: number; studio_hours: [number, number];
+  winback: { enabled: boolean; days: number; title: string; body: string };
+  cashback: { enabled: boolean; min: number; title: string; body: string };
+  birthday: { enabled: boolean; gift: number; title: string; body: string };
+  review: { enabled: boolean; url: string; title: string; body: string };
 };

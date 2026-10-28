@@ -11,6 +11,7 @@ import { ShootDetail } from './components/ShootDetail';
 import { AuthProvider, makeCall, useLoad } from './ctx';
 import { bakuParts } from './format';
 import { Calendar } from './pages/Calendar';
+import { Campaigns } from './pages/Campaigns';
 import { CancelShoot } from './pages/CancelShoot';
 import { Clients } from './pages/Clients';
 import { CloseShoot } from './pages/CloseShoot';
@@ -55,6 +56,8 @@ function Routes() {
       return <ShootPage key={num} id={num} />;
     case 'packages': return b === 'new' ? <PackageForm /> : <Packages />;
     case 'materials': return <Materials />;
+    case 'campaigns': return <Campaigns />;
+    case 'automations': return <Campaigns tab="auto" />;
     case 'report': return <Report />;
   }
   return <Panel />;

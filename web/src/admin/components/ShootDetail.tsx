@@ -5,6 +5,7 @@ import { bakuParts, busyRange, dateShort, toIso } from '../format';
 import type { Shoot } from '../types';
 import { Avatar, Err, Field, ShootTicket, depositPending } from './common';
 import { DepositSheet } from './DepositSheet';
+import { MaterialCard } from '../pages/Materials';
 
 const WINDOW: Record<string, string> = {
   gt24: '24 saatdan əvvəl ləğv: cərimə yoxdur, beh tam qaytarılır.',
@@ -77,6 +78,7 @@ export function ShootDetail({ id }: { id: number }) {
         </Card>
       )}
 
+      {s.status === 'completed' && <MaterialCard s={s} onChange={reload} />}
       {s.note && <Card><span className="lbl">Qeyd</span><p className="t14 soft lh">{s.note}</p></Card>}
       <Err msg={act.err} />
 

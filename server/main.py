@@ -8,7 +8,7 @@ import push
 import settings
 from auth import ensure_admin
 from db import SessionLocal
-from routes import admin, admin_shoots, ai as ai_routes, client, public
+from routes import admin, admin_growth, admin_shoots, ai as ai_routes, client, public
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.include_router(public.router)
 app.include_router(client.router)
 app.include_router(admin.router)
 app.include_router(admin_shoots.router)
+app.include_router(admin_growth.router)
 app.include_router(ai_routes.router)
 
 

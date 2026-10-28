@@ -77,6 +77,16 @@ export function Panel() {
           <span className="hint">Ana ekran və 7 gün yeni versiyadan sonra yığılır.</span>
         </Card>
       )}
+      <a className="card" href="#/campaigns" style={{ flexDirection: 'row', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+        <span className="ic"><Icon name="send" size={20} /></span>
+        <span className="col grow"><span className="t14 w8">Kampaniyalar</span><span className="t12 muted">Təklif göndər, avtomatik bildirişlər</span></span>
+        <Icon name="chevron" size={18} />
+      </a>
+      <a className="card" href="#/materials" style={{ flexDirection: 'row', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+        <span className="ic"><Icon name="media" size={20} /></span>
+        <span className="col grow"><span className="t14 w8">Materiallar</span><span className="t12 muted">Drive linkləri, montaj statusu</span></span>
+        <Icon name="chevron" size={18} />
+      </a>
       <DepositSheet shoot={dep} onClose={() => setDep(null)} onDone={reload} />
     </AdminShell>
   );

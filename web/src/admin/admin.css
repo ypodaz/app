@@ -77,4 +77,12 @@ input[type=date].inp,input[type=time].inp{color-scheme:dark}
 .ax-month b{text-align:center;flex:1}
 .ax-rows .sum-r{padding:6px 0}
 /* üzən mikrofon düyməsi (.ax-fab) mobildə son kartı örtməsin */
-@media (max-width:639px){.rs-main{padding-bottom:84px}}
+@media (max-width:639px){.rs-main{padding-bottom:calc(84px + env(safe-area-inset-bottom))}}
+@media (min-width:640px){.rs-main{padding-bottom:96px}}
+/* Kampaniya: telefon bildirişi önizləməsi */
+.ax-push{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:18px;background:rgba(253,246,255,.07);border:1px solid rgba(253,246,255,.12)}
+/* stat kartı: başlıq bir sətirdə, ikon kartın içində */
+.rs-stat .row.sb{gap:8px;flex-wrap:nowrap}
+.rs-stat .row.sb .lbl{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs-stat .row.sb .ic{flex:none}
+@media (max-width:430px){.rs-stat{padding:14px}.rs-stat .row.sb .lbl{font-size:11px;letter-spacing:0}}

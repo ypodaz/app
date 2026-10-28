@@ -5,23 +5,23 @@ import { useAction, useAuth, useLoad } from '../ctx';
 import { addDays, bakuToday, range } from '../format';
 import type { Material, Production, Shoot } from '../types';
 
-// B5: materiallar. Montajlı bağlanmış çəkilişlər: status, təhvil tarixi, Drive linki.
+// B5: materiallar. Bağlanmış çəkilişlər (montajlılar «Gözləyənlər»də): status, təhvil tarixi, Drive linki.
 export function Materials() {
   const today = bakuToday();
   const { data, err, reload } = useLoad<Shoot[]>(`/shoots?${range(addDays(today, -120), addDays(today, 14))}`);
   const [all, setAll] = useState(false);
-  const list = (data ?? []).filter((s) => s.status === 'completed' && s.editing && (all || s.production !== 'ready')).reverse();
+  const list = (data ?? []).filter((s) => s.status === 'completed' && (all || (s.editing && s.production !== 'ready'))).reverse();
   return (
     <AdminShell active="materials" title="Materiallar">
       <Segmented label="Filtr" value={all ? 'all' : 'wait'} onChange={(v) => setAll(v === 'all')} options={[{ value: 'wait', label: 'Gözləyənlər' }, { value: 'all', label: 'Hamısı' }]} />
       <Err msg={err} />
       <div className="rs-cols">{list.map((s) => <MaterialCard key={s.id} s={s} onChange={reload} />)}</div>
-      {data && !list.length && <EmptyState icon="media" title="Material gözləyən çəkiliş yoxdur" text="Montajlı bağlanmış çəkilişlər burada görünəcək." />}
+      {data && !list.length && <EmptyState icon="media" title="Material gözləyən çəkiliş yoxdur" text="Montajlı bağlanmış çəkilişlər burada görünəcək. Montajsız çəkilişlər «Hamısı»ndadır." />}
     </AdminShell>
   );
 }
 
-function MaterialCard({ s, onChange }: { s: Shoot; onChange: () => void }) {
+export function MaterialCard({ s, onChange }: { s: Shoot; onChange: () => void }) {
   const { call } = useAuth();
   const [prod, setProd] = useState<Production>(s.production);
   const [delivery, setDelivery] = useState(s.delivery_on ?? '');

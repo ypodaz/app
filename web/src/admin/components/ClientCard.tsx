@@ -1,21 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Card, Icon, Sheet, formatMoney } from '../../shared/ui';
 import { useAction, useAuth, useLoad } from '../ctx';
-import { appLine, bakuParts, dateShort, parseAzn } from '../format';
+import { appLine, bakuParts, dateFull, dateShort, parseAzn } from '../format';
 import type { ClientDetail, InviteOut, LedgerRow } from '../types';
-import { Avatar, Err, Field, ShootRow } from './common';
+import { Avatar, Err, Field, ShootRow, sourceName } from './common';
+import { ProfileSheet } from './ProfileSheet';
 
 const KIND: Record<LedgerRow['kind'], string> = {
   earn: 'Çəkiliş keşbeki', earn_first: 'İlk çəkiliş bonusu', spend: 'Keşbekdən istifadə', spend_return: 'Keşbek qaytarıldı', manual: 'Əl ilə düzəliş',
+  profile_bonus: 'Profil bonusu', referral: 'Dost dəvəti bonusu', birthday: 'Ad günü hədiyyəsi',
 };
 const azn = (q: number) => formatMoney(q).replace(' AZN', '');
 
 // B6c: müştəri kartı (mobil tam ekran, desktopda sağ panel).
 export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => void }) {
   const { call } = useAuth();
-  const { data: c, err, reload } = useLoad<ClientDetail>(`/clients/${id}`);
+  const detail = useLoad<ClientDetail>(`/clients/${id}`);
+  const c = detail.data;
+  const err = detail.err;
+  const reload = () => detail.reload();
   const [cb, setCb] = useState(false);
   const [edit, setEdit] = useState(false);
+  const [prof, setProf] = useState(false);
   const [inv, setInv] = useState<InviteOut | null>(null);
   const [copied, setCopied] = useState(false);
   const inviteAct = useAction();
@@ -42,6 +48,26 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
       {c.notes && <p className="t13 soft lh" style={{ overflowWrap: 'anywhere' }}>{c.notes}</p>}
       <a className="btn btn-primary btn-sm" href={`#/shoots/new?client=${c.id}`}><Icon name="plus" size={18} /> Çəkiliş əlavə et</a>
       {c.deposit_required && <div className="banner"><Icon name="alert" size={18} /><span><b>Beh mütləqdir</b> — müştəri əvvəl gəlməyib.</span></div>}
+
+      <Card>
+        <div className="row sb">
+          <span className="h3">Profil</span>
+          <button type="button" className="iconbtn" aria-label="Profili redaktə et" title="Profili redaktə et" onClick={() => setProf(true)}><Icon name="edit" size={20} /></button>
+        </div>
+        <div className="ax-rows" data-testid="profile">
+          <PRow label="İxtisas" value={c.profession} />
+          <PRow label="İş yeri" value={c.workplace} />
+          <PRow label="Instagram" value={c.instagram && <a href={`https://instagram.com/${c.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">@{c.instagram.replace(/^@/, '')}</a>} />
+          <PRow label="Nişa" value={c.niche} />
+          <PRow label="Doğum günü" value={c.birthday && dateFull(c.birthday)} />
+          <PRow label="Haradan tapıb" value={sourceName(c.source)} />
+          <PRow label="Təkliflər" value={c.marketing_opt_in === false ? 'Bağlıdır' : 'Açıqdır'} />
+          <PRow label="Dəvət edən" value={c.referred_by && <a href={`#/clients/${c.referred_by.id}`}>{c.referred_by.full_name}</a>} />
+          {c.referral_code && <PRow label="Dəvət kodu" value={c.referral_code} />}
+        </div>
+        <div className="chips">{(c.tags ?? []).map((t) => <span key={t.id} className="tag">{t.name}</span>)}</div>
+        {c.profile_complete === false && <span className="hint">Profil tam doldurulmayıb.</span>}
+      </Card>
 
       <Card tone="violet">
         <span className="lbl" style={{ color: '#e9d5ff' }}>Keşbek</span>
@@ -92,9 +118,14 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
         </div>
       )}
       <EditSheet open={edit} c={c} onClose={() => setEdit(false)} onDone={() => { reload(); onChanged?.(); }} />
+      <ProfileSheet open={prof} c={c} onClose={() => setProf(false)} onDone={() => { reload(); onChanged?.(); }} />
       <CashbackSheet open={cb} id={id} onClose={() => setCb(false)} onDone={reload} />
     </div>
   );
+}
+
+function PRow({ label, value }: { label: string; value: ReactNode }) {
+  return <div className="sum-r"><span className="muted">{label}</span><span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{value || '—'}</span></div>;
 }
 
 function CashbackSheet({ open, id, onClose, onDone }: { open: boolean; id: number; onClose: () => void; onDone: () => void }) {
