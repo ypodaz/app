@@ -15,6 +15,7 @@ SHOOT_PER_HOUR = {
     "onsite": {1: 140 * AZN, 2: 240 * AZN, 3: 340 * AZN},
 }
 REELS_PACK = {"studio": 150 * AZN, "onsite": 250 * AZN}
+STUDIO_RENT_PER_HOUR = 50 * AZN  # yalnız studiya (videoqraflar üçün), kamera/montaj yoxdur
 EDITING = 100 * AZN
 REEL = 10 * AZN
 EXTRA_CAMERA_PER_HOUR = 50 * AZN
@@ -55,10 +56,16 @@ class Price:
     editing: int
     reels: int
     extra_camera: int
+    discount: int = 0
+
+    @property
+    def gross(self) -> int:
+        return self.base + self.editing + self.reels + self.extra_camera
 
     @property
     def total(self) -> int:
-        return self.base + self.editing + self.reels + self.extra_camera
+        """Endirimdən sonrakı məbləğ: beh və keşbek bundan hesablanır."""
+        return self.gross - self.discount
 
     @property
     def paid_extras(self) -> int:
@@ -75,15 +82,36 @@ def price(
     editing: bool,
     reels_count: int = 0,
     package_cameras: int | None = None,
+    discount: int = 0,
 ) -> Price:
     """Çəkilişin qiyməti. package_cameras verilirsə, çəkiliş paketdəndir: saatlar paketdən
-    çıxılır, yalnız montaj, Reels və əlavə kamera pulla ödənir."""
+    çıxılır, yalnız montaj, Reels və əlavə kamera pulla ödənir. discount məbləğdən çıxılır."""
+    p = _gross_price(kind=kind, location=location, cameras=cameras, duration_min=duration_min, editing=editing,
+                     reels_count=reels_count, package_cameras=package_cameras)
+    if discount < 0 or discount > p.gross:
+        raise ValueError(f"Endirim 0 ilə {fmt(p.gross)} arasında olmalıdır")
+    return Price(p.base, p.editing, p.reels, p.extra_camera, discount)
+
+
+def _gross_price(*, kind, location, cameras, duration_min, editing, reels_count, package_cameras) -> Price:
     if location not in SHOOT_PER_HOUR:
         raise ValueError("Yer studio və ya onsite olmalıdır")
     if kind == "reels_pack":
         if package_cameras is not None:
             raise ValueError("Reels Paketi saat paketindən seçilmir")
+        if duration_min <= 0 or duration_min % 15:
+            raise ValueError("Müddət 15 dəqiqə addımla olmalıdır")
         return Price(REELS_PACK[location], 0, 0, 0)
+    if kind == "studio_rent":
+        if package_cameras is not None:
+            raise ValueError("Studiya icarəsi saat paketindən seçilmir")
+        if location != "studio":
+            raise ValueError("Studiya icarəsi yalnız studiyada olur")
+        if duration_min <= 0 or duration_min % 30:
+            raise ValueError("Müddət yarım saat addımla olmalıdır")
+        if editing or reels_count:
+            raise ValueError("Studiya icarəsinə montaj və Reels daxil deyil")
+        return Price(STUDIO_RENT_PER_HOUR * duration_min // 60, 0, 0, 0)
     if kind != "shoot":
         raise ValueError("Naməlum xidmət növü")
     if cameras not in SHOOT_PER_HOUR[location]:
@@ -165,8 +193,8 @@ def payment_status(
 
 def cashback_earned(p: Price, *, from_package: bool, first_shoot: bool) -> tuple[str, int]:
     """Çəkiliş bağlananda yazılan keşbek: (ledger kind, məbləğ).
-    Keşbeklə ödənən hissə çıxılmır. Paketdən çəkilişdə yalnız pullu əlavələrə yazılır."""
-    base = p.paid_extras if from_package else p.total
+    Keşbeklə ödənən hissə çıxılmır, endirim çıxılır. Paketdən çəkilişdə yalnız pullu əlavələrə yazılır."""
+    base = max(0, p.paid_extras - p.discount) if from_package else p.total
     if first_shoot:
         return "earn_first", percent(base, FIRST_SHOOT_PERCENT)
     return "earn", percent(base, CASHBACK_PERCENT)

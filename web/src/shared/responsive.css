@@ -67,3 +67,22 @@ html{-webkit-text-size-adjust:100%}
   .rs-sheet{max-width:480px;border-radius:28px;border-bottom:1px solid rgba(168,85,247,.22);padding:24px}
   .rs-grab{display:none}
 }
+
+/* ---------- ekrana uyğunluq (375–430px) ---------- */
+/* ikinci dərəcəli düymələrin mətni mobildə gizlənir (ikon qalır) */
+.rs-txt,.rs-txt-lg{display:none}
+@media (min-width:640px){.rs-txt,.rs-txt-lg{display:inline}}
+.rs-actions .btn-auto{padding-left:12px;padding-right:12px}
+/* iOS Safari: input <16px olanda yaxınlaşdırır */
+input,select,textarea,.inp,.ax-bare{font-size:16px}
+.inp{min-width:0;max-width:100%}
+.seg{padding:6px 8px;line-height:1.2;min-width:0;overflow-wrap:anywhere}
+.stp{max-width:100%}
+.stp .v{min-width:72px;padding:0 2px}
+@media (max-width:430px){.stp .v{font-size:15px}}
+.sum-r>span:first-child{min-width:0;overflow-wrap:anywhere}
+.sum-r span:last-child{text-align:right}
+.li>.grow,.tk-body,.tick-main,.tbig-body{overflow-wrap:anywhere}
+.tbl{table-layout:fixed;word-break:break-word}
+.iconbtn,.tgl{min-width:44px}
+.ax-pad{position:absolute;left:3px;right:3px;border-radius:8px;z-index:1;pointer-events:none;background:repeating-linear-gradient(45deg,rgba(253,246,255,.12) 0 4px,rgba(253,246,255,.02) 4px 8px);border:1px dashed rgba(253,246,255,.22)}

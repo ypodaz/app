@@ -75,6 +75,7 @@ class Package(Base):
     starts_on: Mapped[date] = mapped_column(Date)
     ends_on: Mapped[date] = mapped_column(Date)
     price_paid: Mapped[int] = mapped_column(Integer)  # qəpik
+    ending_notified_at: Mapped[Optional[datetime]] = mapped_column(TS)  # «paket bitir» bildirişi
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
 
 
@@ -100,12 +101,15 @@ class Shoot(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
     package_id: Mapped[Optional[int]] = mapped_column(ForeignKey("packages.id", ondelete="RESTRICT"), index=True)
-    kind: Mapped[str] = mapped_column(String(16), default="shoot")  # shoot | reels_pack
+    kind: Mapped[str] = mapped_column(String(16), default="shoot")  # shoot | reels_pack | studio_rent
     tag: Mapped[str] = mapped_column(String(16))  # podcast | reels | other
     location: Mapped[str] = mapped_column(String(16))  # studio | onsite
     address: Mapped[Optional[str]] = mapped_column(String(255))
     starts_at: Mapped[datetime] = mapped_column(TS)
     duration_min: Mapped[int] = mapped_column(Integer)
+    # studiyanın əlavə məşğul vaxtı (dəqiqə): müştəri görmür, qiymətə təsir etmir
+    prep_min: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
+    wrap_min: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     cameras: Mapped[int] = mapped_column(Integer)
     editing: Mapped[bool] = mapped_column(default=False)
     reels_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -120,6 +124,8 @@ class Shoot(Base):
     price_editing: Mapped[int] = mapped_column(Integer, default=0)
     price_reels: Mapped[int] = mapped_column(Integer, default=0)
     price_extra_camera: Mapped[int] = mapped_column(Integer, default=0)
+    discount: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    discount_note: Mapped[Optional[str]] = mapped_column(String(255))  # yalnız admin görür
     total: Mapped[int] = mapped_column(Integer, default=0)
     # ödəniş (qəpik)
     cashback_used: Mapped[int] = mapped_column(Integer, default=0)
@@ -137,6 +143,7 @@ class Shoot(Base):
     refund_amount: Mapped[int] = mapped_column(Integer, default=0)
     refunded_at: Mapped[Optional[datetime]] = mapped_column(TS)
     rescheduled_lt24: Mapped[bool] = mapped_column(default=False)
+    reminded_at: Mapped[Optional[datetime]] = mapped_column(TS)  # bir gün əvvəl xatırlatma göndərilib
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("admins.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
@@ -178,6 +185,7 @@ class Notification(Base):
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     read_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    pushed_at: Mapped[Optional[datetime]] = mapped_column(TS)  # push göndərilib (və ya lazım deyil)
 
 
 class AuditLog(Base):
@@ -196,3 +204,35 @@ class Setting(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+class AiUsage(Base):
+    """Gündəlik AI sayğacı. subject: «client:7» və ya «admin:1»."""
+    __tablename__ = "ai_usage"
+    __table_args__ = (Index("ux_ai_usage_subject_day", "subject", "day", unique=True),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject: Mapped[str] = mapped_column(String(24))
+    day: Mapped[date] = mapped_column(Date)
+    messages: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AiMessage(Base):
+    """Müştərinin AI söhbəti (kontekst üçün son mesajlar)."""
+    __tablename__ = "ai_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(8))  # user | model
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(1000), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(255))
+    auth: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)

@@ -16,6 +16,7 @@ export function makeCall(token: string, signOut: () => void): Call {
   };
 }
 
+export const DATA_CHANGED = 'ypod:data-changed';
 export const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : 'Xəta baş verdi.');
 
 /** GET yükləyici. path=null → yükləmir. Yenidən yükləmək üçün reload(). */
@@ -25,6 +26,12 @@ export function useLoad<T>(path: string | null) {
   const [err, setErr] = useState('');
   const [tick, setTick] = useState(0);
   const last = useRef<string | null>(null);
+  // Köməkçi dəyişiklik edəndə açıq səhifə məlumatını yeniləyir.
+  useEffect(() => {
+    const on = () => setTick((t) => t + 1);
+    window.addEventListener(DATA_CHANGED, on);
+    return () => window.removeEventListener(DATA_CHANGED, on);
+  }, []);
   useEffect(() => {
     if (path === null) return;
     let live = true;

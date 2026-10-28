@@ -24,14 +24,14 @@ export function Clients({ id }: { id?: number }) {
   const list = (data ?? []).filter((c) => (c.full_name + ' ' + c.phone).toLowerCase().includes(q.trim().toLowerCase()));
 
   if (id && !desktop) {
-    return <AdminShell active="clients" title="Müştəri"><BackLink to="clients" label="Müştərilər" /><ClientCard id={id} /></AdminShell>;
+    return <AdminShell active="clients" title="Müştəri"><BackLink to="clients" label="Müştərilər" /><ClientCard id={id} onChanged={reload} /></AdminShell>;
   }
   return (
     <AdminShell
       active="clients"
       title="Müştərilər"
       actions={<Button variant="cream" small auto onClick={() => setAdd(true)}><Icon name="plus" size={18} /> Yeni müştəri</Button>}
-      detail={id ? <ClientCard id={id} /> : undefined}
+      detail={id ? <ClientCard id={id} onChanged={reload} /> : undefined}
     >
       <label className="inp"><Icon name="users" size={18} /><input type="search" className="ax-bare" placeholder="Ad və ya telefon üzrə axtar" aria-label="Müştəri axtar" value={q} onChange={(e) => setQ(e.target.value)} /></label>
       <Err msg={err} />

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AdminShell, Button, Card, Icon, Segmented, Stepper, formatHours, formatMoney } from '../../shared/ui';
+import { AdminShell, Button, Card, Icon, Segmented, Stepper, formatHours, formatMin, formatMoney } from '../../shared/ui';
 import { Avatar, BackLink, CountStepper, Err, Field, TAG } from '../components/common';
 import { ClientPickerSheet } from '../components/ClientPicker';
 import { errMsg, useAction, useAuth, useLoad } from '../ctx';
-import { aznInput, bakuToday, parseAzn, toIso } from '../format';
+import { addMin, aznInput, bakuParts, bakuToday, minutesOf, parseAzn, timeRange, toIso } from '../format';
 import { go } from '../router';
-import type { ClientDetail, Kind, Location, Quote, Shoot, Tag } from '../types';
+import type { ClientDetail, ClientRow, Conflict, Kind, Location, Quote, Shoot, Tag } from '../types';
 
 // Saatlıq qiymət etiketləri (server/money.py cədvəli ilə eynidir; hesabı server edir).
 const PER_HOUR: Record<Location, number[]> = { studio: [70, 120, 170], onsite: [140, 240, 340] };
@@ -18,9 +18,11 @@ export function ShootForm({ query }: { query: URLSearchParams }) {
   const [date, setDate] = useState(query.get('date') || bakuToday());
   const [time, setTime] = useState(query.get('time') || '12:00');
   const [dur, setDur] = useState(60);
+  const [prep, setPrep] = useState(15);
+  const [wrap, setWrap] = useState(0);
   const [kind, setKind] = useState<Kind>('shoot');
   const [tag, setTag] = useState<Tag>('podcast');
-  const [loc, setLoc] = useState<Location>('studio');
+  const [locSel, setLoc] = useState<Location>('studio');
   const [address, setAddress] = useState('');
   const [cameras, setCameras] = useState(1);
   const [editing, setEditing] = useState(false);
@@ -31,23 +33,36 @@ export function ShootForm({ query }: { query: URLSearchParams }) {
   const [cbText, setCbText] = useState('');
   const [depositNow, setDepositNow] = useState(false);
   const [note, setNote] = useState('');
+  const [discText, setDiscText] = useState('');
+  const [discPct, setDiscPct] = useState(false);
+  const [discNote, setDiscNote] = useState('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [qerr, setQerr] = useState('');
   const submit = useAction();
 
   const detail = useLoad<ClientDetail>(clientId ? `/clients/${clientId}` : null).data;
-  const reelsPack = kind === 'reels_pack';
+  const clients = useLoad<ClientRow[]>('/clients').data;
+  const reelsPack = kind === 'reels_pack', rent = kind === 'studio_rent';
+  const loc: Location = rent ? 'studio' : locSel;
+  const step = reelsPack ? 15 : 30;
+  const end = addMin(time, dur);
+  // % rejimində AZN məbləği ümumi məbləğdən (gross) hesablanır, qəpiyə yarım-yuxarı yuvarlaqlaşdırma; server yalnız AZN qəbul edir
+  const pctH = discPct && discText.trim() ? parseAzn(discText) : null; // faiz yüzdə birlərlə (12,5 → 1250)
+  const gross = quote?.gross ?? 0;
+  const discParsed = !discText.trim() ? 0 : discPct ? (pctH !== null && pctH <= 10000 ? Math.floor((gross * pctH + 5000) / 10000) : null) : parseAzn(discText);
+  const discBad = discParsed === null, discount = discParsed ?? 0;
   const pkgs = (detail?.packages ?? []).filter((p) => p.minutes_left > 0 && p.ends_on >= date);
-  const pay = payWanted === 'package' && pkgs.length && !reelsPack ? 'package' : 'paid';
+  const pay = payWanted === 'package' && pkgs.length && kind === 'shoot' ? 'package' : 'paid';
   const pkgId = pay === 'package' ? (pkgs.find((p) => p.id === pkgSel) ?? pkgs[0]).id : null;
-  const reelsN = editing && !reelsPack ? reels : 0;
+  const reelsN = editing && kind === 'shoot' ? reels : 0;
   const cashback = useCb ? (parseAzn(cbText) ?? 0) : 0;
 
-  const body = useMemo(() => (clientId && date && time ? {
-    client_id: clientId, starts_at: toIso(date, time), duration_min: reelsPack ? 60 : dur, kind, tag: reelsPack ? 'reels' : tag,
-    location: loc, cameras: reelsPack ? 1 : cameras, editing: reelsPack ? false : editing, reels_count: reelsN,
+  const body = useMemo(() => (clientId && date && time && !discBad ? {
+    client_id: clientId, starts_at: toIso(date, time), duration_min: dur, kind, tag: rent ? 'other' : reelsPack ? 'reels' : tag,
+    location: loc, cameras: rent ? 0 : reelsPack ? 1 : cameras, editing: kind === 'shoot' ? editing : false, reels_count: reelsN,
     package_id: pkgId, cashback_use: cashback, address: loc === 'onsite' ? address.trim() || null : null, note: note.trim() || null,
-  } : null), [clientId, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, reelsPack, pkgId, cashback, note]);
+    discount, discount_note: discount > 0 ? discNote.trim() || null : null, prep_min: prep, wrap_min: wrap,
+  } : null), [clientId, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, reelsPack, rent, pkgId, cashback, note, discBad, discount, discNote, prep, wrap]);
 
   // Qiymət: 250ms gecikmə ilə serverdən
   const key = JSON.stringify(body);
@@ -78,6 +93,19 @@ export function ShootForm({ query }: { query: URLSearchParams }) {
     go(`shoots/${s.id}`);
   }
 
+  function pickKind(k: Kind) {
+    setKind(k);
+    if (k !== 'reels_pack' && dur % 30) setDur(Math.ceil(dur / 30) * 30);
+  }
+  // Bitmə saatı dəyişəndə müddət yenilənir (addıma yuvarlanır)
+  function pickEnd(v: string) {
+    const d = minutesOf(v) - minutesOf(time);
+    if (d > 0) setDur(Math.min(600, Math.max(step, Math.round(d / step) * step)));
+  }
+  const conflictText = (c: Conflict) => c.type === 'shoot'
+    ? `${clients?.find((x) => x.id === c.client_id)?.full_name ?? 'başqa çəkiliş'} ilə (${timeRange(c.starts_at, c.duration_min)})`
+    : `“${c.reason || 'Bloklanıb'}” bloku ilə (${bakuParts(c.starts_at).time}–${bakuParts(c.ends_at).time})`;
+
   const moneyRow = (label: string, q: number) => <div className="sum-r"><span className="muted">{label}</span><span>{formatMoney(q)}</span></div>;
 
   return (
@@ -92,23 +120,38 @@ export function ShootForm({ query }: { query: URLSearchParams }) {
               <Icon name="chevron" size={18} />
             </button>
           </div>
+          <Field label="Tarix" id="sf-d"><input id="sf-d" type="date" className="inp" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <div className="g2">
-            <Field label="Tarix" id="sf-d"><input id="sf-d" type="date" className="inp" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <Field label="Başlanğıc" id="sf-t"><input id="sf-t" type="time" className="inp" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
+            <Field label="Bitmə" id="sf-e"><input id="sf-e" type="time" className="inp" value={end} onChange={(e) => pickEnd(e.target.value)} /></Field>
           </div>
-          {!reelsPack && <div className="row sb"><span className="flabel">Müddət</span><Stepper minutes={dur} onChange={setDur} /></div>}
+          <div className="row sb wrap"><span className="flabel">Müddət</span><Stepper minutes={dur} onChange={setDur} min={step} step={step} label="Müddət" /></div>
+
+          <Card>
+            <span className="lbl">Studiya vaxtı</span>
+            <span className="t15 w8" data-testid="busy">Studiya məşğul: {addMin(time, -prep)} – {addMin(time, dur + wrap)}</span>
+            <div className="row sb wrap"><span className="t14 w7">Hazırlıq əvvəl</span><Stepper minutes={prep} onChange={setPrep} min={0} max={240} step={5} fmt={formatMin} label="Hazırlıq" /></div>
+            <div className="row sb wrap"><span className="t14 w7">Yığışdırma sonra</span><Stepper minutes={wrap} onChange={setWrap} min={0} max={240} step={5} fmt={formatMin} label="Yığışdırma" /></div>
+            <span className="hint">Müştəri bunları görmür.</span>
+          </Card>
+          {quote && quote.conflicts.length > 0 && (
+            <div className="banner" role="alert" data-testid="conflicts" style={{ borderColor: '#f9a8d4', background: 'rgba(244,114,182,.14)' }}>
+              <Icon name="alert" size={18} />
+              <span className="col grow" style={{ gap: 4 }}>{quote.conflicts.map((c) => <span key={`${c.type}${c.id}`}>Bu vaxt <b>{conflictText(c)}</b> üst-üstə düşür (hazırlıq/yığışdırma daxil)</span>)}</span>
+            </div>
+          )}
 
           <span className="flabel mt">Xidmət</span>
-          <Segmented label="Xidmət" value={kind} onChange={setKind} options={[{ value: 'shoot', label: 'Çəkiliş' }, { value: 'reels_pack', label: 'Reels Paketi' }]} />
-          {!reelsPack && (
+          <Segmented label="Xidmət" value={kind} onChange={pickKind} options={[{ value: 'shoot', label: 'Çəkiliş' }, { value: 'reels_pack', label: 'Reels paketi' }, { value: 'studio_rent', label: 'Studiya icarəsi' }]} />
+          {kind === 'shoot' && (
             <div className="chips" role="group" aria-label="Nə çəkilir">
               {(['podcast', 'reels', 'other'] as Tag[]).map((t) => <button key={t} type="button" className={`chip${tag === t ? ' chip-on' : ''}`} aria-pressed={tag === t} onClick={() => setTag(t)}>{TAG[t]}</button>)}
             </div>
           )}
-          <Segmented label="Məkan" value={loc} onChange={setLoc} options={[{ value: 'studio', label: 'Studiyada' }, { value: 'onsite', label: 'Sizin məkanda' }]} />
+          {!rent && <Segmented label="Məkan" value={loc} onChange={setLoc} options={[{ value: 'studio', label: 'Studiyada' }, { value: 'onsite', label: 'Sizin məkanda' }]} />}
           {loc === 'onsite' && <Field label="Ünvan" id="sf-addr"><input id="sf-addr" className="inp" value={address} onChange={(e) => setAddress(e.target.value)} /></Field>}
 
-          {!reelsPack && (
+          {kind === 'shoot' && (
             <>
               <span className="flabel mt">Kamera · 1 saat (AZN)</span>
               <Segmented label="Kamera" value={cameras} onChange={setCameras} options={[1, 2, 3].map((n) => ({ value: n, label: `${n} · ${PER_HOUR[loc][n - 1]}` }))} />
@@ -127,10 +170,11 @@ export function ShootForm({ query }: { query: URLSearchParams }) {
             </>
           )}
 
+          {!rent && <>
           <span className="flabel mt">Ödəniş</span>
           <div className="segw" role="group" aria-label="Ödəniş">
             <button type="button" className={`seg${pay === 'paid' ? ' seg-on' : ''}`} aria-pressed={pay === 'paid'} onClick={() => setPayWanted('paid')}>Pullu</button>
-            <button type="button" className={`seg${pay === 'package' ? ' seg-on' : ''}`} aria-pressed={pay === 'package'} disabled={!pkgs.length || reelsPack} style={!pkgs.length || reelsPack ? { opacity: 0.4 } : undefined} onClick={() => setPayWanted('package')}>Paketdən</button>
+            <button type="button" className={`seg${pay === 'package' ? ' seg-on' : ''}`} aria-pressed={pay === 'package'} disabled={!pkgs.length || kind !== 'shoot'} style={!pkgs.length || kind !== 'shoot' ? { opacity: 0.4 } : undefined} onClick={() => setPayWanted('package')}>Paketdən</button>
           </div>
           {pay === 'package' && pkgs.length > 1 && (
             <select className="inp" aria-label="Paket" value={pkgId ?? ''} onChange={(e) => setPkgSel(Number(e.target.value))}>
@@ -138,6 +182,16 @@ export function ShootForm({ query }: { query: URLSearchParams }) {
             </select>
           )}
           <span className="hint">{pkgs.length ? 'Paketdən seçiləndə əlavə kamera (saatda 50 AZN) avtomatik hesablanır.' : 'Müştərinin aktiv saat paketi yoxdur.'}</span>
+          </>}
+
+          <span className="flabel mt">Endirim</span>
+          <Field label={`Endirim (${discPct ? '%' : 'AZN'})`} id="sf-disc" hint={discBad ? (discPct ? 'Faizi 0–100 arasında yazın' : 'Məbləği düzgün yazın, məs. 50 və ya 12,5') : discPct && discount > 0 ? `= ${formatMoney(discount)}` : 'Boş qalsa endirim yoxdur.'}>
+            <div className="row" style={{ alignItems: 'stretch' }}>
+              <input id="sf-disc" className={`inp grow${discBad ? ' inp-err' : ''}`} inputMode="decimal" value={discText} onChange={(e) => setDiscText(e.target.value)} placeholder="0" />
+              <div style={{ width: 130, flex: 'none' }}><Segmented label="Endirim vahidi" value={discPct ? 'pct' : 'azn'} onChange={(v) => setDiscPct(v === 'pct')} options={[{ value: 'azn', label: 'AZN' }, { value: 'pct', label: '%' }]} /></div>
+            </div>
+          </Field>
+          {discount > 0 && <Field label="Səbəb" id="sf-dn" hint="Yalnız admin görür."><input id="sf-dn" className="inp" value={discNote} onChange={(e) => setDiscNote(e.target.value)} maxLength={255} placeholder="məs. daimi müştəri" /></Field>}
 
           <div className="trow" style={{ minHeight: 48 }}>
             <span className="col grow" style={{ gap: 2 }}><span className="t15 w8">Keşbekdən istifadə</span><span className="t12 soft">Müştərinin keşbeki: {formatMoney(balance)}</span></span>
@@ -160,11 +214,12 @@ export function ShootForm({ query }: { query: URLSearchParams }) {
             <span className="lbl">Yekun</span>
             {quote && body ? (
               <div className="sum">
-                {moneyRow(pay === 'package' ? `Paketdən · ${formatHours(body.duration_min)}` : reelsPack ? 'Reels Paketi' : `Çəkiliş · ${TAG[tag]} · ${cameras} kamera · ${formatHours(dur)}`, quote.base)}
+                {moneyRow(pay === 'package' ? `Paketdən · ${formatHours(body.duration_min)}` : reelsPack ? 'Reels paketi' : rent ? `Studiya icarəsi · ${formatHours(dur)}` : `Çəkiliş · ${TAG[tag]} · ${cameras} kamera · ${formatHours(dur)}`, quote.base)}
                 {quote.extra_camera > 0 && moneyRow('Əlavə kamera', quote.extra_camera)}
-                {editing && !reelsPack && moneyRow('Montaj', quote.editing)}
+                {reelsN > 0 || (editing && kind === 'shoot') ? moneyRow('Montaj', quote.editing) : null}
                 {reelsN > 0 && moneyRow(`Podcastdan Reels · ${reelsN} əd.`, quote.reels)}
-                <div className="sum-r sum-tot"><span className="w8">Cəmi</span><span className="num-m">{formatMoney(quote.total).replace(' AZN', '')}<span className="unit">AZN</span></span></div>
+                {quote.discount > 0 && <>{moneyRow('Cəmi', quote.gross)}{moneyRow('Endirim', -quote.discount)}</>}
+                <div className="sum-r sum-tot"><span className="w8">{quote.discount > 0 ? 'Yekun' : 'Cəmi'}</span><span className="num-m">{formatMoney(quote.total).replace(' AZN', '')}<span className="unit">AZN</span></span></div>
                 {cashback > 0 && moneyRow('Keşbekdən', -cashback)}
                 {depositExpected > 0 && (
                   <div className="sum-r"><span className="row" style={{ gap: 6 }}><span className="pill p-beh" style={{ color: '#86198f', borderColor: '#c026d3' }}><Icon name="clock" size={12} />{depositNow ? 'Beh alınacaq' : 'Beh gözlənilir'}</span></span><span>{formatMoney(depositExpected)}</span></div>

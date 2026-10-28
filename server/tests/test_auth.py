@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["ADMIN_LOGIN"] = "yashar"
+os.environ["SCHEDULER"] = "0"
 
 from argon2 import PasswordHasher  # noqa: E402
 
@@ -161,3 +162,15 @@ def test_logout_ends_session(api):
     tok = api.post("/api/auth/redeem", json={"token": token_of(inv["url"])}).json()["token"]
     assert api.post("/api/me/logout", headers=bearer(tok)).status_code == 200
     assert api.get("/api/me", headers=bearer(tok)).status_code == 401
+
+
+def test_changed_admin_login_renames_single_admin(api, monkeypatch):
+    from models import Admin
+    old = admin_token(api)
+    monkeypatch.setattr(settings, "ADMIN_LOGIN", "yeni-login")
+    with SessionLocal() as db:
+        auth.ensure_admin(db)
+        assert [a.login for a in db.query(Admin).all()] == ["yeni-login"]
+    assert api.post("/api/admin/login", json={"login": "yashar", "password": "duzgun-parol-123"}).status_code == 400
+    assert api.post("/api/admin/login", json={"login": "yeni-login", "password": "duzgun-parol-123"}).status_code == 200
+    assert api.get("/api/admin/whoami", headers=bearer(old)).status_code == 401

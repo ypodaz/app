@@ -6,6 +6,7 @@ import { AuthCtx, BookButtons, ErrorState, HOME_CACHE, Loading, OfflineBadge, Sc
 import { useContext } from 'react';
 import type { HomeData, Pkg } from './home';
 import { PackageCard } from './home';
+import { PushCard } from './push';
 import { dateFull, dateLong, dateShort, daysBetween, fmtHours, money, plainDate, relDay, timeOf, todayKey, waLink } from './util';
 
 // ---------- Keşbek (A7a/A7b) ----------
@@ -215,6 +216,9 @@ function describe(n: Notif): { title: string; sub?: string } {
     case 'shoot_cancelled': return { title: 'Çəkiliş ləğv olundu', sub: Number(p.refund) > 0 ? `${money(Number(p.refund))} geri qaytarılacaq` : undefined };
     case 'refunded': return { title: 'Ödəniş geri qaytarıldı', sub: p.amount ? money(Number(p.amount)) : undefined };
     case 'shoot_rescheduled': return { title: 'Çəkiliş vaxtı dəyişdi', sub: p.starts_at ? `Yeni vaxt: ${dateLong(String(p.starts_at))} · ${timeOf(String(p.starts_at))}` : undefined };
+    case 'materials_ready': return { title: 'Materiallar hazırdır' };
+    case 'shoot_reminder': return { title: 'Sabah çəkilişiniz var' };
+    case 'package_ending': return { title: 'Paketiniz bitmək üzrədir', sub: p.minutes_left !== undefined ? `Qalan ${fmtHours(Number(p.minutes_left))} saat${p.ends_on ? ` · ${plainDate(String(p.ends_on))} tarixinədək` : ''}` : undefined };
     default: return { title: 'Yeni bildiriş' };
   }
 }
@@ -232,6 +236,7 @@ export function Notifications() {
   return (
     <Screen tab="home">
       <TopBar title="Bildirişlər" />
+      <PushCard />
       {!q.data ? (q.loading ? <Loading /> : <ErrorState q={q} />) : q.data.length === 0 ? (
         <EmptyState icon="calendar" title="Bildiriş yoxdur" text="Çəkiliş, beh və keşbek xəbərləri burada görünəcək." />
       ) : (
@@ -250,7 +255,8 @@ export function Notifications() {
                   </span>
                 </>
               );
-              return sid ? <a key={n.id} className="nrow" href={`#/shoots/${sid}`}>{body}</a> : <div key={n.id} className="nrow">{body}</div>;
+              const href = sid ? `#/shoots/${sid}` : n.type === 'materials_ready' ? '#/materials' : n.type === 'package_ending' ? '#/package' : '';
+              return href ? <a key={n.id} className="nrow" href={href}>{body}</a> : <div key={n.id} className="nrow">{body}</div>;
             })}
           </div>
         </Card>

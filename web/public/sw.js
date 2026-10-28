@@ -39,3 +39,28 @@ self.addEventListener('fetch', (e) => {
     );
   }
 });
+
+// --- Push bildirişləri: payload {title, body, url, tag}; url hash marşrutdur (#/shoots/12) ---
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Y Pod', {
+    body: d.body || '',
+    tag: d.tag || undefined,
+    icon: SCOPE + 'icons/icon-192.png',
+    badge: SCOPE + 'icons/icon-192.png',
+    data: { url: d.url || '#/notifications' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = SCOPE + ((e.notification.data && e.notification.data.url) || '#/notifications');
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => new URL(c.url).pathname.startsWith(SCOPE));
+      if (!open) return self.clients.openWindow(target);
+      return open.focus().then((c) => (c || open).navigate(target)).catch(() => self.clients.openWindow(target));
+    }),
+  );
+});

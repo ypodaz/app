@@ -26,11 +26,11 @@ router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
 class ShootIn(BaseModel):
     client_id: int
     starts_at: AwareDatetime
-    duration_min: int = Field(ge=30, le=720)
-    kind: Literal["shoot", "reels_pack"]
+    duration_min: int = Field(ge=15, le=720)
+    kind: Literal["shoot", "reels_pack", "studio_rent"]
     tag: Literal["podcast", "reels", "other"]
     location: Literal["studio", "onsite"]
-    cameras: int = Field(ge=1, le=3)
+    cameras: int = Field(ge=0, le=3)  # studiya icarəsində 0
     editing: bool
     reels_count: int = Field(default=0, ge=0, le=100)
     package_id: Optional[int] = None
@@ -39,6 +39,10 @@ class ShootIn(BaseModel):
     title: Optional[str] = Field(default=None, max_length=120)
     note: Optional[str] = Field(default=None, max_length=2000)
     source_note: Optional[str] = Field(default=None, max_length=2000)
+    discount: int = Field(default=0, ge=0)
+    discount_note: Optional[str] = Field(default=None, max_length=255)
+    prep_min: int = Field(default=15, ge=0, le=240)
+    wrap_min: int = Field(default=0, ge=0, le=240)
 
 
 class DepositIn(BaseModel):
@@ -46,9 +50,10 @@ class DepositIn(BaseModel):
 
 
 class CloseIn(BaseModel):
-    duration_min: int = Field(ge=30, le=720)
+    duration_min: int = Field(ge=15, le=720)
     paid_method: Optional[Literal["cash", "card"]] = None
     cashback_use: int = Field(default=0, ge=0)
+    discount: Optional[int] = Field(default=None, ge=0)  # verilməsə, endirim dəyişmir
 
 
 class CancelIn(BaseModel):
@@ -120,7 +125,8 @@ def shoots_out(db: DB, shoots: list[Shoot]) -> list[dict]:
         "retained_amount": s.retained_amount, "refund_amount": s.refund_amount,
         "refunded_at": iso(s.refunded_at), "rescheduled_lt24": s.rescheduled_lt24,
         "payment_line": payment_line(s), "studio_balance": studio_balance(s), "materials": mats[s.id],
-        "created_at": iso(s.created_at),
+        "created_at": iso(s.created_at), "discount_note": s.discount_note,
+        "prep_min": s.prep_min, "wrap_min": s.wrap_min,
     } for s in shoots]
 
 
@@ -154,7 +160,9 @@ def create_shoot(body: ShootIn, db: DB = Depends(get_db), admin: Admin = Depends
     except booking.Rejected as e:
         reject(db, e)
     db.commit()
-    return shoot_out(db, s)
+    return {**shoot_out(db, s), "conflicts": booking.conflicts(
+        db, starts_at=s.starts_at, duration_min=s.duration_min, prep_min=s.prep_min, wrap_min=s.wrap_min,
+        exclude_id=s.id)}
 
 
 @router.post("/shoots/quote")
@@ -168,21 +176,27 @@ def quote(body: ShootIn, db: DB = Depends(get_db)):
         pkg = db.get(Package, body.package_id)
         if not pkg:
             raise HTTPException(404, "Paket tapılmadı")
-    duration, editing, reels = body.duration_min, body.editing, body.reels_count
-    if body.kind == "reels_pack":
-        duration, editing, reels = 60, False, 0
+    editing, reels, location = body.editing, body.reels_count, body.location
+    if body.kind in ("reels_pack", "studio_rent"):
+        editing, reels = False, 0
+    if body.kind == "studio_rent":
+        location = "studio"
     balance = booking.cashback_balance(db, client.id)
     try:
-        p = money.price(kind=body.kind, location=body.location, cameras=body.cameras, duration_min=duration,
-                        editing=editing, reels_count=reels, package_cameras=pkg.cameras if pkg else None)
+        p = money.price(kind=body.kind, location=location, cameras=body.cameras, duration_min=body.duration_min,
+                        editing=editing, reels_count=reels, package_cameras=pkg.cameras if pkg else None,
+                        discount=body.discount)
         money.check_cashback_use(body.cashback_use, balance, p.total)
-        draft = Shoot(client_id=client.id, starts_at=utc(body.starts_at))
+        draft = Shoot(client_id=client.id, starts_at=utc(body.starts_at), kind=body.kind)
         first = booking.is_first_shoot(db, client, draft)
         kind, earn = money.cashback_earned(p, from_package=pkg is not None, first_shoot=first)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {
-        "base": p.base, "editing": p.editing, "reels": p.reels, "extra_camera": p.extra_camera, "total": p.total,
+        "base": p.base, "editing": p.editing, "reels": p.reels, "extra_camera": p.extra_camera,
+        "discount": p.discount, "gross": p.gross, "total": p.total,
+        "conflicts": booking.conflicts(db, starts_at=utc(body.starts_at), duration_min=body.duration_min,
+                                       prep_min=body.prep_min, wrap_min=body.wrap_min),
         "deposit_expected": money.deposit_expected(p.total, body.cashback_use, pkg is not None),
         "cashback_earn": earn, "cashback_kind": kind, "first_shoot_bonus": first,
         "cashback_balance": balance, "deposit_required": client.deposit_required,
@@ -228,7 +242,8 @@ def close(shoot_id: int, body: CloseIn, db: DB = Depends(get_db), admin: Admin =
     s = get_shoot(db, shoot_id)
     try:
         earned = booking.close_shoot(db, admin.id, s, duration_min=body.duration_min,
-                                     paid_method=body.paid_method, cashback_use=body.cashback_use)
+                                     paid_method=body.paid_method, cashback_use=body.cashback_use,
+                                     discount=body.discount)
     except booking.Rejected as e:
         reject(db, e)
     db.commit()
@@ -298,6 +313,8 @@ def reschedule(shoot_id: int, body: RescheduleIn, db: DB = Depends(get_db), admi
 @router.patch("/shoots/{shoot_id}/production")
 def production(shoot_id: int, body: ProductionIn, db: DB = Depends(get_db)):
     s = get_shoot(db, shoot_id)
+    if body.production == "ready" and s.production != "ready":
+        booking._notify(db, s.client_id, "materials_ready", shoot_id=s.id)
     s.production, s.delivery_on = body.production, body.delivery_on
     db.commit()
     return shoot_out(db, s)
@@ -465,3 +482,53 @@ def dashboard(db: DB = Depends(get_db)):
                                                  Shoot.production != "ready")).all()
     return {"deposit_pending": shoots_out(db, list(pending)), "today": shoots_out(db, list(today)),
             "unclosed_count": len(unclosed), "awaiting_material_count": len(awaiting)}
+
+
+def _month(month: str) -> tuple[datetime, datetime]:
+    try:
+        y, m = (int(x) for x in month.split("-"))
+        first = date(y, m, 1)
+    except ValueError:
+        raise HTTPException(422, "Ay YYYY-MM olmalıdır")
+    return day_bounds(first)[0], day_bounds(booking.add_months(first, 1))[0]
+
+
+@router.get("/report")
+def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db)):
+    """Aylıq hesabat. «Kassa» = həmin ay əldə olan pul (beh, studiyada ödəniş, paket satışı, geri qaytarılan çıxılır);
+    «çəkilişlər» = həmin ay keçirilən çəkilişlər (başlama tarixinə görə)."""
+    a, b = _month(month)
+    shoots = db.scalars(select(Shoot).where(Shoot.starts_at >= a, Shoot.starts_at < b)).all()
+    done = [s for s in shoots if s.status == "completed"]
+
+    def total(col, when):
+        return sum(getattr(s, col) for s in db.scalars(select(Shoot).where(when >= a, when < b)))
+
+    deposits = total("deposit_amount", Shoot.deposit_received_at)
+    at_studio = total("paid_at_studio", Shoot.closed_at)
+    refunds = total("refund_amount", Shoot.refunded_at)
+    pkgs = db.scalars(select(Package).where(Package.created_at >= a, Package.created_at < b)).all()
+    ledger = db.scalars(select(CashbackLedger).where(CashbackLedger.created_at < b)).all()
+    in_month = [r for r in ledger if utc(r.created_at) >= a]
+    by_kind = {}
+    for s in done:
+        k = by_kind.setdefault(s.kind, {"count": 0, "minutes": 0, "total": 0})
+        k["count"] += 1
+        k["minutes"] += s.duration_min
+        k["total"] += s.total
+    return {
+        "month": month,
+        "cash": {"deposits": deposits, "at_studio": at_studio, "packages": sum(p.price_paid for p in pkgs),
+                 "refunds": refunds, "net": deposits + at_studio + sum(p.price_paid for p in pkgs) - refunds},
+        "shoots": {"completed": len(done), "cancelled": sum(s.status == "cancelled" for s in shoots),
+                   "no_show": sum(s.status == "no_show" for s in shoots),
+                   "upcoming": sum(s.status == "confirmed" for s in shoots),
+                   "minutes": sum(s.duration_min for s in done), "revenue": sum(s.total for s in done),
+                   "discounts": sum(s.discount for s in done), "retained": sum(s.retained_amount for s in shoots),
+                   "by_kind": by_kind},
+        "packages_sold": len(pkgs),
+        "cashback": {"earned": sum(r.amount for r in in_month if r.kind in ("earn", "earn_first")),
+                     "manual": sum(r.amount for r in in_month if r.kind == "manual"),
+                     "spent": -sum(r.amount for r in in_month if r.kind in ("spend", "spend_return")),
+                     "liability": sum(r.amount for r in ledger)},
+    }

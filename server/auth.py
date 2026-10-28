@@ -149,6 +149,13 @@ def ensure_admin(db: DB) -> None:
     if not (settings.ADMIN_LOGIN and settings.ADMIN_PASSWORD_HASH):
         return
     admin = db.scalar(select(Admin).where(Admin.login == settings.ADMIN_LOGIN))
+    admins = db.scalars(select(Admin)).all() if not admin else []
+    if len(admins) == 1:
+        # login dəyişib: yeganə admin yeni login-ə keçir, köhnə login işləməz olur
+        admin = admins[0]
+        admin.login = admin.name = settings.ADMIN_LOGIN
+        admin.password_hash = ""  # aşağıda yenilənir, sessiyalar da bağlanır
+        db.execute(delete(Session).where(Session.subject_type == "admin", Session.subject_id == admin.id))
     if not admin:
         db.add(Admin(login=settings.ADMIN_LOGIN, name=settings.ADMIN_LOGIN, password_hash=settings.ADMIN_PASSWORD_HASH))
     elif admin.password_hash != settings.ADMIN_PASSWORD_HASH:

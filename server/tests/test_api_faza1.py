@@ -203,10 +203,10 @@ def test_production_materials_and_notifications(api):
     assert api.delete(f"/api/admin/materials/{m['id']}", headers=bearer(adm)).status_code == 200
     assert api.get("/api/me/materials", headers=bearer(tok)).json() == []
     home = api.get("/api/me/home", headers=bearer(tok)).json()
-    assert home["unread_notifications"] == 2 and home["next_shoot"] is None and home["package"] is None
+    assert home["unread_notifications"] == 3 and home["next_shoot"] is None and home["package"] is None
     assert api.post("/api/me/notifications/read", headers=bearer(tok)).status_code == 200
     assert api.get("/api/me/home", headers=bearer(tok)).json()["unread_notifications"] == 0
-    assert len(api.get("/api/me/notifications", headers=bearer(tok)).json()) == 2
+    assert len(api.get("/api/me/notifications", headers=bearer(tok)).json()) == 3
 
 
 def test_manual_cashback_and_client_detail(api):
@@ -327,3 +327,52 @@ def test_new_admin_routes_need_admin(api):
                          ("post", "/api/admin/shoots/1/cancel/quote")):
         r = getattr(api, method)(path, headers=bearer(tok)) if method != "post" else api.post(path, json={}, headers=bearer(tok))
         assert r.status_code in (401, 403)
+
+
+def test_studio_rent_earns_cashback(api):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Videoqraf Elnur")
+    rent = make_shoot(api, adm, cid, kind="studio_rent", cameras=0, editing=False, duration_min=120)
+    assert rent["total"] == 10000 and rent["cameras"] == 0
+    r = api.post(f"/api/admin/shoots/{rent['id']}/close", json={"duration_min": 120, "paid_method": "cash"},
+                 headers=bearer(adm))
+    assert r.json()["cashback_earned"] == 5000  # ilk çəkiliş bonusu: 50%
+
+
+def test_discount_flows_to_deposit_and_close(api):
+    adm = admin_token(api)
+    cid, tok = new_client(api, adm, "Aysel Məmmədova")
+    s = make_shoot(api, adm, cid, kind="reels_pack", duration_min=45, discount=5000, discount_note="dost qiyməti")
+    assert (s["total"], s["discount"], s["deposit_expected"]) == (10000, 5000, 5000)
+    mine = api.get(f"/api/me/shoots/{s['id']}", headers=bearer(tok)).json()
+    assert mine["discount"] == 5000 and "discount_note" not in mine
+    r = api.post(f"/api/admin/shoots/{s['id']}/close", json={"duration_min": 45, "discount": 7000,
+                                                            "paid_method": "card"}, headers=bearer(adm)).json()
+    assert r["total"] == 8000 and r["cashback_earned"] == 4000  # ilk çəkiliş: 50%
+
+
+def test_buffers_produce_conflict_warning(api):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Aysel Məmmədova")
+    first = make_shoot(api, adm, cid, starts_at=soon(hour=6), duration_min=60)  # 10:00 Bakı, yığışdırma standartda 0
+    assert first["prep_min"] == 15 and first["wrap_min"] == 0
+    clash = make_shoot(api, adm, cid, starts_at=soon(hour=7), duration_min=60)  # 11:00, hazırlıq 10:45-dən
+    assert [c["id"] for c in clash["conflicts"]] == [first["id"]]
+    # 13:00, buffer yoxdur: əvvəlkinin yığışdırması 12:30-da bitir
+    ok = make_shoot(api, adm, cid, starts_at=soon(hour=9), duration_min=60, prep_min=0, wrap_min=0)
+    assert ok["conflicts"] == []
+    q = api.post("/api/admin/shoots/quote", json=shoot_body(cid, starts_at=soon(hour=12)), headers=bearer(adm)).json()
+    assert q["conflicts"] == []
+
+
+def test_edit_client_writes_audit(api):
+    from models import AuditLog
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Aysel Məmmədova")
+    r = api.patch(f"/api/admin/clients/{cid}", json={"full_name": "Aysel Məmmədli", "phone": "050 111 22 33"},
+                  headers=bearer(adm))
+    assert r.status_code == 200 and r.json()["full_name"] == "Aysel Məmmədli"
+    assert api.patch("/api/admin/clients/9999", json={"phone": "1"}, headers=bearer(adm)).status_code == 404
+    with SessionLocal() as db:
+        row = db.scalar(select(AuditLog).where(AuditLog.entity == "client"))
+        assert row.before["full_name"] == "Aysel Məmmədova" and row.after["phone"] == "050 111 22 33"

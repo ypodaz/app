@@ -34,7 +34,7 @@ function Payment({ s }: { s: Shoot }) {
   const due = Math.max(0, s.total - used);
   const fromPkg = s.package_id != null;
   const rows: [string, number][] = [];
-  if (!fromPkg || s.price_base) rows.push([s.kind === 'reels_pack' ? 'Reels paketi' : 'Çəkiliş', s.price_base]);
+  if (!fromPkg || s.price_base) rows.push([s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : 'Çəkiliş', s.price_base]);
   if (s.price_extra_camera) rows.push(['Əlavə kamera', s.price_extra_camera]);
   if (s.price_editing) rows.push(['Montaj', s.price_editing]);
   if (s.price_reels) rows.push([`Reels · ${s.reels_count} əd.`, s.price_reels]);
@@ -45,7 +45,8 @@ function Payment({ s }: { s: Shoot }) {
       <div className="sum">
         {fromPkg && <div className="sum-r"><span>Çəkiliş</span><span>Paketdən {fmtHours(s.duration_min)} saat</span></div>}
         {rows.map(([l, v]) => <div key={l} className="sum-r"><span>{l}</span><span>{money(v)}</span></div>)}
-        {rows.length > 0 || fromPkg ? <div className="sum-r" style={{ fontWeight: 700 }}><span>{fromPkg ? 'Əlavələr' : 'Cəmi'}</span><span>{money(s.total)}</span></div> : null}
+        {rows.length > 0 || fromPkg ? <div className="sum-r" style={{ fontWeight: 700 }}><span>{fromPkg ? 'Əlavələr' : 'Cəmi'}</span><span>{money(s.discount > 0 ? rows.reduce((a, r) => a + r[1], 0) : s.total)}</span></div> : null}
+        {s.discount > 0 && <div className="sum-r pink"><span>Endirim</span><span>−{money(s.discount)}</span></div>}
         {used > 0 && <div className="sum-r pink"><span>Keşbekdən</span><span>−{money(used)}</span></div>}
         <div className="sum-r sum-tot">
           <span className="t13 muted">Ödəniləcək</span>
@@ -95,8 +96,8 @@ export function ShootDetail({ id }: { id: string }) {
             <dl className="dl">
               <div><dt>Xidmət</dt><dd>{serviceLabel(s)}</dd></div>
               <div><dt>Yer</dt><dd>{placeLabel(s)}</dd></div>
-              <div><dt>Kamera</dt><dd>{s.cameras} kamera</dd></div>
-              <div><dt>Montaj</dt><dd>{editLabel(s)}</dd></div>
+              {s.kind !== 'studio_rent' && <div><dt>Kamera</dt><dd>{s.cameras} kamera</dd></div>}
+              {s.kind !== 'studio_rent' && <div><dt>Montaj</dt><dd>{editLabel(s)}</dd></div>}
               {!s.mine && <div><dt>Çəkiliş sahibi</dt><dd>{s.who} · paket üzvü</dd></div>}
             </dl>
           </section>

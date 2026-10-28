@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { Logo } from './Logo';
 
-export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials';
+export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'report';
 
 const ITEMS: { key: AdminTab; label: string; icon: IconName; mobile: boolean }[] = [
   { key: 'panel', label: 'Panel', icon: 'grid', mobile: true },
@@ -10,6 +10,7 @@ const ITEMS: { key: AdminTab; label: string; icon: IconName; mobile: boolean }[]
   { key: 'clients', label: 'Müştərilər', icon: 'users', mobile: true },
   { key: 'packages', label: 'Paketlər', icon: 'building', mobile: true },
   { key: 'materials', label: 'Materiallar', icon: 'media', mobile: false },
+  { key: 'report', label: 'Hesabat', icon: 'chart', mobile: true },
 ];
 
 type Props = {
@@ -46,7 +47,7 @@ export function AdminShell({ active, title, actions, detail, hrefFor = (t) => `#
             <div className="top rs-head">
               <h1 className="h2 rs-title">{title}</h1>
               <div className="row rs-actions">
-                <a className="btn btn-cream btn-sm btn-auto rs-qr-m" href={qrHref}><Icon name="qr" size={18} /> QR oxut</a>
+                <a className="btn btn-cream btn-sm btn-auto rs-qr-m" href={qrHref} aria-label="QR oxut"><Icon name="qr" size={18} /><span className="rs-txt"> QR oxut</span></a>
                 {actions}
               </div>
             </div>

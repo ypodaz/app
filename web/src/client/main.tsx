@@ -5,6 +5,7 @@ import '../shared/ypod.css';
 import '../shared/responsive.css';
 import './client.css';
 import { Install, CodeEntry, InvalidInvite, Welcome } from './auth';
+import { AiChat } from './ai';
 import { Calendar } from './calendar';
 import { AuthCtx, Loading, TOKEN_KEY, useRoute } from './core';
 import { ShootDetail } from './detail';
@@ -21,6 +22,7 @@ type Stage = 'app' | 'welcome' | 'install';
 function Routes({ onLogout, pair, setPair, token }: { onLogout: () => void; pair: string | null; setPair: (c: string) => void; token: string }) {
   const [r0, r1] = useRoute();
   switch (r0) {
+    case 'ai': return <AiChat />;
     case 'calendar': return <Calendar />;
     case 'shoots': return r1 ? <ShootDetail id={r1} key={r1} /> : <Calendar />;
     case 'cashback': return <Cashback />;

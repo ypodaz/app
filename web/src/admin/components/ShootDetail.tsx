@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, Card, Icon, Pill, Sheet, formatHours, formatMoney } from '../../shared/ui';
 import { useAction, useAuth, useLoad } from '../ctx';
-import { bakuParts, dateShort, toIso } from '../format';
+import { bakuParts, busyRange, dateShort, toIso } from '../format';
 import type { Shoot } from '../types';
 import { Avatar, Err, Field, ShootTicket, depositPending } from './common';
 import { DepositSheet } from './DepositSheet';
@@ -29,7 +29,8 @@ export function ShootDetail({ id }: { id: number }) {
 
   const open = s.status === 'confirmed';
   const lines: [string, number][] = s.kind === 'reels_pack'
-    ? [['Reels Paketi', s.price_base]]
+    ? [['Reels paketi', s.price_base]]
+    : s.kind === 'studio_rent' ? [[`Studiya icarəsi · ${formatHours(s.duration_min)}`, s.price_base]]
     : [[s.package_id ? 'Paketdən saatlar' : `${s.cameras} kameralı ${formatHours(s.duration_min)} çəkiliş`, s.price_base], ['Əlavə kamera', s.price_extra_camera], ['Montaj', s.price_editing], [`Podcastdan Reels · ${s.reels_count} əd.`, s.price_reels]];
 
   return (
@@ -39,13 +40,20 @@ export function ShootDetail({ id }: { id: number }) {
         <span className="col grow" style={{ gap: 2 }}><span className="t15 w8">{s.client_name}</span><span className="t12 muted">Müştəri kartına keç</span></span>
         <Icon name="chevron" size={20} />
       </a>
-      <ShootTicket s={s}>{s.address && <span className="t12 muted">{s.address}</span>}</ShootTicket>
+      <ShootTicket s={s}>
+        {s.address && <span className="t12 muted">{s.address}</span>}
+        <span className="t12 muted">Studiya məşğul: {busyRange(bakuParts(s.starts_at).time, s.duration_min, s.prep_min, s.wrap_min)} (hazırlıq {s.prep_min} dəq, yığışdırma {s.wrap_min} dəq)</span>
+      </ShootTicket>
 
       <Card>
         <span className="lbl">Ödəniş</span>
         <div className="sum">
           {lines.filter(([, v]) => v > 0).map(([l, v]) => <div key={l} className="sum-r"><span className="soft">{l}</span><span>{formatMoney(v)}</span></div>)}
-          <div className="sum-r sum-tot"><span className="w8">Cəmi</span><span className="num-s">{formatMoney(s.total)}</span></div>
+          {s.discount > 0 && <>
+            <div className="sum-r"><span className="soft">Cəmi</span><span>{formatMoney(s.total + s.discount)}</span></div>
+            <div className="sum-r"><span className="soft">Endirim{s.discount_note ? ` · ${s.discount_note}` : ''}</span><span>{formatMoney(-s.discount)}</span></div>
+          </>}
+          <div className="sum-r sum-tot"><span className="w8">{s.discount > 0 ? 'Yekun' : 'Cəmi'}</span><span className="num-s">{formatMoney(s.total)}</span></div>
           {s.cashback_used > 0 && <div className="sum-r"><span className="soft">Keşbekdən</span><span>{formatMoney(-s.cashback_used)}</span></div>}
           {s.deposit_received_at && <div className="sum-r"><span className="row" style={{ gap: 6 }}><Pill status="confirmed">Beh alındı</Pill><span className="t12 muted">{dateShort(bakuParts(s.deposit_received_at).date)}</span></span><span>{formatMoney(s.deposit_amount)}</span></div>}
           {depositPending(s) && <div className="sum-r"><Pill status="deposit">Beh gözlənilir</Pill><span>{formatMoney(s.deposit_expected)}</span></div>}

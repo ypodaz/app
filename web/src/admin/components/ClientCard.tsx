@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Card, Icon, Sheet, formatMoney } from '../../shared/ui';
 import { useAction, useAuth, useLoad } from '../ctx';
 import { bakuParts, dateShort, parseAzn } from '../format';
@@ -11,10 +11,11 @@ const KIND: Record<LedgerRow['kind'], string> = {
 const azn = (q: number) => formatMoney(q).replace(' AZN', '');
 
 // B6c: müştəri kartı (mobil tam ekran, desktopda sağ panel).
-export function ClientCard({ id }: { id: number }) {
+export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => void }) {
   const { call } = useAuth();
   const { data: c, err, reload } = useLoad<ClientDetail>(`/clients/${id}`);
   const [cb, setCb] = useState(false);
+  const [edit, setEdit] = useState(false);
   const [inv, setInv] = useState<InviteOut | null>(null);
   const [copied, setCopied] = useState(false);
   const inviteAct = useAction();
@@ -32,10 +33,12 @@ export function ClientCard({ id }: { id: number }) {
       <div className="row" style={{ gap: 12 }}>
         <Avatar name={c.full_name} />
         <span className="col grow" style={{ gap: 2 }}>
-          <span className="h2" style={{ fontSize: 17 }}>{c.full_name}</span>
+          <span className="h2" style={{ fontSize: 17, overflowWrap: 'anywhere' }}>{c.full_name}</span>
           <span className="t13 soft">{c.phone || 'telefon yoxdur'} · {c.activated ? 'app-a qoşulub' : 'qoşulmayıb'}</span>
         </span>
+        <button type="button" className="iconbtn" aria-label="Redaktə et" title="Redaktə et" onClick={() => setEdit(true)}><Icon name="edit" size={20} /></button>
       </div>
+      {c.notes && <p className="t13 soft lh" style={{ overflowWrap: 'anywhere' }}>{c.notes}</p>}
       <a className="btn btn-primary btn-sm" href={`#/shoots/new?client=${c.id}`}><Icon name="plus" size={18} /> Çəkiliş əlavə et</a>
       {c.deposit_required && <div className="banner"><Icon name="alert" size={18} /><span><b>Beh mütləqdir</b> — müştəri əvvəl gəlməyib.</span></div>}
 
@@ -87,6 +90,7 @@ export function ClientCard({ id }: { id: number }) {
           <Button variant="out" small onClick={() => navigator.clipboard.writeText(inv.url).then(() => setCopied(true))}>{copied ? 'Kopyalandı' : 'Linki kopyala'}</Button>
         </div>
       )}
+      <EditSheet open={edit} c={c} onClose={() => setEdit(false)} onDone={() => { reload(); onChanged?.(); }} />
       <CashbackSheet open={cb} id={id} onClose={() => setCb(false)} onDone={reload} />
     </div>
   );
@@ -109,6 +113,27 @@ function CashbackSheet({ open, id, onClose, onDone }: { open: boolean; id: numbe
       <Field label="Səbəb" id="cb-n"><input id="cb-n" className="inp" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       <Err msg={err} />
       <Button disabled={!q || busy} onClick={submit}>Yaz</Button>
+    </Sheet>
+  );
+}
+
+function EditSheet({ open, c, onClose, onDone }: { open: boolean; c: ClientDetail; onClose: () => void; onDone: () => void }) {
+  const { call } = useAuth();
+  const { busy, err, setErr, run } = useAction();
+  const [name, setName] = useState(c.full_name);
+  const [phone, setPhone] = useState(c.phone);
+  const [notes, setNotes] = useState(c.notes ?? '');
+  useEffect(() => { if (open) { setName(c.full_name); setPhone(c.phone); setNotes(c.notes ?? ''); setErr(''); } }, [open]);
+  async function submit() {
+    if (await run(() => call(`/clients/${c.id}`, { method: 'PATCH', body: { full_name: name.trim(), phone: phone.trim(), notes: notes.trim() } })) !== undefined) { onClose(); onDone(); }
+  }
+  return (
+    <Sheet open={open} onClose={onClose} title="Müştərini redaktə et">
+      <Field label="Ad Soyad" id="ce-n"><input id="ce-n" className="inp" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <Field label="Telefon" id="ce-p"><input id="ce-p" className="inp" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+      <Field label="Qeyd" id="ce-q"><textarea id="ce-q" className="inp ta" value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+      <Err msg={err} />
+      <Button disabled={!name.trim() || busy} onClick={submit}>Yadda saxla</Button>
     </Sheet>
   );
 }

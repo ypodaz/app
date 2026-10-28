@@ -13,6 +13,7 @@ export function CloseShoot({ id }: { id: number }) {
   const client = useLoad<ClientDetail>(s ? `/clients/${s.client_id}` : null).data;
   const [dur, setDur] = useState<number | null>(null);
   const [cbText, setCbText] = useState('');
+  const [discText, setDiscText] = useState<string | null>(null);
   const [method, setMethod] = useState<'cash' | 'card'>('cash');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [qerr, setQerr] = useState('');
@@ -22,6 +23,8 @@ export function CloseShoot({ id }: { id: number }) {
   const minutes = dur ?? s?.duration_min ?? 60;
   const reels = s?.kind === 'reels_pack';
   const extra = parseAzn(cbText) ?? 0;
+  const discP = discText === null ? (s?.discount ?? 0) : discText.trim() ? parseAzn(discText) : 0;
+  const discBad = discP === null, disc = discP ?? 0;
 
   // Faktiki müddətlə yeni qiymət (keşbek 0: artıq istifadə olunanı server özü nəzərə alır)
   useEffect(() => {
@@ -31,10 +34,11 @@ export function CloseShoot({ id }: { id: number }) {
       call<Quote>('/shoots/quote', { body: {
         client_id: s.client_id, starts_at: s.starts_at, duration_min: minutes, kind: s.kind, tag: s.tag, location: s.location,
         cameras: s.cameras, editing: s.editing, reels_count: s.reels_count, package_id: s.package_id, cashback_use: 0, address: s.address,
+        discount: disc, prep_min: s.prep_min, wrap_min: s.wrap_min,
       } }).then((q) => live && (setQuote(q), setQerr(''))).catch((e) => live && (setQuote(null), setQerr(errMsg(e))));
     }, 250);
     return () => { live = false; clearTimeout(t); };
-  }, [s, minutes]);
+  }, [s, minutes, disc]);
 
   if (!s) return <AdminShell active="calendar" title="Çəkilişi bağla"><Err msg={shoot.err} /></AdminShell>;
 
@@ -44,7 +48,7 @@ export function CloseShoot({ id }: { id: number }) {
   const due = quote ? Math.max(0, quote.total - s.cashback_used - extra - deposit) : 0;
 
   async function close() {
-    const r = await act.run(() => call<CloseOut>(`/shoots/${id}/close`, { body: { duration_min: minutes, cashback_use: extra, paid_method: due > 0 ? method : null } }));
+    const r = await act.run(() => call<CloseOut>(`/shoots/${id}/close`, { body: { duration_min: minutes, cashback_use: extra, discount: disc, paid_method: due > 0 ? method : null } }));
     if (r) setDone(r);
   }
 
@@ -80,9 +84,13 @@ export function CloseShoot({ id }: { id: number }) {
           </Card>
         )}
         <Card>
+          <Field label="Endirim (AZN)" id="cl-disc" hint={discBad ? 'Məbləği düzgün yazın, məs. 50 və ya 12,5' : 'Boş qalsa endirim yoxdur.'}>
+            <input id="cl-disc" className={`inp${discBad ? ' inp-err' : ''}`} inputMode="decimal" value={discText ?? (s.discount ? aznInput(s.discount) : '')} onChange={(e) => setDiscText(e.target.value)} placeholder="0" />
+          </Field>
           {quote ? (
             <div className="sum">
-              <div className="sum-r sum-tot" style={{ borderTop: 0, paddingTop: 0 }}><span className="w8">{pkg ? 'Pullu əlavələr' : 'Cəmi'}</span><span className="num-s">{formatMoney(quote.total)}</span></div>
+              {quote.discount > 0 && <><div className="sum-r"><span>Cəmi</span><span>{formatMoney(quote.gross)}</span></div><div className="sum-r"><span>Endirim</span><span>{formatMoney(-quote.discount)}</span></div></>}
+              <div className="sum-r sum-tot" style={{ borderTop: 0, paddingTop: 0 }}><span className="w8">{pkg ? 'Pullu əlavələr' : quote.discount > 0 ? 'Yekun' : 'Cəmi'}</span><span className="num-s">{formatMoney(quote.total)}</span></div>
               {deposit > 0 && <div className="sum-r"><span>Beh ödənib</span><span>{formatMoney(deposit)}</span></div>}
               {s.cashback_used > 0 && <div className="sum-r"><span>Keşbekdən (əvvəl)</span><span>{formatMoney(-s.cashback_used)}</span></div>}
             </div>
@@ -107,7 +115,7 @@ export function CloseShoot({ id }: { id: number }) {
           </Card>
         )}
         <Err msg={act.err} />
-        <Button disabled={!quote || act.busy} onClick={close}><Icon name="check" size={20} /> Bağla</Button>
+        <Button disabled={!quote || discBad || act.busy} onClick={close}><Icon name="check" size={20} /> Bağla</Button>
       </div>
     </AdminShell>
   );

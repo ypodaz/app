@@ -51,6 +51,7 @@ export function relDay(iso: string): string {
 
 export function dur(min: number): string {
   if (min < 60) return `${min} dəq`;
+  if (min % 30) return `${Math.floor(min / 60)} saat ${min % 60} dəq`;
   return `${fmtHours(min)} saat`;
 }
 export function fmtHours(min: number): string {
@@ -65,17 +66,17 @@ export type Shoot = {
   id: number; package_id: number | null; starts_at: string; duration_min: number; kind: string; tag: string; location: string;
   address: string | null; cameras: number; editing: boolean; reels_count: number; title: string | null; status: string;
   production: string; delivery_on: string | null; price_base: number; price_editing: number; price_reels: number;
-  price_extra_camera: number; total: number; mine: boolean; who: string; cashback_used: number | null;
+  price_extra_camera: number; discount: number; total: number; mine: boolean; who: string; cashback_used: number | null;
   payment_line: string | null; studio_balance: number | null; deposit_expected: number | null;
   materials: { id: number; title: string; drive_url: string }[]; cashback_earned: number | null;
   cashback_expected: { amount: number; first_shoot: boolean } | null;
 };
 
 const TAG: Record<string, string> = { podcast: 'Podcast', reels: 'Reels', other: 'Digər' };
-export const serviceLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : `Çəkiliş · ${TAG[s.tag] ?? s.tag}`);
+export const serviceLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : `Çəkiliş · ${TAG[s.tag] ?? s.tag}`);
 export const placeLabel = (s: Shoot) => (s.location === 'studio' ? 'Studiyada' : s.address ? `Sizin məkanda · ${s.address}` : 'Sizin məkanda');
 export const editLabel = (s: Shoot) =>
-  s.kind === 'reels_pack' ? `${s.reels_count} Reels` : s.editing ? (s.reels_count ? `Montaj + ${s.reels_count} Reels` : 'Var · Reels yoxdur') : 'Yoxdur';
+  s.kind === 'studio_rent' ? '' : s.kind === 'reels_pack' ? `${s.reels_count} Reels` : s.editing ? (s.reels_count ? `Montaj + ${s.reels_count} Reels` : 'Var · Reels yoxdur') : 'Yoxdur';
 
 export type StatusKey = 'confirmed' | 'deposit' | 'done' | 'cancelled' | 'noshow';
 export function statusKey(s: Shoot): StatusKey {
@@ -111,3 +112,10 @@ export function downloadIcs(s: Shoot) {
 
 export const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 export const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+/** VAPID açarı (base64url) → pushManager.subscribe üçün bayt massivi. */
+export function urlBase64ToUint8Array(b64: string): Uint8Array {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}

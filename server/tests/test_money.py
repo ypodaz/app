@@ -144,3 +144,31 @@ def test_cancel_less_than_24h_and_no_show():
 def test_package_prices_match_site():
     months, prices = m.PACKAGES[20]
     assert months == 12 and prices[2] == 1440 * A
+
+
+def test_studio_rent_hourly_with_cashback():
+    p = m.price(kind="studio_rent", location="studio", cameras=0, duration_min=90, editing=False)
+    assert p.total == 75 * A
+    assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 750)
+    with pytest.raises(ValueError):
+        m.price(kind="studio_rent", location="studio", cameras=0, duration_min=60, editing=True)
+    with pytest.raises(ValueError):
+        m.price(kind="studio_rent", location="onsite", cameras=0, duration_min=60, editing=False)
+
+
+def test_discount_reels_pack_150_to_100():
+    p = m.price(kind="reels_pack", location="studio", cameras=1, duration_min=45, editing=False, discount=50 * A)
+    assert (p.gross, p.total) == (150 * A, 100 * A)
+    assert m.deposit_expected(p.total, 0, False) == 50 * A
+    assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 10 * A)
+    with pytest.raises(ValueError):
+        m.price(kind="reels_pack", location="studio", cameras=1, duration_min=60, editing=False, discount=151 * A)
+    with pytest.raises(ValueError):
+        m.price(kind="reels_pack", location="studio", cameras=1, duration_min=50, editing=False)
+
+
+def test_discount_on_package_extras():
+    p = m.price(kind="shoot", location="studio", cameras=1, duration_min=60, editing=True, package_cameras=1,
+                discount=20 * A)
+    assert p.total == 80 * A
+    assert m.cashback_earned(p, from_package=True, first_shoot=False) == ("earn", 8 * A)

@@ -86,3 +86,14 @@ export function initials(name: string): string {
 export function range(fromDate: string, toDateExclusive: string): string {
   return `from=${encodeURIComponent(toIso(fromDate, '00:00'))}&to=${encodeURIComponent(toIso(toDateExclusive, '00:00'))}`;
 }
+
+/** "09:45" + dəqiqə → "10:15" (gecəyarısı dövrəsi ilə). */
+export function addMin(time: string, min: number): string {
+  const m = (((minutesOf(time) + min) % 1440) + 1440) % 1440;
+  return `${p2(Math.floor(m / 60))}:${p2(m % 60)}`;
+}
+
+/** Studiyanın məşğul aralığı: başlanğıc − hazırlıq … bitmə + yığışdırma ("09:45–11:30"). */
+export function busyRange(time: string, dur: number, prep: number, wrap: number): string {
+  return `${addMin(time, -prep)}–${addMin(time, dur + wrap)}`;
+}

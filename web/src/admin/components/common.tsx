@@ -5,6 +5,11 @@ import type { Shoot } from '../types';
 
 export const TAG: Record<string, string> = { podcast: 'Podcast', reels: 'Reels', other: 'Digər' };
 
+/** "Çəkiliş · Podcast" / "Reels paketi" / "Studiya icarəsi" */
+export function serviceName(s: Pick<Shoot, 'kind' | 'tag'>): string {
+  return s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : `Çəkiliş · ${TAG[s.tag]}`;
+}
+
 export function Err({ msg }: { msg: string }) {
   return msg ? <p className="err" role="alert">{msg}</p> : null;
 }
@@ -44,8 +49,9 @@ export function ShootPill({ s }: { s: Shoot }) {
 
 /** "Çəkiliş · Podcast · Studiyada · 2 kamera · montaj" */
 export function shootDesc(s: Shoot): string {
-  if (s.kind === 'reels_pack') return `Reels Paketi · ${s.location === 'studio' ? 'Studiyada' : 'Məkanda'}`;
-  return ['Çəkiliş', TAG[s.tag], s.location === 'studio' ? 'Studiyada' : 'Məkanda', `${s.cameras} kamera`, s.editing && 'montaj', s.package_id && 'paketdən']
+  if (s.kind === 'studio_rent') return 'Studiya icarəsi';
+  if (s.kind === 'reels_pack') return `Reels paketi · ${s.location === 'studio' ? 'Studiyada' : 'Məkanda'}`;
+  return [serviceName(s), s.location === 'studio' ? 'Studiyada' : 'Məkanda', `${s.cameras} kamera`, s.editing && 'montaj', s.package_id && 'paketdən']
     .filter(Boolean).join(' · ');
 }
 

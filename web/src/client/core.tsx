@@ -73,6 +73,8 @@ const X = {
   pct: 'M19 5 5 19M7.5 8.5a1.5 1.5 0 1 0 0-.01zM16.5 17.5a1.5 1.5 0 1 0 0-.01z',
   dl: 'M12 4v11M7 11l5 5 5-5M5 20h14',
   wifi: 'M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.01',
+  send: 'M4 12l16-8-6 16-2-6z',
+  retry: 'M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4',
   mic: 'M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
 } as const;
 export type XName = keyof typeof X;
@@ -81,10 +83,10 @@ export function XIcon({ name, size = 20, sw }: { name: XName; size?: number; sw?
 }
 
 // --- ümumi parçalar ---
-export const TAB_HREF: Record<ClientTab, string> = { home: '#/', calendar: '#/calendar', ai: '#/', materials: '#/materials' };
+export const TAB_HREF: Record<ClientTab, string> = { home: '#/', calendar: '#/calendar', ai: '#/ai', materials: '#/materials' };
 
 export function Screen({ tab, children }: { tab: ClientTab; children: ReactNode }) {
-  return <ClientShell active={tab} hrefFor={(t) => TAB_HREF[t]}>{children}</ClientShell>;
+  return <ClientShell active={tab} showAi hrefFor={(t) => TAB_HREF[t]}>{children}</ClientShell>;
 }
 
 export function TopBar({ title, back = '#/' }: { title: string; back?: string }) {

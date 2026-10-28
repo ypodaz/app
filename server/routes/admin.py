@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session as DB
 import settings
 from auth import create_invite, current_admin, new_card_code
 from db import get_db
-from models import Admin, CashbackLedger, Client, Package, PackageHoursLedger, PackageMember, Shoot
+from models import Admin, AuditLog, CashbackLedger, Client, Package, PackageHoursLedger, PackageMember, Shoot
 from views import baku_today, day_bounds, iso
 
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
@@ -20,8 +20,15 @@ class ClientIn(BaseModel):
     phone: str = Field(default="", max_length=32)
 
 
+class ClientEdit(BaseModel):
+    full_name: str | None = Field(default=None, min_length=2, max_length=120)
+    phone: str | None = Field(default=None, max_length=32)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 def client_out(c: Client) -> dict:
-    return {"id": c.id, "full_name": c.full_name, "phone": c.phone, "activated": c.activated_at is not None}
+    return {"id": c.id, "full_name": c.full_name, "phone": c.phone, "notes": c.notes,
+            "activated": c.activated_at is not None}
 
 
 def wa_number(phone: str) -> str:
@@ -63,6 +70,23 @@ def list_clients(db: DB = Depends(get_db)):
 def add_client(body: ClientIn, db: DB = Depends(get_db)):
     c = Client(full_name=body.full_name.strip(), phone=body.phone.strip(), card_code=new_card_code())
     db.add(c)
+    db.commit()
+    return client_out(c)
+
+
+@router.patch("/clients/{client_id}")
+def edit_client(client_id: int, body: ClientEdit, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
+    """Ad, telefon və qeydi dəyişir; köhnə və yeni dəyər jurnala yazılır."""
+    c = db.get(Client, client_id)
+    if not c:
+        raise HTTPException(404, "Müştəri tapılmadı")
+    changes = {k: v.strip() for k, v in body.model_dump(exclude_none=True).items()}
+    before = {k: getattr(c, k) for k in changes}
+    for k, v in changes.items():
+        setattr(c, k, v)
+    if changes:
+        db.add(AuditLog(admin_id=admin.id, action="edit", entity="client", entity_id=c.id,
+                        before=before, after=changes))
     db.commit()
     return client_out(c)
 

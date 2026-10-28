@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { AdminShell, Button, Icon } from '../../shared/ui';
 import { BlockSheet } from '../components/BlockSheet';
-import { Err, ShootRow, TAG } from '../components/common';
+import { Err, ShootRow, serviceName } from '../components/common';
 import { useLoad } from '../ctx';
 import { addDays, bakuNow, toIso, bakuParts, bakuToday, dateLong, dateShort, dayNum, dayShort, minutesOf, range, timeRange, weekStart } from '../format';
 import { go, useDesktop } from '../router';
@@ -39,12 +39,19 @@ function Column({ date, shoots, blocks, onBlock }: { date: string; shoots: Shoot
       })}
       {shoots.filter((s) => s.status === 'confirmed' || s.status === 'completed').map((s) => {
         const top = Math.max(0, ((minutesOf(bakuParts(s.starts_at).time) - H0 * 60) / 60) * PX);
+        const H = (H1 - H0) * PX;
+        const pre = (s.prep_min / 60) * PX, post = (s.wrap_min / 60) * PX, evH = Math.max(24, (s.duration_min / 60) * PX - 2);
         const cls = s.status === 'completed' ? 'ax-ev-done' : depositPending(s) ? 'ax-ev-beh' : 'ax-ev-ok';
+        const preTop = Math.max(0, top - pre), postTop = top + evH + 2;
         return (
-          <a key={s.id} href={`#/shoots/${s.id}`} className={`ax-ev ${cls}`} style={{ top, height: Math.max(24, (s.duration_min / 60) * PX - 2) }}>
-            <span className="t13 w8">{s.client_name}</span>
-            <span className="t12">{timeRange(s.starts_at, s.duration_min)} · {s.kind === 'reels_pack' ? 'Reels Paketi' : TAG[s.tag]}</span>
-          </a>
+          <Fragment key={s.id}>
+            {pre > 0 && top > preTop && <div className="ax-pad" aria-hidden="true" title={`Hazırlıq ${s.prep_min} dəq`} style={{ top: preTop, height: top - preTop }} />}
+            {post > 0 && postTop < H && <div className="ax-pad" aria-hidden="true" title={`Yığışdırma ${s.wrap_min} dəq`} style={{ top: postTop, height: Math.min(post, H - postTop) }} />}
+            <a href={`#/shoots/${s.id}`} className={`ax-ev ${cls}`} style={{ top, height: evH }}>
+              <span className="t13 w8">{s.client_name}</span>
+              <span className="t12">{timeRange(s.starts_at, s.duration_min)} · {serviceName(s)}</span>
+            </a>
+          </Fragment>
         );
       })}
       {nowTop >= 0 && nowTop <= (H1 - H0) * PX && <div className="ax-now" style={{ top: nowTop }} aria-label={`İndiki vaxt ${now.time}`} />}
@@ -78,7 +85,7 @@ export function Calendar({ query, detail }: { query: URLSearchParams; detail?: R
   const addHref = `#/shoots/new?date=${view === 'day' ? d : today}`;
 
   return (
-    <AdminShell active="calendar" title="Təqvim" detail={detail} actions={<><Button variant="out" small auto onClick={() => { setPicked(null); setSheet(true); }}><Icon name="lock" size={18} /> Vaxtı blokla</Button><a className="btn btn-primary btn-sm btn-auto" href={addHref}><Icon name="plus" size={18} strokeWidth={2.4} /> Çəkiliş əlavə et</a></>}>
+    <AdminShell active="calendar" title="Təqvim" detail={detail} actions={<><Button variant="out" small auto aria-label="Vaxtı blokla" onClick={() => { setPicked(null); setSheet(true); }}><Icon name="lock" size={18} /><span className="rs-txt"> Vaxtı blokla</span></Button><a className="btn btn-primary btn-sm btn-auto" href={addHref}><Icon name="plus" size={18} strokeWidth={2.4} /><span>Çəkiliş<span className="rs-txt-lg"> əlavə et</span></span></a></>}>
       <div className="segw" role="group" aria-label="Görünüş" style={{ maxWidth: 240 }}>
         {(['day', 'week'] as const).map((v) => <button key={v} type="button" className={`seg${view === v ? ' seg-on' : ''}`} aria-pressed={view === v} onClick={() => nav(view === 'week' && v === 'day' ? (today >= days[0] && today <= days[6] ? today : days[0]) : d, v)}>{v === 'day' ? 'Gün' : 'Həftə'}</button>)}
       </div>

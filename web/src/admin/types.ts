@@ -1,11 +1,11 @@
 // API cavablarının tipləri (server/routes/admin*.py). Məbləğlər tam qəpikdir.
-export type Client = { id: number; full_name: string; phone: string; activated: boolean };
+export type Client = { id: number; full_name: string; phone: string; notes?: string | null; activated: boolean };
 export type ClientRow = Client & { cashback_balance: number; package: { title: string; minutes_left: number } | null; last_shoot_at: string | null };
 export type Block = { id: number; starts_at: string; ends_at: string; reason: string | null };
 export type InviteOut = { url: string; whatsapp_url: string | null };
 
 export type ShootStatus = 'confirmed' | 'completed' | 'cancelled' | 'no_show';
-export type Kind = 'shoot' | 'reels_pack';
+export type Kind = 'shoot' | 'reels_pack' | 'studio_rent';
 export type Tag = 'podcast' | 'reels' | 'other';
 export type Location = 'studio' | 'onsite';
 export type Production = 'none' | 'editing' | 'ready';
@@ -17,7 +17,7 @@ export type Shoot = {
   starts_at: string; duration_min: number; kind: Kind; tag: Tag; location: Location; address: string | null;
   cameras: number; editing: boolean; reels_count: number; title: string | null; status: ShootStatus;
   production: Production; delivery_on: string | null;
-  price_base: number; price_editing: number; price_reels: number; price_extra_camera: number; total: number;
+  price_base: number; price_editing: number; price_reels: number; price_extra_camera: number; discount: number; discount_note: string | null; prep_min: number; wrap_min: number; total: number;
   note: string | null; source_note: string | null; cashback_used: number;
   deposit_expected: number; deposit_amount: number; deposit_received_at: string | null; deposit_waived: boolean;
   paid_at_studio: number; paid_method: 'cash' | 'card' | null; closed_at: string | null;
@@ -42,7 +42,12 @@ export type ClientDetail = Client & {
 
 export type Dashboard = { deposit_pending: Shoot[]; today: Shoot[]; unclosed_count: number; awaiting_material_count: number };
 
+export type Conflict =
+  | { type: 'shoot'; id: number; client_id: number; starts_at: string; duration_min: number }
+  | { type: 'block'; id: number; starts_at: string; ends_at: string; reason: string | null };
+
 export type Quote = {
-  base: number; editing: number; reels: number; extra_camera: number; total: number; deposit_expected: number;
+  base: number; editing: number; reels: number; extra_camera: number; gross: number; discount: number; total: number; deposit_expected: number;
+  conflicts: Conflict[];
   cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; deposit_required: boolean;
 };

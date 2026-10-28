@@ -4,15 +4,18 @@ Bütün məbləğlər qəpiklə tam ədəddir (7550 = 75,50 AZN).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session as DB
 
 import booking
 import money
+import push
+import settings
 from auth import create_pair_code, current_client, digest
 from db import get_db, now
-from models import (CashbackLedger, Client, Notification, Package, PackageHoursLedger, PackageMember, Session,
-                    Shoot)
+from models import (CashbackLedger, Client, Notification, Package, PackageHoursLedger, PackageMember,
+                    PushSubscription, Session, Shoot)
 from views import baku_today, iso, member_package_ids, materials_of, payment_line, shoot_core, studio_balance
 
 router = APIRouter(prefix="/api/me")
@@ -40,7 +43,7 @@ def shoots_view(db: DB, client: Client, shoots: list[Shoot]) -> list[dict]:
         expected = None
         if mine and s.status == "confirmed":
             # bağlananda yazılacaq keşbekin proqnozu: ilk çəkilişdə 50%, sonra 10%
-            p = money.Price(s.price_base, s.price_editing, s.price_reels, s.price_extra_camera)
+            p = money.Price(s.price_base, s.price_editing, s.price_reels, s.price_extra_camera, s.discount)
             kind, amount = money.cashback_earned(p, from_package=s.package_id is not None,
                                                  first_shoot=booking.is_first_shoot(db, client, s))
             expected = {"amount": amount, "first_shoot": kind == "earn_first"}
@@ -149,6 +152,35 @@ def notifications(client: Client = Depends(current_client), db: DB = Depends(get
 def notifications_read(client: Client = Depends(current_client), db: DB = Depends(get_db)):
     db.execute(update(Notification).where(Notification.client_id == client.id, Notification.read_at.is_(None))
                .values(read_at=now()))
+    db.commit()
+    return {"ok": True}
+
+
+class PushIn(BaseModel):
+    endpoint: str = Field(min_length=10, max_length=1000, pattern=r"^https://")
+    p256dh: str = Field(min_length=10, max_length=255)
+    auth: str = Field(min_length=4, max_length=255)
+
+
+@router.get("/push")
+def push_info(endpoint: str = "", client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    """VAPID açarı (boşdursa push hələ qoşulmayıb) və bu cihazın abunə olub-olmadığı."""
+    on = bool(endpoint) and db.scalar(select(PushSubscription.id).where(
+        PushSubscription.endpoint == endpoint, PushSubscription.client_id == client.id)) is not None
+    return {"public_key": settings.VAPID_PUBLIC_KEY, "subscribed": on}
+
+
+@router.post("/push")
+def push_subscribe(body: PushIn, client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    push.subscribe(db, client.id, body.endpoint, body.p256dh, body.auth)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/push/off")
+def push_unsubscribe(body: PushIn, client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    db.execute(delete(PushSubscription).where(PushSubscription.endpoint == body.endpoint,
+                                              PushSubscription.client_id == client.id))
     db.commit()
     return {"ok": True}
 

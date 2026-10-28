@@ -10,4 +10,4 @@ export { Pill, type PillStatus } from './Pill';
 export { Segmented } from './Segmented';
 export { Sheet } from './Sheet';
 export { Stat } from './Stat';
-export { Stepper, formatHours } from './Stepper';
+export { Stepper, formatHours, formatMin } from './Stepper';

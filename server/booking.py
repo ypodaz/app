@@ -5,18 +5,18 @@ Hər funksiya commit etmir, route bir əməliyyatı bir tranzaksiyada bağlayır
 """
 
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import money
 from db import aware, now
-from models import (AuditLog, CashbackLedger, Client, Notification, Package, PackageHoursLedger,
+from models import (AuditLog, Block, CashbackLedger, Client, Notification, Package, PackageHoursLedger,
                     PackageMember, Shoot)
 
 MONEY_FIELDS = ("status", "total", "cashback_used", "deposit_expected", "deposit_amount", "deposit_waived",
-                "paid_at_studio", "retained_amount", "refund_amount", "duration_min", "starts_at")
+                "paid_at_studio", "retained_amount", "refund_amount", "duration_min", "starts_at", "discount")
 
 
 class Rejected(ValueError):
@@ -54,7 +54,7 @@ def _price(s: Shoot, pkg: Package | None) -> money.Price:
     try:
         return money.price(kind=s.kind, location=s.location, cameras=s.cameras, duration_min=s.duration_min,
                            editing=s.editing, reels_count=s.reels_count,
-                           package_cameras=pkg.cameras if pkg else None)
+                           package_cameras=pkg.cameras if pkg else None, discount=s.discount)
     except ValueError as e:
         raise Rejected(str(e)) from e
 
@@ -99,19 +99,62 @@ def _require(s: Shoot, *statuses: str) -> None:
         raise Rejected("Bu çəkilişin vəziyyəti bu əməliyyata imkan vermir")
 
 
+def _check_buffer(prep_min: int, wrap_min: int) -> None:
+    for v in (prep_min, wrap_min):
+        if not 0 <= v <= 240 or v % 5:
+            raise Rejected("Hazırlıq və yığışdırma 0–240 dəqiqə, 5 dəqiqə addımla olmalıdır")
+
+
+def busy_span(s: Shoot) -> tuple[datetime, datetime]:
+    """Studiyanın məşğul olduğu aralıq: hazırlıqdan yığışdırmanın sonuna qədər."""
+    start = aware(s.starts_at)
+    return (start - timedelta(minutes=s.prep_min),
+            start + timedelta(minutes=s.duration_min + s.wrap_min))
+
+
+def conflicts(db: DB, *, starts_at: datetime, duration_min: int, prep_min: int, wrap_min: int,
+              exclude_id: int | None = None) -> list[dict]:
+    """Bu vaxtla üst-üstə düşən çəkilişlər və bloklar (hazırlıq/yığışdırma daxil).
+    Yalnız xəbərdarlıqdır, yaratmağa mane olmur."""
+    start = aware(starts_at) - timedelta(minutes=prep_min)
+    end = aware(starts_at) + timedelta(minutes=duration_min + wrap_min)
+    out = []
+    near = db.scalars(select(Shoot).where(Shoot.status == "confirmed",
+                                          Shoot.starts_at < end + timedelta(hours=6),
+                                          Shoot.starts_at > start - timedelta(hours=12)))
+    for s in near:
+        if s.id == exclude_id:
+            continue
+        a, b = busy_span(s)
+        if a < end and start < b:
+            out.append({"type": "shoot", "id": s.id, "client_id": s.client_id,
+                        "starts_at": aware(s.starts_at).isoformat(), "duration_min": s.duration_min})
+    for bl in db.scalars(select(Block).where(Block.starts_at < end, Block.ends_at > start)):
+        out.append({"type": "block", "id": bl.id, "starts_at": aware(bl.starts_at).isoformat(),
+                    "ends_at": aware(bl.ends_at).isoformat(), "reason": bl.reason})
+    return out
+
+
 def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: datetime, duration_min: int,
                  kind: str, tag: str, location: str, cameras: int, editing: bool, reels_count: int = 0,
                  package_id: int | None = None, cashback_use: int = 0, address: str | None = None,
-                 title: str | None = None, note: str | None = None, source_note: str | None = None) -> Shoot:
+                 title: str | None = None, note: str | None = None, source_note: str | None = None,
+                 discount: int = 0, discount_note: str | None = None, prep_min: int = 15,
+                 wrap_min: int = 0) -> Shoot:
     client = db.get(Client, client_id)
     if not client:
         raise Rejected("Müştəri tapılmadı")
-    if kind == "reels_pack":
-        duration_min, editing, reels_count = 60, False, 0
+    _check_buffer(prep_min, wrap_min)
+    if kind in ("reels_pack", "studio_rent"):
+        editing, reels_count = False, 0
+    if kind == "studio_rent":
+        cameras, location, address = 0, "studio", None
     pkg = _usable_package(db, package_id, client_id, starts_at.date(), duration_min) if package_id else None
     s = Shoot(client_id=client_id, package_id=package_id, kind=kind, tag=tag, location=location, address=address,
               starts_at=starts_at, duration_min=duration_min, cameras=cameras, editing=editing,
-              reels_count=reels_count, title=title, note=note, source_note=source_note, created_by=admin_id)
+              reels_count=reels_count, title=title, note=note, source_note=source_note, created_by=admin_id,
+              discount=discount, discount_note=(discount_note or None) if discount else None,
+              prep_min=prep_min, wrap_min=wrap_min)
     _apply_price(s, _price(s, pkg))
     db.add(s)
     db.flush()
@@ -156,14 +199,15 @@ def is_first_shoot(db: DB, client: Client, s: Shoot) -> bool:
 
 
 def close_shoot(db: DB, admin_id: int | None, s: Shoot, *, duration_min: int, paid_method: str | None,
-                cashback_use: int = 0) -> int:
+                cashback_use: int = 0, discount: int | None = None) -> int:
     """Çəkilişi bağlayır: faktiki müddətlə qiymət yenilənir, paket saatı çıxılır, keşbek yazılır.
-    Yazılan keşbeki qaytarır."""
+    discount verilirsə, endirim dəyişdirilir. Yazılan keşbeki qaytarır."""
     _require(s, "confirmed")
     before = _snapshot(s)
     pkg = db.get(Package, s.package_id) if s.package_id else None
-    if s.kind != "reels_pack":
-        s.duration_min = duration_min
+    s.duration_min = duration_min
+    if discount is not None:
+        s.discount = discount
     p = _price(s, pkg)
     if p.total < s.cashback_used + (s.deposit_amount if s.deposit_received_at else 0):
         raise Rejected("Yeni məbləğ artıq ödəniləndən azdır, əvvəl məbləği yoxlayın")

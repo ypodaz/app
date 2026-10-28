@@ -65,7 +65,7 @@ def shoot_core(s: Shoot) -> dict:
         "editing": s.editing, "reels_count": s.reels_count, "title": s.title, "status": s.status,
         "production": s.production, "delivery_on": s.delivery_on,
         "price_base": s.price_base, "price_editing": s.price_editing, "price_reels": s.price_reels,
-        "price_extra_camera": s.price_extra_camera, "total": s.total,
+        "price_extra_camera": s.price_extra_camera, "discount": s.discount, "total": s.total,
     }
 
 

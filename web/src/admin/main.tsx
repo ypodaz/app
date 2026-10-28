@@ -5,6 +5,7 @@ import '../shared/ypod.css';
 import '../shared/responsive.css';
 import './admin.css';
 import { AdminShell } from '../shared/ui';
+import { AssistantButton } from './components/Assistant';
 import { BackLink } from './components/common';
 import { ShootDetail } from './components/ShootDetail';
 import { AuthProvider, makeCall, useLoad } from './ctx';
@@ -17,6 +18,7 @@ import { Login } from './pages/Login';
 import { Materials } from './pages/Materials';
 import { PackageForm, Packages } from './pages/Packages';
 import { Panel } from './pages/Panel';
+import { Report } from './pages/Report';
 import { Scan } from './pages/Scan';
 import { ShootForm } from './pages/ShootForm';
 import { useDesktop, useRoute } from './router';
@@ -52,6 +54,7 @@ function Routes() {
       return <ShootPage key={num} id={num} />;
     case 'packages': return b === 'new' ? <PackageForm /> : <Packages />;
     case 'materials': return <Materials />;
+    case 'report': return <Report />;
   }
   return <Panel />;
 }
@@ -63,7 +66,7 @@ function App() {
     return token ? { call: makeCall(token, signOut), signOut } : null;
   }, [token]);
   if (!auth) return <Login onToken={(t) => { storeToken(KEY, t); setToken(t); }} />;
-  return <AuthProvider value={auth}><Routes /></AuthProvider>;
+  return <AuthProvider value={auth}><Routes /><AssistantButton /></AuthProvider>;
 }
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

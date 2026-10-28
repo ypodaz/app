@@ -30,9 +30,9 @@ export function TicketCard({ s, showWho }: { s: Shoot; showWho?: boolean }) {
 
 export function Chips({ s }: { s: Shoot }) {
   const list: { icon: IconName | 'mic'; text: string }[] = [
-    { icon: 'mic', text: s.kind === 'reels_pack' ? 'Reels paketi' : s.tag === 'podcast' ? 'Podcast' : serviceLabel(s).replace('Çəkiliş · ', '') },
+    { icon: 'mic', text: s.kind !== 'shoot' ? serviceLabel(s) : s.tag === 'podcast' ? 'Podcast' : serviceLabel(s).replace('Çəkiliş · ', '') },
     { icon: 'pin', text: s.location === 'studio' ? 'Studiyada' : 'Sizin məkanda' },
-    { icon: 'camera', text: `${s.cameras} kamera` },
+    ...(s.kind !== 'studio_rent' ? [{ icon: 'camera' as const, text: `${s.cameras} kamera` }] : []),
     ...(s.editing ? [{ icon: 'scissors' as const, text: 'Montaj' }] : []),
   ];
   return (
