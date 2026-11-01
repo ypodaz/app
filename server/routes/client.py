@@ -3,6 +3,8 @@
 Bütün məbləğlər qəpiklə tam ədəddir (7550 = 75,50 AZN).
 """
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Literal
 
@@ -17,10 +19,11 @@ import push
 import settings
 from auth import create_pair_code, current_client, digest
 from db import get_db, now
-from models import (Campaign, CashbackLedger, Client, Notification, Package, PackageHoursLedger, PackageMember,
+from models import (Campaign, CashbackLedger, Client, Material, Notification, Package, PackageHoursLedger, PackageMember,
                     PushSubscription, Session, Shoot)
 from routes.admin import ProfileIn, apply_profile
-from views import baku_today, iso, member_package_ids, materials_of, payment_line, shoot_core, studio_balance
+from views import (baku_today, iso, material_out, member_package_ids, materials_of, payment_line, shoot_core,
+                   short_name, studio_balance)
 
 router = APIRouter(prefix="/api/me")
 
@@ -54,7 +57,10 @@ def shoots_view(db: DB, client: Client, shoots: list[Shoot]) -> list[dict]:
             expected = {"amount": amount, "first_shoot": kind == "earn_first"}
         out.append({
             "cashback_expected": expected,
-            **shoot_core(s), "mine": mine, "who": names[s.client_id].split()[0],
+            **shoot_core(s), "mine": mine, "who": short_name(names[s.client_id]),
+            "confirmed_at": iso(s.created_at),
+            # ləğv olunmuş çəkilişdə qaytarılan beh (yoxdursa null)
+            "refund_amount": s.refund_amount if s.status == "cancelled" and s.refund_amount > 0 else None,
             "cashback_used": s.cashback_used if mine else None,
             "payment_line": payment_line(s) if mine else None,
             "studio_balance": studio_balance(s) if mine else None,
@@ -90,9 +96,27 @@ def home(client: Client = Depends(current_client), db: DB = Depends(get_db)):
     pkg = active_package(db, client)
     unread = db.scalar(select(func.count()).select_from(Notification).where(Notification.client_id == client.id,
                                                   Notification.read_at.is_(None)))
+    # təklif: son 14 gündə gələn əl ilə kampaniya (avtomatik mesajlar təklif sayılmır)
+    offer = db.execute(select(Notification, Campaign.id).join(
+        Campaign, Campaign.id == Notification.payload["campaign_id"].as_integer())
+        .where(Notification.client_id == client.id, Notification.type == "campaign", Campaign.kind == "manual",
+               Notification.created_at >= now() - timedelta(days=14))
+        .order_by(Notification.id.desc()).limit(1)).first()
+    mat = db.execute(select(Material, Shoot.title).join(Shoot, Shoot.id == Material.shoot_id)
+                     .where(Shoot.client_id == client.id, Shoot.status == "completed")
+                     .order_by(Material.created_at.desc(), Material.id.desc()).limit(1)).first()
+    code = growth.referral_code(db, client)
+    db.commit()
+    filled = sum(1 for f in growth.PROFILE_FIELDS if getattr(client, f))
     return {"full_name": client.full_name, "cashback_balance": booking.cashback_balance(db, client.id),
             "next_shoot": shoots_view(db, client, [nxt])[0] if nxt else None,
-            "package": package_brief(db, pkg) if pkg else None, "unread_notifications": unread}
+            "package": package_brief(db, pkg) if pkg else None, "unread_notifications": unread,
+            "active_offer": {"id": offer[1], "title": offer[0].payload.get("title"),
+                             "body": offer[0].payload.get("body")} if offer else None,
+            "last_material": {**material_out(mat[0]), "shoot_id": mat[0].shoot_id, "shoot_title": mat[1]}
+            if mat else None,
+            "profile_pct": 100 * filled // len(growth.PROFILE_FIELDS),
+            "referral_code": code, "cashback_min_use": money.CASHBACK_MIN_USE}
 
 
 @router.get("/shoots")
@@ -138,19 +162,26 @@ def my_package(client: Client = Depends(current_client), db: DB = Depends(get_db
 
 @router.get("/materials")
 def my_materials(client: Client = Depends(current_client), db: DB = Depends(get_db)):
+    """Materialı olan çəkilişlər + materialı hələ yoxdur, montajda olanlar (delivery_on ilə)."""
     rows = db.scalars(select(Shoot).where(Shoot.client_id == client.id, Shoot.status == "completed")
                       .order_by(Shoot.starts_at.desc())).all()
     mats = materials_of(db, [s.id for s in rows])
     return [{"shoot_id": s.id, "title": s.title, "starts_at": iso(s.starts_at), "production": s.production,
-             "materials": mats[s.id]} for s in rows if mats[s.id]]
+             "delivery_on": s.delivery_on, "materials": mats[s.id]}
+            for s in rows if mats[s.id] or (s.editing and s.production != "ready")]
 
 
 @router.get("/notifications")
 def notifications(client: Client = Depends(current_client), db: DB = Depends(get_db)):
-    rows = db.scalars(select(Notification).where(Notification.client_id == client.id)
-                      .order_by(Notification.id.desc()).limit(50))
+    rows = list(db.scalars(select(Notification).where(Notification.client_id == client.id)
+                           .order_by(Notification.id.desc()).limit(50)))
+    ids = {n.payload["shoot_id"] for n in rows if isinstance(n.payload.get("shoot_id"), int)}
+    shoots = {s.id: s for s in db.scalars(select(Shoot).where(Shoot.id.in_(ids)))} if ids else {}
+    # «Şənbə çəkilişiniz var · 31 okt, şənbə · 14:00 · Podcast» üçün çəkilişin vaxtı və növü
     return [{"id": n.id, "type": n.type, "payload": n.payload, "created_at": iso(n.created_at),
-             "read_at": iso(n.read_at)} for n in rows]
+             "read_at": iso(n.read_at),
+             "shoot": {"starts_at": iso(shoots[n.payload["shoot_id"]].starts_at), "tag": shoots[n.payload["shoot_id"]].tag}
+             if n.payload.get("shoot_id") in shoots else None} for n in rows]
 
 
 @router.post("/notifications/read")
@@ -232,7 +263,7 @@ def my_referral(client: Client = Depends(current_client), db: DB = Depends(get_d
     db.commit()
     invited = db.scalars(select(Client).where(Client.referred_by_id == client.id).order_by(Client.id)).all()
     return {"code": code, "bonus": money.REFERRAL_BONUS,
-            "invited": [{"name": c.full_name.split()[0], "rewarded": c.referral_rewarded_at is not None}
+            "invited": [{"name": short_name(c.full_name), "rewarded": c.referral_rewarded_at is not None}
                         for c in invited]}
 
 

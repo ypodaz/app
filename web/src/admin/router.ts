@@ -33,3 +33,5 @@ export function useMedia(q: string): boolean {
   return m;
 }
 export const useDesktop = () => useMedia('(min-width:1024px)');
+/** ≥640px: planşet və kompüter (vaxt şəbəkəsi, detal paneli). */
+export const useWide = () => useMedia('(min-width:640px)');

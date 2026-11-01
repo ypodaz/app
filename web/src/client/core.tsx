@@ -1,7 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { api, ApiError } from '../shared/api';
-import { Button, ClientShell, Icon, type ClientTab } from '../shared/ui';
-import { BOOK_TEXT, PHONE_HREF, waLink } from './util';
+import { ClientShell, NIcon, type ClientTab, type NIconName } from '../shared/ui';
 
 export const TOKEN_KEY = 'ypod.token';
 export const HOME_CACHE = 'ypod.home';
@@ -60,28 +59,6 @@ export function useApi<T>(path: string | null, cacheKey?: string): Q<T> {
   return { data, err, offline, loading, reload };
 }
 
-// --- kiçik ikonlar (ortaq dəstdə yoxdur; dizayndan) ---
-const X = {
-  bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8zM10 20a2 2 0 0 0 4 0',
-  phone: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z',
-  wa: 'M4 20l1.3-3.9A8 8 0 1 1 8 19z',
-  nav: 'M3 11l18-8-8 18-2-8z',
-  out: 'M7 17 17 7M8 7h9v9',
-  ext: 'M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
-  back: 'M15 6l-6 6 6 6',
-  tag: 'M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
-  pct: 'M19 5 5 19M7.5 8.5a1.5 1.5 0 1 0 0-.01zM16.5 17.5a1.5 1.5 0 1 0 0-.01z',
-  dl: 'M12 4v11M7 11l5 5 5-5M5 20h14',
-  wifi: 'M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.01',
-  send: 'M4 12l16-8-6 16-2-6z',
-  retry: 'M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4',
-  mic: 'M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
-} as const;
-export type XName = keyof typeof X;
-export function XIcon({ name, size = 20, sw }: { name: XName; size?: number; sw?: number }) {
-  return <svg className="i" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={sw ? { strokeWidth: sw } : undefined}><path d={X[name]} /></svg>;
-}
-
 // --- ümumi parçalar ---
 export const TAB_HREF: Record<ClientTab, string> = { home: '#/', calendar: '#/calendar', ai: '#/ai', materials: '#/materials' };
 
@@ -89,43 +66,75 @@ export function Screen({ tab, children }: { tab: ClientTab; children: ReactNode 
   return <ClientShell active={tab} showAi hrefFor={(t) => TAB_HREF[t]}>{children}</ClientShell>;
 }
 
-export function TopBar({ title, back = '#/' }: { title: string; back?: string }) {
-  return (
-    <div className="top">
-      <a className="iconbtn" href={back} aria-label="Geri"><XIcon name="back" size={22} /></a>
-      <span className="t15 w8">{title}</span>
-      <span style={{ width: 46 }} />
-    </div>
-  );
-}
-
 export function OfflineBadge() {
-  return <span className="offline"><XIcon name="wifi" size={14} sw={2.2} />oflayn · son məlumatlar</span>;
+  return <span className="noff"><i aria-hidden="true" />Oflayn · son məlumat</span>;
 }
 
 export function Loading() {
-  return <div className="col" aria-busy="true" aria-label="Yüklənir">{[96, 140, 96].map((h, i) => <div key={i} className="sk" style={{ height: h, borderRadius: 24 }} />)}</div>;
+  return <div className="col" aria-busy="true" aria-label="Yüklənir">{[96, 140, 96].map((h, i) => <div key={i} className="skel" style={{ height: h, borderRadius: 22 }} />)}</div>;
+}
+
+/** Animasiya gecikməsi (.rz sinfi üçün). */
+export const dl = (ms: number) => ({ '--dl': `${ms}ms` } as CSSProperties);
+
+// --- Neon loqo (bənövşəyi işarə) və açılış ekranı ---
+const NLOGO = 'M753 28 727 16 702 8 677 3 653 1 652 0 587 0 586 1 574 1 573 2 564 2 563 3 532 6 525 8 521 11 518 18 518 325 514 327 484 257 480 244 476 236 469 215 465 207 464 202 417 79 401 33 396 21 388 12 380 9 0 9 3 20 7 28 8 33 34 99 49 141 53 149 68 191 72 199 79 220 91 249 98 270 110 299 117 320 121 328 122 333 137 370 152 412 156 420 171 462 175 470 182 491 194 520 201 541 213 570 220 591 232 620 239 641 251 670 258 691 270 720 277 741 297 791 296 793 76 793 73 794 69 798 67 802 66 818 65 819 62 847 61 848 60 885 61 886 61 897 62 898 62 905 65 921 73 948 85 974 104 1002 130 1028 154 1045 187 1061 201 1066 224 1072 247 1075 248 1076 256 1076 257 1077 308 1077 309 1076 317 1076 318 1075 324 1075 345 1071 382 1060 404 1051 432 1037 464 1017 485 1001 512 977 532 956 561 920 644 796 732 656 762 603 787 553 787 551 802 519 826 453 826 450 833 429 839 402 823 414 793 433 773 444 743 458 725 464 699 469 670 469 669 468 657 467 636 461 618 453 597 440 583 429 563 409 549 391 534 367 524 348 524 346 525 345 526 346 542 347 543 348 550 348 559 350 568 350 569 351 579 351 580 352 627 352 628 351 638 351 639 350 660 348 705 337 752 319 788 299 808 286 832 268 854 246 856 242 855 240 855 224 854 223 854 214 853 213 850 186 839 140 829 113 817 90 796 62 778 45Z';
+export function NLogo({ width = 22.3, height = 28 }: { width?: number; height?: number }) {
+  return <svg viewBox="0 0 857 1078" width={width} height={height} aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}><path fill="#A78BFA" d={NLOGO} /></svg>;
+}
+
+/** Açılış ekranı: ikon, ad və sürüşən yüklənmə zolağı. */
+export function Splash() {
+  return (
+    <main className="scr nsplash" aria-busy="true">
+      <div className="nsplash-mid">
+        <div className="nsplash-ic"><div className="nsplash-glow" aria-hidden="true" /><div className="nsplash-tile" role="img" aria-label="Y Pod"><NLogo width={45.8} height={57.6} /></div></div>
+        <div className="nsplash-t">
+          <div className="nsplash-n">Y Pod</div>
+          <div className="n-meta c3">Podcast və video studiyası</div>
+        </div>
+      </div>
+      <div className="nsplash-bar" role="progressbar" aria-label="Yüklənir"><i /></div>
+    </main>
+  );
 }
 
 export function ErrorState({ q, title = 'Məlumat yüklənmədi' }: { q: Q<unknown>; title?: string }) {
   return (
-    <div className="card card-dash ctr" style={{ padding: 28 }}>
-      <span className="ic ic-l"><XIcon name={q.offline ? 'wifi' : 'out'} size={26} /></span>
-      <h3 className="h3">{q.offline ? 'İnternet yoxdur' : title}</h3>
-      <p className="t13 muted lh">{q.err || 'İnternet bağlantısını yoxlayın və yenidən cəhd edin.'}</p>
-      <Button variant="out" small auto onClick={q.reload}>Yenidən cəhd et</Button>
+    <div className="nempty nempty-dash rise" role="alert">
+      <span className="nchip nempty-ic"><NIcon name={q.offline ? 'belloff' : 'alert'} size={20} /></span>
+      <h2 className="n-h2">{q.offline ? 'İnternet yoxdur' : title}</h2>
+      <p className="nempty-t">{q.err || 'İnternet bağlantısını yoxlayın.'}</p>
+      <button type="button" className="nb nb-s nb-auto nempty-b" onClick={q.reload}>Yenidən cəhd et</button>
     </div>
   );
 }
 
-/** Əməliyyat müştəridə yoxdur: yalnız WhatsApp və zəng. */
-export function BookButtons({ text = BOOK_TEXT, label = 'Çəkilişə yazılın' }: { text?: string; label?: string }) {
+/** Boş vəziyyət: ikon çipi + başlıq + mətn + (WhatsApp) düymələr. fill: ekranın ortasında. */
+export function NEmpty({ icon, tone, title, text, fill, children }: { icon: NIconName; tone: string; title: string; text: string; fill?: boolean; children?: ReactNode }) {
   return (
-    <div className="col" style={{ gap: 10 }}>
-      <a className="btn btn-primary" href={waLink(text)} target="_blank" rel="noopener">
-        <span className="pl"><Icon name="plus" size={18} strokeWidth={2.6} /></span>{label} · WhatsApp-da yazın
-      </a>
-      <a className="btn btn-out" href={PHONE_HREF}><XIcon name="phone" size={18} />Zəng edin</a>
-    </div>
+    <section aria-label={title} className={`nempty rise${fill ? ' nempty-fill' : ' nempty-dash'}`} style={fill ? { '--i': 1 } as CSSProperties : undefined}>
+      <span className={`nchip nempty-ic nchip-${tone}`}><NIcon name={icon} size={20} /></span>
+      <h2 className="n-h2">{title}</h2>
+      <p className="nempty-t">{text}</p>
+      {children && <div className="nempty-btns">{children}</div>}
+    </section>
+  );
+}
+
+/** Neon daxili səhifə başlığı: geri düyməsi + ad; sürüşəndə blur fon və 1px xətt. */
+export function InnerHeader({ title, back = '#/calendar' }: { title: string; back?: string }) {
+  const [sc, setSc] = useState(false);
+  useEffect(() => {
+    const on = () => setSc(window.scrollY > 4);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
+  return (
+    <header className={`nhead${sc ? ' nhead-sc' : ''}`}>
+      <a className="nhead-back" href={back} aria-label="Geri"><NIcon name="back" /></a>
+      <h1 className="n-h2">{title}</h1>
+    </header>
   );
 }

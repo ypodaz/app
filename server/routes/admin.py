@@ -116,7 +116,8 @@ def list_clients(db: DB = Depends(get_db)):
         **client_out(c), "tags": tags[c.id],
         "referred_by": {"id": c.referred_by_id, "full_name": names[c.referred_by_id]} if c.referred_by_id else None,
         "cashback_balance": cash.get(c.id) or 0, "last_shoot_at": iso(last.get(c.id)),
-        "package": {"title": pkg_of[c.id].title, "minutes_left": pkg_of[c.id].minutes_total + (used.get(pkg_of[c.id].id) or 0)}
+        "package": {"title": pkg_of[c.id].title, "minutes_left": pkg_of[c.id].minutes_total + (used.get(pkg_of[c.id].id) or 0),
+                    "minutes_total": pkg_of[c.id].minutes_total}
         if c.id in pkg_of else None,
     } for c in clients]
 

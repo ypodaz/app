@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session as DB
 
 import money
 from db import aware, now
+from views import short_name
 from models import (AuditLog, Block, CashbackLedger, Client, Notification, Package, PackageHoursLedger,
                     PackageMember, Shoot)
 
@@ -255,7 +256,7 @@ def _referral_reward(db: DB, client: Client, s: Shoot) -> None:
     for who, other in ((client, friend), (friend, client)):
         db.add(CashbackLedger(client_id=who.id, shoot_id=s.id if who is client else None, kind="referral",
                               amount=money.REFERRAL_BONUS, note=f"Dəvət bonusu: {other.full_name}"))
-        _notify(db, who.id, "bonus", kind="referral", amount=money.REFERRAL_BONUS, friend=other.full_name.split()[0])
+        _notify(db, who.id, "bonus", kind="referral", amount=money.REFERRAL_BONUS, friend=short_name(other.full_name))
 
 
 def no_show(db: DB, admin_id: int | None, s: Shoot) -> None:

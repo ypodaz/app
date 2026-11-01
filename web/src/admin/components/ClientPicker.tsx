@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Button, Icon, Sheet } from '../../shared/ui';
+import { Sheet } from '../../shared/ui';
 import { useAction, useAuth, useLoad } from '../ctx';
+import { initials } from '../format';
 import type { Client } from '../types';
-import { Avatar, Err, Field } from './common';
+import { AIcon } from './AIcon';
+import { Err, Field } from './common';
 
-export function NewClientForm({ onCreated }: { onCreated: (c: Client) => void }) {
+export function NewClientForm({ onCreated, submitLabel = 'Yarat' }: { onCreated: (c: Client) => void; submitLabel?: string }) {
   const { call } = useAuth();
   const { busy, err, run } = useAction();
   const [name, setName] = useState('');
@@ -15,10 +17,11 @@ export function NewClientForm({ onCreated }: { onCreated: (c: Client) => void })
   }
   return (
     <>
-      <Field label="Ad və soyad" id="nc-n"><input id="nc-n" className="inp" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" /></Field>
-      <Field label="Telefon" id="nc-p" hint="Dəvət linki bu nömrəyə WhatsApp ilə göndəriləcək."><input id="nc-p" className="inp" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="055 530 35 32" /></Field>
+      <Field label="Ad və soyad" id="nc-n"><input id="nc-n" className="inp" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" placeholder="məs. Aysel Məmmədova" /></Field>
+      <Field label="Telefon" id="nc-p"><input id="nc-p" className="inp" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="055 000 00 00" /></Field>
+      <div className="a-info flat"><AIcon name="msg" size={16} /><span>Dəvət linki bu nömrəyə WhatsApp ilə göndəriləcək.</span></div>
       <Err msg={err} />
-      <Button variant="cream" disabled={name.trim().length < 2 || busy} onClick={submit}>Yarat</Button>
+      <button type="button" className="a-bp a-bw" disabled={name.trim().length < 2 || busy} onClick={submit}>{submitLabel}</button>
     </>
   );
 }
@@ -34,22 +37,32 @@ export function ClientPickerSheet({ open, onClose, onPick, title = 'Müştəri s
     <Sheet open={open} onClose={onClose} title={adding ? 'Yeni müştəri' : title}>
       {adding ? (
         <>
-          <NewClientForm onCreated={(c) => { reload(); pick(c); }} />
-          <Button variant="ghost" onClick={() => setAdding(false)}>Siyahıya qayıt</Button>
+          <NewClientForm submitLabel="Yarat və seç" onCreated={(c) => { reload(); pick(c); }} />
+          <button type="button" className="a-back-l" onClick={() => setAdding(false)}><AIcon name="chevl" size={16} />Siyahıya qayıt</button>
         </>
       ) : (
         <>
-          <label className="inp"><Icon name="users" size={18} /><input type="search" className="ax-bare" placeholder="Ad və ya telefon üzrə axtar" aria-label="Müştəri axtar" value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></label>
-          <Button variant="cream" small onClick={() => setAdding(true)}><Icon name="plus" size={18} /> Yeni müştəri</Button>
+          <label className="a-srch"><AIcon name="search" size={18} /><input type="search" placeholder="Ad və ya telefon" aria-label="Müştəri axtar" value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></label>
+          <button type="button" className="a-newc" onClick={() => setAdding(true)}>
+            <span className="a-av acc"><AIcon name="userplus" size={20} /></span><span>+ Yeni müştəri</span><AIcon name="chev" size={20} />
+          </button>
           <Err msg={err} />
-          <div className="list ax-pick">
+          <div className="a-pick">
+            {list.length > 0 && <div className="a-pl">Bütün müştərilər</div>}
             {list.map((c) => (
-              <button key={c.id} type="button" className="li ax-li-btn" onClick={() => pick(c)}>
-                <Avatar name={c.full_name} />
-                <span className="col grow" style={{ gap: 2 }}><span className="t15 w8">{c.full_name}</span><span className="t12 muted">{c.phone || 'telefon yoxdur'}</span></span>
+              <button key={c.id} type="button" className="a-pr" onClick={() => pick(c)}>
+                <span className="a-av">{initials(c.full_name).slice(0, 1)}</span>
+                <span className="a-pr-m"><b>{c.full_name}</b><span>{c.phone || 'telefon yoxdur'}</span></span>
               </button>
             ))}
-            {data && !list.length && <p className="t13 muted">Müştəri tapılmadı.</p>}
+            {data && !list.length && (
+              <div className="a-none">
+                <span className="a-emp-ic"><AIcon name="search" size={20} /></span>
+                <h3>Müştəri tapılmadı.</h3>
+                {q.trim() && <p>«{q.trim()}» üzrə nəticə yoxdur. Başqa ad və ya telefon nömrəsi yoxlayın.</p>}
+                {q.trim() && <button type="button" className="a-bg" onClick={() => setQ('')}>Axtarışı təmizlə</button>}
+              </div>
+            )}
           </div>
         </>
       )}

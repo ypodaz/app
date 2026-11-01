@@ -1,23 +1,43 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { api, ApiError } from '../shared/api';
-import { Card, EmptyState, Icon } from '../shared/ui';
-import { AuthCtx, ErrorState, Loading, Screen, useApi, XIcon } from './core';
+import { NIcon } from '../shared/ui';
+import { AuthCtx, dl, ErrorState, Loading, NEmpty, Screen, useApi } from './core';
 import { waLink } from './util';
 
 // ---------- AI dəstəkçi (A5a–A5f) ----------
-type Msg = { role: 'user' | 'model'; text: string; created_at?: string; whatsapp?: boolean };
+type Msg = { role: 'user' | 'model'; text: string; created_at?: string; whatsapp?: boolean; fresh?: boolean };
 type AiData = { enabled: boolean; remaining: number; messages: Msg[] };
 type Reply = { text: string; whatsapp: boolean; remaining: number };
 
 const SUGGEST = ['Qiymətlər', 'Çəkilişə necə hazırlaşım?', 'Reels mətnimi axıcı et', 'Mənə kontent ideyası ver'];
 const WA_HELP = 'Salam, AI dəstəkçi ilə bağlı yazıram.';
 
-function WaButton({ text, label = 'WhatsApp-da yazın', cls = 'btn btn-cream' }: { text: string; label?: string; cls?: string }) {
-  return <a className={cls} href={waLink(text)} target="_blank" rel="noopener" style={{ alignSelf: 'flex-start' }}><XIcon name="wa" size={18} />{label}</a>;
+function WaButton({ text, label = 'WhatsApp-da yazın' }: { text: string; label?: string }) {
+  return <a className="nb nb-s nb-auto nai-sm" href={waLink(text)} target="_blank" rel="noopener" style={{ alignSelf: 'flex-start' }}><NIcon name="msg" size={16} />{label}</a>;
 }
 
 function Top() {
-  return <div className="top"><h1 className="h1" style={{ fontSize: 22 }}>AI dəstəkçi</h1></div>;
+  return <header className="ncal-head rise"><h1 className="n-h1">AI köməkçi</h1></header>;
+}
+
+/** Cavab mətni: «- » / «* » / «• » ilə başlayan ardıcıl sətirlər siyahı olur, qalanı abzas. */
+function AiText({ text }: { text: string }) {
+  const out: ReactNode[] = [];
+  let para: string[] = [];
+  let list: string[] = [];
+  const flush = () => {
+    if (para.length) out.push(<p key={out.length}>{para.join('\n')}</p>);
+    if (list.length) out.push(<ul key={out.length}>{list.map((l, i) => <li key={i}>{l}</li>)}</ul>);
+    para = []; list = [];
+  };
+  for (const line of text.split('\n')) {
+    const m = /^\s*[-*•]\s+(.*)$/.exec(line);
+    if (m) { if (para.length) flush(); list.push(m[1]); }
+    else if (!line.trim()) flush();
+    else { if (list.length) flush(); para.push(line); }
+  }
+  flush();
+  return <>{out}</>;
 }
 
 export function AiChat() {
@@ -27,6 +47,7 @@ export function AiChat() {
   const [remaining, setRemaining] = useState(0);
   const [text, setText] = useState('');
   const [pending, setPending] = useState(false);
+  const [fly, setFly] = useState(false);
   const [fail, setFail] = useState<{ text: string; msg: string } | null>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -37,10 +58,10 @@ export function AiChat() {
     const body = t.trim();
     if (!body || pending) return;
     setFail(null); setPending(true);
-    if (!retry) { setMsgs((m) => [...m, { role: 'user', text: body }]); setText(''); }
+    if (!retry) { setMsgs((m) => [...m, { role: 'user', text: body, fresh: true }]); setText(''); }
     try {
       const r = await api<Reply>('/me/ai', { token, body: { text: body } });
-      setMsgs((m) => [...m, { role: 'model', text: r.text, whatsapp: r.whatsapp }]);
+      setMsgs((m) => [...m, { role: 'model', text: r.text, whatsapp: r.whatsapp, fresh: true }]);
       setRemaining(r.remaining);
     } catch (e) {
       const err = e as ApiError;
@@ -49,68 +70,80 @@ export function AiChat() {
     } finally { setPending(false); }
   }
 
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (limited || pending || !text.trim()) return;
+    setFly(true); setTimeout(() => setFly(false), 260);
+    send(text);
+  }
+
   const d = q.data;
+  const limited = remaining <= 0;
   if (!d) return <Screen tab="ai"><Top />{q.loading ? <Loading /> : <ErrorState q={q} />}</Screen>;
   if (!d.enabled) {
     return (
       <Screen tab="ai">
         <Top />
-        <EmptyState icon="sparkle" title="AI köməkçi tezliklə" text="Tezliklə burada suallarınıza cavab verəcək və kontent ideyaları təklif edəcək. Hələlik bizə WhatsApp-da yazın."
-          action={<a className="btn btn-cream" href={waLink(WA_HELP)} target="_blank" rel="noopener"><XIcon name="wa" size={18} />WhatsApp-da yazın</a>} />
+        <NEmpty fill icon="spark" tone="ac" title="AI köməkçi tezliklə" text="Tezliklə burada suallarınıza cavab verəcək və kontent ideyaları təklif edəcək. Hələlik bizə WhatsApp-da yazın.">
+          <a className="nb nb-p nb-auto" href={waLink(WA_HELP)} target="_blank" rel="noopener"><NIcon name="msg" size={18} />WhatsApp-da yazın</a>
+        </NEmpty>
       </Screen>
     );
   }
-  const limited = remaining <= 0;
+  const empty = msgs.length === 0 && !pending;
   return (
     <Screen tab="ai">
       <Top />
-      <div className="aichat">
-        {msgs.length === 0 && !pending ? (
-          <div className="col ctr" style={{ gap: 18, padding: '24px 0 0' }}>
-            <span className="ic ic-grad ic-l" style={{ width: 72, height: 72, borderRadius: 36 }}><Icon name="sparkle" size={32} /></span>
-            <h2 className="h2" style={{ maxWidth: 300 }}>Studiya haqqında soruşun və ya kontentiniz üzərində birlikdə işləyək</h2>
-            <div className="chips" style={{ justifyContent: 'center' }}>
-              {SUGGEST.map((s) => <button key={s} type="button" className="chip" disabled={limited} onClick={() => send(s)}>{s}</button>)}
+      <div className={`nai${empty ? ' nai-e' : ''}`} role="log" aria-label="Söhbət" aria-live="polite">
+        {empty ? (
+          <>
+            <span className="nai-ic rz" style={dl(30)} aria-hidden="true"><NIcon name="spark" size={24} /></span>
+            <h2 className="n-h2 nai-h rz" style={dl(60)}>Studiya haqqında soruşun və ya kontentiniz üzərində birlikdə işləyək</h2>
+            <div className="nai-chips" role="group" aria-label="Təkliflər">
+              {SUGGEST.map((t, i) => <button key={t} type="button" className="nai-chip rz" style={dl(90 + i * 40)} disabled={limited} onClick={() => send(t)}>{t}</button>)}
             </div>
-            <p className="hint" style={{ maxWidth: 300 }}>Montaj və çəkiliş studiya komandası tərəfindən edilir; dəstəkçi sual və mətnlərdə kömək edir.</p>
-          </div>
+            <p className="n-meta c3 nai-note rz" style={dl(280)}>Montaj və çəkiliş studiya komandası tərəfindən edilir; köməkçi sual və mətnlərdə kömək edir.</p>
+          </>
         ) : (
-          <div className="chat">
-            {msgs.map((m, i) => (
-              <div key={i} className="col" style={{ gap: 8, alignItems: m.role === 'user' ? 'flex-end' : 'flex-start', minWidth: 0 }}>
-                <div className={`msg ${m.role === 'user' ? 'msg-me' : 'msg-ai'}`}>{m.text}</div>
-                {m.role === 'model' && m.whatsapp && <WaButton text={WA_HELP} />}
-              </div>
-            ))}
-            {pending && <div className="msg msg-ai" role="status" aria-label="Cavab yazılır"><span className="typing"><i /><i /><i /></span> <span className="t12 muted">yazır…</span></div>}
-            {fail && (
-              <div className="banner" role="alert" style={{ flexDirection: 'column', gap: 10 }}>
-                <span className="row" style={{ alignItems: 'flex-start' }}><Icon name="alert" size={20} /><span className="col" style={{ minWidth: 0 }}><b className="w8 t14">Cavab almaq alınmadı</b><span className="t13 soft" style={{ overflowWrap: 'anywhere' }}>{fail.msg}</span></span></span>
-                <div className="btns">
-                  {!limited && <button type="button" className="btn btn-sm" onClick={() => send(fail.text, true)}><XIcon name="retry" size={16} />Yenidən cəhd et</button>}
-                  <a className="btn btn-sm btn-out" href={waLink(WA_HELP)} target="_blank" rel="noopener"><XIcon name="wa" size={16} />WhatsApp-da yazın</a>
+          <>
+            {msgs.map((m, i) => {
+              const me = m.role === 'user';
+              return (
+                <div key={i} className={`nai-m${me ? ' me' : ''}${m.fresh ? ' nai-fresh' : ''}`}>
+                  <div className={`nai-b${me ? '' : ' ai'}`}><span className="nsr">{me ? 'Siz: ' : 'Köməkçi: '}</span>{me ? <p>{m.text}</p> : <AiText text={m.text} />}</div>
+                  {!me && m.whatsapp && <WaButton text={WA_HELP} />}
                 </div>
-              </div>
+              );
+            })}
+            {pending && <div className="nai-typ nai-fresh" role="status" aria-label="Köməkçi yazır…"><i aria-hidden="true" /><i aria-hidden="true" /><i aria-hidden="true" /></div>}
+            {fail && (
+              <section className="g nai-card nai-fresh" role="alert" aria-label="Xəta">
+                <div className="nai-ch"><span className="nchip"><NIcon name="alert" size={16} /></span><h2 className="n-h2">Cavab almaq alınmadı</h2></div>
+                <p className="nai-cp">{fail.msg}</p>
+                <div className="nai-cb">
+                  {!limited && <button type="button" className="nb nb-s nai-sm" onClick={() => send(fail.text, true)}><NIcon name="retry" size={16} />Yenidən cəhd et</button>}
+                  <a className="nb nb-s nai-sm" href={waLink(WA_HELP)} target="_blank" rel="noopener"><NIcon name="msg" size={16} />WhatsApp-da yazın</a>
+                </div>
+              </section>
             )}
             {limited && !pending && (
-              <Card tone="accent">
-                <h3 className="h2">Bu gün üçün limit doldu</h3>
-                <p className="t14 soft lh">Sabah yenidən yaza bilərsiniz. Təcili sualınız varsa, WhatsApp-da yazın.</p>
-                <WaButton text={WA_HELP} />
-              </Card>
+              <section className="g nai-card nai-fresh" aria-label="Limit">
+                <div className="nai-ch"><span className="nchip"><NIcon name="clock" size={16} /></span><h2 className="n-h2">Bu gün üçün limit doldu</h2></div>
+                <p className="nai-cp">Sabah yenidən yaza bilərsiniz. Təcili sualınız varsa, WhatsApp-da yazın.</p>
+                <a className="nb nb-p nb-full nai-full" href={waLink(WA_HELP)} target="_blank" rel="noopener"><NIcon name="msg" size={18} />WhatsApp-da yazın</a>
+              </section>
             )}
-          </div>
+          </>
         )}
-        <div ref={end} />
+        <div ref={end} className="nai-end" />
       </div>
-      <div className="aibar">
-        <div className="aibar-in">
-          <form onSubmit={(e) => { e.preventDefault(); send(text); }} style={limited ? { opacity: 0.4 } : undefined}>
-            <input className="inp" type="text" placeholder="Mesaj yazın…" aria-label="Mesaj" maxLength={1000} value={text} disabled={limited} onChange={(e) => setText(e.target.value)} />
-            <button type="submit" className="iconbtn iconbtn-cream" aria-label="Göndər" disabled={limited || pending || !text.trim()}><XIcon name="send" /></button>
-          </form>
-          <span className="hint">{limited ? 'Bu gün üçün limit doldu' : `Bu gün qalan sual: ${remaining}`}</span>
-        </div>
+      <div className="nai-bar">
+        <form className={`nai-cap${limited ? ' off' : ''}`} onSubmit={onSubmit}>
+          <label htmlFor="ai-msg" className="nsr">Mesajınız</label>
+          <input id="ai-msg" className="nai-in" type="text" autoComplete="off" placeholder="Mesaj yazın…" maxLength={1000} value={text} disabled={limited} onChange={(e) => setText(e.target.value)} />
+          <button type="submit" className={`nai-send${fly ? ' fly' : ''}`} aria-label="Göndər" disabled={limited || pending || !text.trim()}><span><NIcon name="up" size={18} sw={2} /></span></button>
+        </form>
+        <span className="n-meta c3 nai-hint">{limited ? 'Bu gün üçün limit doldu' : `Bu gün qalan sual: ${remaining}`}</span>
       </div>
     </Screen>
   );

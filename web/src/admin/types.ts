@@ -9,7 +9,7 @@ export type ClientProfile = {
   referral_code: string | null; referred_by_id: number | null; referred_by: { id: number; full_name: string } | null; tags: ClientTag[];
 };
 export type Client = { id: number; full_name: string; phone: string; notes?: string | null; activated: boolean; app_seen_at: string | null; app_standalone: boolean; push_permission: PushPerm } & Partial<ClientProfile>;
-export type ClientRow = Client & { cashback_balance: number; package: { title: string; minutes_left: number } | null; last_shoot_at: string | null };
+export type ClientRow = Client & { cashback_balance: number; package: { title: string; minutes_left: number; minutes_total: number } | null; last_shoot_at: string | null };
 export type Block = { id: number; starts_at: string; ends_at: string; reason: string | null };
 export type InviteOut = { url: string; whatsapp_url: string | null };
 

@@ -45,6 +45,12 @@ def studio_balance(s: Shoot) -> int:
     return money.studio_balance(s.total, s.cashback_used, s.deposit_amount if s.deposit_received_at else 0)
 
 
+def short_name(full: str) -> str:
+    """«Rəşad Məlikov» → «Rəşad M.»; tək söz olduqda olduğu kimi."""
+    parts = full.split()
+    return f"{parts[0]} {parts[1][0]}." if len(parts) > 1 else full
+
+
 def material_out(m: Material) -> dict:
     return {"id": m.id, "title": m.title, "drive_url": m.drive_url}
 

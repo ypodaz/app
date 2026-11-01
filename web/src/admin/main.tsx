@@ -4,9 +4,11 @@ import { storedToken, storeToken } from '../shared/api';
 import '../shared/ypod.css';
 import '../shared/responsive.css';
 import './admin.css';
+import './neon-admin.css';
+import './neon-admin-b3.css';
 import { AdminShell } from '../shared/ui';
 import { AssistantButton } from './components/Assistant';
-import { BackLink } from './components/common';
+import { PageHead } from './components/neon';
 import { ShootDetail } from './components/ShootDetail';
 import { AuthProvider, makeCall, useLoad } from './ctx';
 import { bakuParts } from './format';
@@ -21,21 +23,21 @@ import { PackageForm, Packages } from './pages/Packages';
 import { Panel } from './pages/Panel';
 import { Report } from './pages/Report';
 import { ShootForm } from './pages/ShootForm';
-import { useDesktop, useRoute } from './router';
+import { useRoute, useWide } from './router';
 import type { Shoot } from './types';
 
 const KEY = 'ypod.admin';
 
-// B9: mobil tam ekran; desktopda təqvim + sağ detal paneli
+// B9: mobil tam ekran; planşet/desktopda təqvim + sağ detal paneli
 function ShootPage({ id }: { id: number }) {
-  const desktop = useDesktop();
-  const s = useLoad<Shoot>(desktop ? `/shoots/${id}` : null).data;
-  if (desktop) {
+  const wide = useWide();
+  const s = useLoad<Shoot>(wide ? `/shoots/${id}` : null).data;
+  if (wide) {
     const q = new URLSearchParams({ v: 'week', d: s ? bakuParts(s.starts_at).date : '' });
     if (!s) q.delete('d');
-    return <Calendar query={q} detail={<ShootDetail id={id} />} />;
+    return <Calendar query={q} selectedId={id} detail={<ShootDetail id={id} />} />;
   }
-  return <AdminShell active="calendar" title="Çəkiliş"><BackLink to="calendar" /><ShootDetail id={id} /></AdminShell>;
+  return <AdminShell active="calendar" title="Çəkiliş" bare full><PageHead title="Çəkiliş" back="calendar" /><ShootDetail id={id} /></AdminShell>;
 }
 
 function Routes() {

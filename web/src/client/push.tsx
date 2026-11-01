@@ -1,7 +1,8 @@
 import { useContext, useEffect, useState } from 'react';
 import { api } from '../shared/api';
-import { Button, Card, Icon } from '../shared/ui';
-import { AuthCtx, XIcon } from './core';
+import { NIcon } from '../shared/ui';
+import { AuthCtx, dl } from './core';
+import { AuthPage, Brand } from './auth';
 import { isIOS, standalone, urlBase64ToUint8Array } from './util';
 
 type Info = { public_key: string; subscribed: boolean };
@@ -62,25 +63,33 @@ export function PushCard() {
   }
 
   if (state === 'loading' || state === 'hidden') return null;
+  if (state === 'denied' || state === 'ios') {
+    return (
+      <section aria-label={state === 'ios' ? 'Bildiriş icazəsi' : 'Brauzerdə bağlı'} className="g nperm-d rise">
+        <span className="nchip"><NIcon name="belloff" size={16} /></span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p>{state === 'ios' ? 'iPhone-da bildiriş yalnız ana ekrana əlavə olunmuş app-da işləyir. Əvvəl “Ana ekrana əlavə edin”, sonra app-ı oradan açıb bildirişləri aktivləşdirin.'
+            : 'Bildirişlər brauzer ayarlarında bağlanıb. Ayarlardan icazə verib səhifəni yeniləyin.'}</p>
+          {state === 'ios' && <a className="nlink-b" href="#/install" style={{ marginLeft: 0, marginTop: 6 }}>Ana ekrana əlavə edin</a>}
+        </div>
+      </section>
+    );
+  }
+  const on = state === 'on';
   return (
-    <Card>
-      <div className="row" style={{ alignItems: 'flex-start' }}>
-        <span className="ic"><XIcon name="bell" size={20} /></span>
-        <span className="col grow" style={{ gap: 4, minWidth: 0 }}>
-          {state === 'on' ? <span className="t14 w8">Bildirişlər açıqdır</span> : <span className="t14 w8">Bildirişləri telefonda alın</span>}
-          <span className="t13 soft lh">
-            {state === 'ios' ? 'iPhone-da bildiriş yalnız ana ekrana əlavə olunmuş app-da işləyir. Əvvəl “Ana ekrana əlavə edin”, sonra app-ı oradan açıb bildirişləri aktivləşdirin.'
-              : state === 'denied' ? 'Bildirişlər brauzer ayarlarında bağlanıb. Ayarlardan icazə verib səhifəni yeniləyin.'
-              : state === 'on' ? 'Çəkiliş, material və paket xəbərləri telefonunuza gələcək.'
-              : 'Çəkiliş xatırlatması, materialların hazır olması və paketin bitməsi haqqında xəbər alın.'}
-          </span>
-        </span>
+    <section aria-label="Bildiriş icazəsi" className="g nperm rise">
+      <div className={`nperm-l${on ? ' hid' : ''}`} aria-hidden={on}>
+        <div className="nperm-h"><span className="nchip"><NIcon name="bell" size={16} /></span><h2>Bildirişləri telefonda alın</h2></div>
+        <p className="nperm-p">Çəkiliş xatırlatması, materialların hazır olması və paketin bitməsi haqqında xəbər alın.</p>
+        <div className="nperm-b"><button type="button" className="nb nb-p nb-auto" disabled={busy || on} tabIndex={on ? -1 : undefined} onClick={enable}>Aç</button></div>
       </div>
-      {state === 'ios' && <a className="btn btn-out btn-sm" href="#/install">Ana ekrana əlavə edin</a>}
-      {state === 'off' && <Button small disabled={busy} onClick={enable}>Bildirişləri aç</Button>}
-      {state === 'on' && <Button variant="out" small disabled={busy} onClick={disable}>Söndür</Button>}
-      {err && <p className="err" role="alert">{err}</p>}
-    </Card>
+      <div className={`nperm-l${on ? '' : ' hid'}`} aria-hidden={!on}>
+        <div className="nperm-h"><span className="nchip nchip-cb"><NIcon name="check" size={16} /></span><h2>Bildirişlər açıqdır</h2></div>
+        <p className="nperm-p">Çəkiliş, material və paket xəbərləri telefonunuza gələcək.</p>
+        <div className="nperm-b"><button type="button" className="nlink-b" disabled={busy || !on} tabIndex={on ? undefined : -1} onClick={disable}>Söndür</button></div>
+      </div>
+      {err && <p className="n-meta" role="alert" style={{ gridArea: '2/1', margin: '10px 0 0', color: 'var(--yp-danger)' }}>{err}</p>}
+    </section>
   );
 }
 
@@ -125,10 +134,10 @@ function ping(token: string, force = false) {
 
 let promptShown = false; // yalnız bu açılış (səhifə yüklənməsi) üçün
 
-const PERKS: [string, string][] = [
-  ['calendar', 'Çəkilişdən 1 gün əvvəl xatırlatma'],
-  ['wallet', 'Beh və keşbek xəbərləri'],
-  ['media', 'Materiallar hazır olanda bildiriş'],
+const PERKS: [string, string, string][] = [
+  ['cal', 'cal', 'Çəkilişdən 1 gün əvvəl xatırlatma'],
+  ['wallet', 'cb', 'Beh və keşbek xəbərləri'],
+  ['folder', 'mat', 'Materiallar hazır olanda bildiriş'],
 ];
 
 /** Giriş olunmuş müştəri üçün: ping + tam ekran bildiriş sorğusu + səssiz yenidən abunə. */
@@ -167,21 +176,22 @@ export function PushGate() {
 
   if (!open) return null;
   return (
-    <main className="scr pp" role="dialog" aria-modal="true" aria-label="Bildirişləri açın"><div className="au">
-      <span className="ic ic-l ic-grad mt2"><XIcon name="bell" size={28} /></span>
-      <h1 className="h1">Bildirişləri açın</h1>
-      <div className="list">
-        {PERKS.map(([ic, t]) => (
-          <div key={t} className="li">
-            <span className="ic"><Icon name={ic as 'wallet'} size={20} /></span>
-            <span className="col grow"><span className="t15 w8">{t}</span></span>
-          </div>
+    <AuthPage className="npp" label="Bildirişləri açın" dialog>
+      <Brand />
+      <h1 className="nau-h1 b rz" style={dl(60)}>Bildirişləri açın</h1>
+      <ul className="nau-ul">
+        {PERKS.map(([ic, tone, t], i) => (
+          <li key={t} className="g nau-li rz" style={dl(120 + i * 60)}>
+            <span className={`nchip nchip-${tone}`}><NIcon name={ic as 'cal'} size={16} /></span>
+            <span className="nau-li-t p">{t}</span>
+          </li>
         ))}
+      </ul>
+      <div className="nau-foot rz" style={dl(300)}>
+        <button type="button" className="nb nb-p nau-big" disabled={busy} onClick={enable}>Bildirişləri aç</button>
+        <button type="button" className="nb nb-s nau-sec" disabled={busy} onClick={() => setOpen(false)}>Sonra</button>
       </div>
-      <div className="grow" />
-      <Button disabled={busy} onClick={enable}>Bildirişləri aç</Button>
-      <Button variant="ghost" small disabled={busy} onClick={() => setOpen(false)}>Sonra</Button>
-    </div></main>
+    </AuthPage>
   );
 }
 
@@ -200,19 +210,17 @@ export function PushHint() {
   }, [token]);
   if (!kind) return null;
   return (
-    <Card>
-      <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'nowrap' }}>
-        <span className="ic"><XIcon name="bell" size={20} /></span>
-        <span className="col grow" style={{ gap: 4, minWidth: 0 }}>
-          <span className="t14 w8">{kind === 'ios' ? 'Bildiriş almaq üçün app-ı ana ekrana əlavə edin' : 'Bildirişlər bağlıdır'}</span>
-          <span className="t13 soft lh">
-            {kind === 'ios' ? 'iPhone-da bildiriş yalnız ana ekrana əlavə olunmuş app-da işləyir.'
-              : isIOS ? 'iPhone: Ayarlar → Bildirişlər → Y Pod → Bildirişlərə icazə ver.'
-              : 'Brauzer ayarlarından bu sayt üçün bildirişlərə icazə verin, sonra səhifəni yeniləyin. (iPhone: Ayarlar → Bildirişlər → Y Pod → Bildirişlərə icazə ver.)'}
-          </span>
-        </span>
+    <section aria-label={kind === 'ios' ? 'Bildiriş icazəsi' : 'Brauzerdə bağlı'} className="g nperm-d rise">
+      <span className="nchip"><NIcon name="bell" size={16} /></span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontWeight: 600 }}>{kind === 'ios' ? 'Bildiriş almaq üçün app-ı ana ekrana əlavə edin' : 'Bildirişlər bağlıdır'}</p>
+        <p>
+          {kind === 'ios' ? 'iPhone-da bildiriş yalnız ana ekrana əlavə olunmuş app-da işləyir.'
+            : isIOS ? 'iPhone: Ayarlar → Bildirişlər → Y Pod → Bildirişlərə icazə ver.'
+            : 'Brauzer ayarlarından bu sayt üçün bildirişlərə icazə verin, sonra səhifəni yeniləyin. (iPhone: Ayarlar → Bildirişlər → Y Pod → Bildirişlərə icazə ver.)'}
+        </p>
+        {kind === 'ios' && <a className="nlink-b" href="#/install" style={{ marginLeft: 0, marginTop: 6 }}>Necə əlavə etmək olar</a>}
       </div>
-      {kind === 'ios' && <a className="btn btn-out btn-sm" href="#/install">Necə əlavə etmək olar</a>}
-    </Card>
+    </section>
   );
 }

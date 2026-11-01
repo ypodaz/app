@@ -96,7 +96,7 @@ def test_package_member_sees_package_shoot_but_not_others(api):
     ids = {x["id"] for x in rows}
     assert ids == {in_pkg["id"], own["id"]}
     pk = next(x for x in rows if x["id"] == in_pkg["id"])
-    assert pk["mine"] is False and pk["who"] == "Orxan" and pk["payment_line"] is None and "note" not in pk
+    assert pk["mine"] is False and pk["who"] == "Orxan Ə." and pk["payment_line"] is None and "note" not in pk
     for hidden in (private, foreign):
         assert api.get(f"/api/me/shoots/{hidden['id']}", headers=bearer(mtok)).status_code == 404
     assert api.get(f"/api/me/shoots/{in_pkg['id']}", headers=bearer(mtok)).status_code == 200
@@ -206,7 +206,10 @@ def test_production_materials_and_notifications(api):
     assert home["unread_notifications"] == 3 and home["next_shoot"] is None and home["package"] is None
     assert api.post("/api/me/notifications/read", headers=bearer(tok)).status_code == 200
     assert api.get("/api/me/home", headers=bearer(tok)).json()["unread_notifications"] == 0
-    assert len(api.get("/api/me/notifications", headers=bearer(tok)).json()) == 3
+    notes = api.get("/api/me/notifications", headers=bearer(tok)).json()
+    assert len(notes) == 3
+    assert all(n["shoot"] and n["shoot"]["tag"] == "podcast" and n["shoot"]["starts_at"] for n in notes
+               if n["payload"].get("shoot_id"))
 
 
 def test_manual_cashback_and_client_detail(api):
@@ -267,7 +270,7 @@ def test_clients_list_has_balance_package_last_shoot(api):
     api.post(f"/api/admin/clients/{lone}/cashback", json={"amount": 500}, headers=bearer(adm))
     past = make_shoot(api, adm, lone, starts_at=soon(days=-2))
     rows = {r["id"]: r for r in api.get("/api/admin/clients", headers=bearer(adm)).json()}
-    assert rows[owner]["package"] == rows[member]["package"] == {"title": "Şirkət", "minutes_left": 240}
+    assert rows[owner]["package"] == rows[member]["package"] == {"title": "Şirkət", "minutes_left": 240, "minutes_total": 300}
     assert rows[lone]["package"] is None and rows[lone]["cashback_balance"] == 500
     assert rows[lone]["last_shoot_at"].startswith(past["starts_at"][:10])
     assert rows[owner]["last_shoot_at"] is None and rows[owner]["cashback_balance"] == 0
@@ -376,3 +379,30 @@ def test_edit_client_writes_audit(api):
     with SessionLocal() as db:
         row = db.scalar(select(AuditLog).where(AuditLog.entity == "client"))
         assert row.before["full_name"] == "Aysel Məmmədova" and row.after["phone"] == "050 111 22 33"
+
+
+def test_client_shoot_extras_refund_confirmed_materials_pending(api):
+    adm = admin_token(api)
+    cid, tok = new_client(api, adm, "Aysel Məmmədova")
+    # ləğv: qaytarılan beh görünür, ləğv olunmamışda null; «Aysel Məmmədova» → «Aysel M.»
+    s = make_shoot(api, adm, cid)
+    live = api.get(f"/api/me/shoots/{s['id']}", headers=bearer(tok)).json()
+    assert live["refund_amount"] is None and live["confirmed_at"] and live["who"] == "Aysel M."
+    assert live["payment_line"] == "Beh gözlənilir · 120,00 AZN"
+    api.post(f"/api/admin/shoots/{s['id']}/deposit", json={"amount": 12000}, headers=bearer(adm))
+    assert api.get(f"/api/me/shoots/{s['id']}", headers=bearer(tok)).json()["payment_line"] \
+        == "Beh: 120,00 AZN ödənib · qalıq studiyada 120,00 AZN"
+    api.post(f"/api/admin/shoots/{s['id']}/cancel", json={}, headers=bearer(adm))
+    gone = api.get(f"/api/me/shoots/{s['id']}", headers=bearer(tok)).json()
+    assert gone["status"] == "cancelled" and gone["refund_amount"] == 12000
+    # montajda, materialsız: delivery_on ilə siyahıda; hazır və materialsız: yox
+    s2 = make_shoot(api, adm, cid)
+    api.post(f"/api/admin/shoots/{s2['id']}/close", json={"duration_min": 120, "paid_method": "cash"}, headers=bearer(adm))
+    api.patch(f"/api/admin/shoots/{s2['id']}/production", json={"production": "editing", "delivery_on": "2026-11-05"},
+              headers=bearer(adm))
+    mats = api.get("/api/me/materials", headers=bearer(tok)).json()
+    assert [(m["shoot_id"], m["production"], m["delivery_on"], m["materials"]) for m in mats] \
+        == [(s2["id"], "editing", "2026-11-05", [])]
+    api.patch(f"/api/admin/shoots/{s2['id']}/production", json={"production": "ready", "delivery_on": None},
+              headers=bearer(adm))
+    assert api.get("/api/me/materials", headers=bearer(tok)).json() == []

@@ -108,7 +108,7 @@ def test_referral_reward_on_first_close_both_sides(api):
     close(api, adm, make_shoot(api, adm, friend, starts_at=slot(8), duration_min=60))
     assert ledger(host, "referral") == [2000]  # yalnız ilk bağlanışda
     inv = api.get("/api/me/referral", headers=bearer(htok)).json()
-    assert inv["invited"] == [{"name": "Aysel", "rewarded": True}]
+    assert inv["invited"] == [{"name": "Aysel M.", "rewarded": True}]
     r = api.patch(f"/api/admin/clients/{friend}", json={"referred_by_id": 0}, headers=bearer(adm))
     assert r.status_code == 409  # bonus verilibsə dəvət edən dəyişmir
 
@@ -274,3 +274,29 @@ def test_quote_cashback_min_rule(api):
     assert q["cashback_usable"] == 10000
     r = api.post("/api/admin/shoots", json={**body, "cashback_use": 10000}, headers=bearer(adm))
     assert r.status_code == 200 and r.json()["cashback_used"] == 10000
+
+
+def test_home_growth_fields(api):
+    adm = admin_token(api)
+    cid, tok = new_client(api, adm, "Aysel Məmmədova")
+    home = lambda: api.get("/api/me/home", headers=bearer(tok)).json()  # noqa: E731
+    h = home()
+    assert h["active_offer"] is None and h["last_material"] is None
+    assert h["profile_pct"] == 0 and h["cashback_min_use"] == 7000
+    assert len(h["referral_code"]) == 6 and home()["referral_code"] == h["referral_code"]
+    api.patch("/api/me/profile", json={"profession": "Psixoloq", "instagram": "@aysel"}, headers=bearer(tok))
+    assert home()["profile_pct"] == 50
+    camp = api.post("/api/admin/campaigns", headers=bearer(adm), json={
+        "title": "{name}, noyabr təklifi", "body": "30 noyabradək keçərlidir", "filters": {}}).json()
+    offer = home()["active_offer"]
+    assert offer == {"id": camp["id"], "title": "Aysel, noyabr təklifi", "body": "30 noyabradək keçərlidir"}
+    with SessionLocal() as db:  # 14 gündən köhnə təklif göstərilmir
+        db.scalar(select(Notification).where(Notification.type == "campaign")).created_at = \
+            datetime.now(timezone.utc) - timedelta(days=15)
+        db.commit()
+    assert home()["active_offer"] is None
+    s = make_shoot(api, adm, cid)
+    close(api, adm, s)
+    add_material(s["id"])
+    m = home()["last_material"]
+    assert m["title"] == "Video" and m["shoot_id"] == s["id"] and m["drive_url"] == "https://drive.example/x"

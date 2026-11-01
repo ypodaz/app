@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Sheet } from '../../shared/ui';
+import { AIcon } from './AIcon';
+import { Av } from './a3';
 import { useAction, useAuth } from '../ctx';
 import type { Client, ClientDetail } from '../types';
 import { ClientPickerSheet } from './ClientPicker';
@@ -44,33 +46,36 @@ export function ProfileSheet({ open, c, onClose, onDone }: { open: boolean; c: C
   return (
     <>
       <Sheet open={open && !pick} onClose={onClose} title="Profili redaktə et">
+        <div className="a3-pf2">
         <Field label="İxtisas" id="pf-p"><input id="pf-p" className="inp" value={f.profession} maxLength={80} onChange={(e) => set({ profession: e.target.value })} placeholder="məs. Psixoloq" /></Field>
         <Field label="İş yeri" id="pf-w"><input id="pf-w" className="inp" value={f.workplace} maxLength={80} onChange={(e) => set({ workplace: e.target.value })} /></Field>
         <Field label="Instagram" id="pf-i"><input id="pf-i" className="inp" autoCapitalize="none" value={f.instagram} maxLength={60} onChange={(e) => set({ instagram: e.target.value })} placeholder="istifadəçi adı" /></Field>
-        <Field label="Nişa" id="pf-n"><input id="pf-n" className="inp" value={f.niche} maxLength={80} onChange={(e) => set({ niche: e.target.value })} /></Field>
+        <Field label="Kontent mövzusu" id="pf-n"><input id="pf-n" className="inp" value={f.niche} maxLength={80} onChange={(e) => set({ niche: e.target.value })} /></Field>
         <Field label="Doğum günü" id="pf-b"><input id="pf-b" type="date" className="inp" value={f.birthday} onChange={(e) => set({ birthday: e.target.value })} /></Field>
-        <Field label="Haradan tapıb" id="pf-s">
-          <select id="pf-s" className="inp" value={f.source} onChange={(e) => set({ source: e.target.value })}>
-            <option value="">—</option>
-            {SOURCES.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </Field>
-        <div className="row sb"><span className="col" style={{ gap: 2 }}><span className="t14 w7">Təkliflər</span><span className="t12 muted">Kampaniya bildirişləri</span></span><Toggle on={opt} onChange={setOpt} label="Təkliflər" /></div>
-        <Field label="Teqlər"><TagEditor value={tags} onChange={setTags} /></Field>
-        <Field label="Dəvət edən">
-          <div className="row sb" style={{ gap: 8 }}>
-            <span className="t14 w7" style={{ overflowWrap: 'anywhere' }}>{ref ? ref.full_name : '—'}</span>
-            <span className="row" style={{ gap: 4 }}>
-              <Button variant="out" small auto onClick={() => setPick(true)}>Seç</Button>
-              {ref && <Button variant="ghost" small auto onClick={() => setRef(null)}>Sil</Button>}
-            </span>
+        </div>
+        <div className="field">
+          <span className="flabel" id="pf-s-l">Haradan tapıb</span>
+          <div className="a3-opts" role="group" aria-labelledby="pf-s-l">
+            {SOURCES.map(([k, v]) => <button key={k} type="button" className={`a3-opt${f.source === k ? ' on' : ''}`} aria-pressed={f.source === k} onClick={() => set({ source: f.source === k ? '' : k })}>{v}</button>)}
           </div>
-          <div className="row" style={{ gap: 8, alignItems: 'stretch' }}>
-            <input className="inp grow" aria-label="Dəvət kodu" autoCapitalize="characters" placeholder="Dəvət kodu ilə tap" value={code} onChange={(e) => setCode(e.target.value)} />
-            <Button variant="out" small auto style={{ flex: 'none' }} disabled={!code.trim() || codeAct.busy} onClick={findCode}>Tap</Button>
+        </div>
+        <div className="a3-tog"><span><b>Təkliflər</b> — Kampaniya bildirişləri</span><Toggle on={opt} onChange={setOpt} label="Təkliflər" /></div>
+        <Field label="Teqlər"><TagEditor value={tags} onChange={setTags} /></Field>
+        <div className="a3-ref">
+          <span className="a3-rl">Dəvət edən</span>
+          <div className="a3-rr">
+            {ref ? <Av name={ref.full_name} size={36} /> : null}
+            <span className="a3-rn">{ref ? ref.full_name : '—'}</span>
+            <button type="button" className="a-bt" onClick={() => setPick(true)}>Seç</button>
+            {ref && <button type="button" className="a-bt a3-dng-t" onClick={() => setRef(null)}>Sil</button>}
+          </div>
+          <span className="a3-rl2">Dəvət kodu ilə tap</span>
+          <div className="a3-rr">
+            <input className="inp" aria-label="Dəvət kodu" autoCapitalize="characters" placeholder="MƏS. AYSEL20" value={code} onChange={(e) => setCode(e.target.value)} />
+            <button type="button" className="a-bt" disabled={!code.trim() || codeAct.busy} onClick={findCode}><AIcon name="search" size={16} /> Tap</button>
           </div>
           <Err msg={codeAct.err} />
-        </Field>
+        </div>
         <Err msg={err} />
         <Button disabled={busy} onClick={submit}>Yadda saxla</Button>
       </Sheet>

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { AdminShell, Button, Card, EmptyState, Icon, Stepper, formatHours, formatMoney } from '../../shared/ui';
-import { Avatar, BackLink, Err, Field } from '../components/common';
+import { AdminShell, Button, Stepper, formatHours, formatMoney } from '../../shared/ui';
+import { AIcon } from '../components/AIcon';
+import { AEmpty, Av, stag } from '../components/a3';
+import { ConfirmDialog, PageHead, useCountUp } from '../components/neon';
+import { Err, Field } from '../components/common';
 import { ClientPickerSheet } from '../components/ClientPicker';
 import { useAction, useAuth, useLoad } from '../ctx';
 import { bakuToday, dateFull } from '../format';
-import { go } from '../router';
+import { go, useDesktop } from '../router';
 import type { Client, Package } from '../types';
 
 const SIZES: [number, number][] = [[5, 2], [10, 4], [15, 8], [20, 12]]; // saat → ay
@@ -12,45 +15,60 @@ const SIZES: [number, number][] = [[5, 2], [10, 4], [15, 8], [20, 12]]; // saat 
 // B7a: paketlər
 export function Packages() {
   const { call } = useAuth();
+  const desktop = useDesktop();
   const { data, err, reload } = useLoad<Package[]>('/packages');
   const [addTo, setAddTo] = useState<Package | null>(null);
+  const [ask, setAsk] = useState<{ p: Package; cid: number; name: string } | null>(null);
   const act = useAction();
   const today = bakuToday();
+  const daysOf = (p: Package) => Math.ceil((Date.parse(p.ends_on) - Date.parse(today)) / 86400000);
   const remove = (p: Package, cid: number) => act.run(() => call(`/packages/${p.id}/members/${cid}`, { method: 'DELETE' })).then((r) => r !== undefined && reload());
   const add = (c: Client) => addTo && act.run(() => call(`/packages/${addTo.id}/members`, { body: { client_id: c.id } })).then((r) => r !== undefined && reload());
+  const active = (data ?? []).filter((p) => daysOf(p) >= 0).length;
+  const expired = (data?.length ?? 0) - active;
+
+  const card = (p: Package, i: number) => {
+    const left = p.minutes_left / p.minutes_total;
+    const days = daysOf(p);
+    const off = days < 0;
+    return (
+      <section key={p.id} className={`a-g a3-pkc a-rise${off ? ' off' : ''}`} style={stag(i)} aria-label={p.title}>
+        {!off && <span className="a-hot-glow a3-glow-y" aria-hidden="true" />}
+        <div className="a3-pkh">
+          <span className="a-ic a-ic-pkg"><AIcon name="pkg" size={16} /></span>
+          <span className="a3-pkl">{off ? 'Müddəti bitib' : 'Aktiv paket'}</span>
+          {days >= 0 && days <= 30 && <span className="a-chip a-chip-warn"><i />Bitməyə {days} gün</span>}
+        </div>
+        <h2 className="a3-pkt">{p.title} · {p.minutes_total / 60} saat · {p.cameras} kamera</h2>
+        <div className="a3-pkn">{String(p.minutes_left / 60).replace('.', ',')}<small>/ {p.minutes_total / 60} saat</small></div>
+        <div className="a3-prog" role="progressbar" aria-valuemin={0} aria-valuemax={p.minutes_total / 60} aria-valuenow={p.minutes_left / 60} aria-label="Qalan saat"><span style={{ width: `${left * 100}%` }} /></div>
+        <div className="a3-pkm"><AIcon name="cal" size={14} /><span>{dateFull(p.starts_on)} – {dateFull(p.ends_on)}</span></div>
+        <div className="a3-pkm"><AIcon name="user" size={14} /><span>Sahibi: {p.owner_name}</span></div>
+        <hr className="a3-hr2" />
+        <span className="a3-pkx">Üzvlər</span>
+        {p.members.map((m) => (
+          <div key={m.client_id} className="a3-mr">
+            <Av name={m.full_name} size={36} />
+            <a className="a3-mn" href={`#/clients/${m.client_id}`}>{m.full_name}</a>
+            <span className={`a3-role${m.role === 'owner' ? ' own' : ''}`}>{m.role === 'owner' ? 'Sahib' : 'Üzv'}</span>
+            {m.role !== 'owner' ? <button type="button" className="a3-mx" aria-label={`${m.full_name} çıxar`} onClick={() => setAsk({ p, cid: m.client_id, name: m.full_name })}><AIcon name="x" size={18} /></button> : <span className="a3-mx" aria-hidden="true" />}
+          </div>
+        ))}
+        <button type="button" className="a-bg a3-add" onClick={() => setAddTo(p)}><AIcon name="plus" size={18} /> Üzv əlavə et</button>
+      </section>
+    );
+  };
+  const list = [...(data ?? [])].sort((a, b) => Number(daysOf(a) < 0) - Number(daysOf(b) < 0)); // aktivlər əvvəl, müddəti bitənlər sonda
 
   return (
-    <AdminShell active="packages" title="Paketlər" actions={<a className="btn btn-primary btn-sm btn-auto" href="#/packages/new"><Icon name="plus" size={18} strokeWidth={2.4} /> Paket</a>}>
+    <AdminShell active="packages" title="Paketlər" sub={data?.length ? `${active} aktiv · ${expired} müddəti bitib` : undefined} actions={<a className="a-bp" href="#/packages/new"><AIcon name="plus" size={18} /> Paket</a>}>
       <Err msg={err || act.err} />
-      <div className="rs-cols">
-        {data?.map((p) => {
-          const left = p.minutes_left / p.minutes_total;
-          const days = Math.ceil((Date.parse(p.ends_on) - Date.parse(today)) / 86400000);
-          return (
-            <Card key={p.id} tone="cream">
-              <span className="lbl">{days < 0 ? 'Müddəti bitib' : 'Aktiv paket'}</span>
-              <span className="t15 w8">{p.title} · {p.minutes_total / 60} saat · {p.cameras} kamera</span>
-              <span className="num-l">{String(p.minutes_left / 60).replace('.', ',')}<span className="unit" style={{ fontSize: 20 }}> / {p.minutes_total / 60} saat</span></span>
-              <div className="prog" role="progressbar" aria-valuemin={0} aria-valuemax={p.minutes_total / 60} aria-valuenow={p.minutes_left / 60} aria-label="Qalan saat"><span style={{ width: `${left * 100}%` }} /></div>
-              <span className="t13 w7">{dateFull(p.starts_on)} – {dateFull(p.ends_on)}</span>
-              <span className="t13 w8">Sahibi: {p.owner_name}</span>
-              {days >= 0 && days <= 30 && <div className="banner" style={{ color: '#1a0b2e' }}><Icon name="alert" size={18} /><span className="w7">Bitməyə {days} gün</span></div>}
-              <hr className="hr" />
-              <span className="lbl">Üzvlər</span>
-              {p.members.map((m) => (
-                <div key={m.client_id} className="row">
-                  <Avatar name={m.full_name} />
-                  <span className="col grow" style={{ gap: 0 }}><a className="t14 w8" href={`#/clients/${m.client_id}`} style={{ color: 'inherit' }}>{m.full_name}</a><span className="t12 muted">{m.role === 'owner' ? 'Sahib' : 'Üzv'}</span></span>
-                  {m.role !== 'owner' && <button type="button" className="iconbtn" aria-label={`${m.full_name} çıxar`} onClick={() => confirm(`${m.full_name} paketdən çıxarılsın?`) && remove(p, m.client_id)}><Icon name="close" size={18} /></button>}
-                </div>
-              ))}
-              <Button variant="out" small onClick={() => setAddTo(p)}><Icon name="plus" size={18} /> Üzv əlavə et</Button>
-            </Card>
-          );
-        })}
-      </div>
-      {data && !data.length && <EmptyState icon="building" title="Paket yoxdur" text="Korporativ müştəri üçün saat paketi əlavə edin." action={<a className="btn btn-cream btn-sm btn-auto" href="#/packages/new">Paket əlavə et</a>} />}
+      {desktop
+        ? <div className="a3-pkg2"><div>{list.filter((_, i) => i % 2 === 0).map((p) => card(p, list.indexOf(p) + 1))}</div><div>{list.filter((_, i) => i % 2 === 1).map((p) => card(p, list.indexOf(p) + 1))}</div></div>
+        : <div className="a3-pkg1">{list.map((p, i) => card(p, i + 1))}</div>}
+      {data && !data.length && <AEmpty icon="pkg" tone="pkg" title="Paket yoxdur" text="Korporativ müştəri üçün saat paketi əlavə edin." action={<a className="a-bp" href="#/packages/new">Paket əlavə et</a>} />}
       <ClientPickerSheet open={!!addTo} onClose={() => setAddTo(null)} onPick={add} title="Üzv əlavə et" exclude={addTo?.members.map((m) => m.client_id)} />
+      <ConfirmDialog open={!!ask} confirmLabel="Çıxar" text={`${ask?.name} paketdən çıxarılsın?`} onCancel={() => setAsk(null)} onConfirm={() => { const a = ask!; setAsk(null); remove(a.p, a.cid); }} />
     </AdminShell>
   );
 }
@@ -70,6 +88,7 @@ export function PackageForm() {
   const act = useAction();
   const months = SIZES.find(([h]) => h === hours)![1];
   const [price, setPrice] = useState<number | null>(null);
+  const shown = useCountUp(price ?? undefined, 180);
   useEffect(() => {
     let live = true;
     setPrice(null);
@@ -84,50 +103,57 @@ export function PackageForm() {
   }
 
   return (
-    <AdminShell active="packages" title="Paket əlavə et">
-      <BackLink to="packages" />
-      <div className="ax-narrow col" style={{ gap: 14 }}>
-        <div className="field">
+    <AdminShell active="packages" title="Paket əlavə et" bare full>
+      <PageHead back="packages" title="Paket əlavə et" label="Paketlər" />
+      <div className="a3-form">
+        <div className="field a-rise" style={stag(1)}>
           <span className="flabel">Paket sahibi</span>
-          <button type="button" className="inp" style={{ justifyContent: 'space-between' }} onClick={() => setPickOwner(true)}>
-            <span className="row">{owner ? <><Avatar name={owner.full_name} /><span className="t15 w8">{owner.full_name}</span></> : <span className="muted">Müştəri seçin</span>}</span><Icon name="chevron" size={18} />
+          <button type="button" className="a3-pick" onClick={() => setPickOwner(true)}>
+            {owner ? <span>{owner.full_name}</span> : <span className="ph">Müştəri seçin</span>}<AIcon name="chevd" size={18} />
           </button>
         </div>
         <Field label="Paket adı" id="pk-n"><input id="pk-n" className="inp" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="məs. Nümunə MMC" /></Field>
         <div className="field"><span className="flabel">Paket ölçüsü</span>
-          <div className="g2">
+          <div className="a3-sizes">
             {SIZES.map(([h, m]) => (
-              <button key={h} type="button" className={`opt${h === hours ? ' opt-on' : ''}`} aria-pressed={h === hours} onClick={() => { setHours(h); setUsed(Math.min(used, h * 60)); }} style={{ flexDirection: 'column', gap: 4, padding: '10px 14px' }}>
-                <span className="row sb" style={{ width: '100%' }}><span className="num-m">{h}</span><span className="rad">{h === hours && <Icon name="check" size={14} strokeWidth={3} />}</span></span>
-                <span className="t14 w8">saat</span><span className="t12 soft">{m} ay</span>
+              <button key={h} type="button" className={`a3-size${h === hours ? ' on' : ''}`} aria-pressed={h === hours} onClick={() => { setHours(h); setUsed(Math.min(used, h * 60)); }}>
+                <b>{h} saat</b><span>{m} ay</span>
               </button>
             ))}
           </div>
         </div>
         <div className="field"><span className="flabel">Kamera sayı</span>
-          <div className="segw" role="group" aria-label="Kamera sayı">{[1, 2, 3].map((n) => <button key={n} type="button" className={`seg${n === cameras ? ' seg-on' : ''}`} aria-pressed={n === cameras} onClick={() => setCameras(n)}>{n}</button>)}</div>
+          <div className="a3-cams" role="group" aria-label="Kamera sayı">{[1, 2, 3].map((n) => <button key={n} type="button" className={n === cameras ? 'on' : ''} aria-pressed={n === cameras} onClick={() => setCameras(n)}>{n}</button>)}</div>
         </div>
-        <Card tone="cream">
-          <span className="lbl">Paketin qiyməti</span>
-          <span className="num-m">{price === null ? '…' : formatMoney(price)}</span>
-          <span className="t13 w7">{hours} saat · {cameras} kamera · {months} ay</span>
-        </Card>
+        <section className="a-g a3-price" aria-label="Paketin qiyməti">
+          <span className="a-hot-glow a3-glow-y" aria-hidden="true" />
+          <div className="a3-pkh"><span className="a-ic a-ic-pkg"><AIcon name="pkg" size={16} /></span><span className="a3-pkl">Paketin qiyməti</span></div>
+          <div className="a3-pp">{price === null ? '…' : formatMoney(shown ?? price)}</div>
+          <span className="a3-pm">{hours} saat · {cameras} kamera · {months} ay</span>
+        </section>
         <Field label="Başlama tarixi" id="pk-d" hint={`Paket ${months} ay etibarlıdır. Keçmiş tarix də olar.`}>
-          <input id="pk-d" type="date" className="inp" value={start} onChange={(e) => setStart(e.target.value)} />
+          <div className={`a3-date${start ? '' : ' empty'}`}>
+            <input id="pk-d" type="date" className="inp" value={start} onChange={(e) => setStart(e.target.value)} />
+            {start && <span className="a3-dv" aria-hidden="true">{dateFull(start)}</span>}
+            <AIcon name="cal" size={18} />
+          </div>
         </Field>
         <div className="field"><span className="flabel">Artıq istifadə olunub</span>
           <Stepper minutes={used} onChange={setUsed} min={0} max={hours * 60} />
           <span className="hint">Paket əvvəl başlayıbsa, istifadə olunmuş saatı daxil edin ({formatHours(used)}).</span>
         </div>
-        <div className="field"><span className="flabel">Üzvlər</span>
+        <div className="a3-mem">
+          <h2>Üzvlər</h2>
+          {!members.length && <p>Üzv əlavə edilməyib. Paket sahibi avtomatik daxildir.</p>}
           {members.map((m) => (
-            <div key={m.id} className="row"><Avatar name={m.full_name} /><span className="t14 w8 grow">{m.full_name}</span><button type="button" className="iconbtn" aria-label={`${m.full_name} çıxar`} onClick={() => setMembers(members.filter((x) => x.id !== m.id))}><Icon name="close" size={18} /></button></div>
+            <div key={m.id} className="a3-mr"><Av name={m.full_name} size={36} /><span className="a3-mn">{m.full_name}</span><button type="button" className="a3-mx" aria-label={`${m.full_name} çıxar`} onClick={() => setMembers(members.filter((x) => x.id !== m.id))}><AIcon name="x" size={18} /></button></div>
           ))}
-          <Button variant="out" small onClick={() => setPickMember(true)}><Icon name="plus" size={18} /> Üzv əlavə et</Button>
+          <button type="button" className="a-bg a3-add" onClick={() => setPickMember(true)}><AIcon name="plus" size={18} /> Üzv əlavə et</button>
         </div>
-        <Card>
-          {['Montaj daxil deyil (ayrıca 100 AZN)', 'Yalnız studiyada keçərlidir', 'Paket alışına keşbek yazılmır', 'Əlavə kamera saatda 50 AZN'].map((t) => <div key={t} className="row" style={{ alignItems: 'flex-start' }}><Icon name="check" size={16} /><span className="t13 soft lh">{t}</span></div>)}
-        </Card>
+        <section className="a-g a3-rules" aria-label="Qaydalar">
+          <span className="a3-rt">Qaydalar</span>
+          {['Montaj daxil deyil (ayrıca 100 AZN)', 'Yalnız studiyada keçərlidir', 'Paket alışına keşbek yazılmır', 'Əlavə kamera saatda 50 AZN'].map((t) => <div key={t} className="a3-ru"><AIcon name="info" size={16} /><span>{t}</span></div>)}
+        </section>
         <Err msg={act.err} />
         <Button disabled={!owner || !title.trim() || !start || act.busy} onClick={create}>Paketi əlavə et</Button>
       </div>

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
-import { AdminShell, Button, Card, Icon, formatMoney } from '../../shared/ui';
-import { BackLink, Err, Field, ShootTicket } from '../components/common';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { AdminShell, formatMoney2 } from '../../shared/ui';
+import { AIcon } from '../components/AIcon';
+import { PageHead, useToast } from '../components/neon';
+import { Err, Field } from '../components/common';
 import { errMsg, useAction, useAuth, useLoad } from '../ctx';
-import { bakuNow, toIso } from '../format';
+import { bakuNow, bakuParts, dateWd, timeRange, toIso } from '../format';
 import type { CancelOut, Shoot } from '../types';
 
 const WINDOW: Record<string, string> = {
@@ -14,12 +16,13 @@ const WINDOW: Record<string, string> = {
 function Calc({ r }: { r: CancelOut }) {
   return (
     <>
-      <div className="banner"><Icon name="clock" size={18} /><span>{WINDOW[r.window]}</span></div>
-      <div className="sum">
-        <div className="sum-r"><span className="soft">Ödənilib (beh)</span><span>{formatMoney(r.deposit_received_at ? r.deposit_amount : 0)}</span></div>
-        <div className="sum-r"><span className="soft">Tutulur</span><span>{formatMoney(r.retained)}</span></div>
-        <div className="sum-r"><span className="soft">Keşbek balansa qayıdır</span><span>{formatMoney(r.cashback_return)}</span></div>
-        <div className="sum-r sum-tot"><span className="w8">Qaytarılacaq</span><span className="num-m">{formatMoney(r.refund).replace(' AZN', '')}<span className="unit">AZN</span></span></div>
+      <div className="a-warn a-grow"><AIcon name="warn" size={18} /><span>{WINDOW[r.window]}</span></div>
+      <div className="a-sum">
+        <div className="a-sr m"><span>Ödənilib (beh)</span><b>{formatMoney2(r.deposit_received_at ? r.deposit_amount : 0)}</b></div>
+        <div className="a-sr m"><span>Tutulur</span><b>{formatMoney2(r.retained)}</b></div>
+        <div className="a-sr m g"><span>Keşbek balansa qayıdır</span><b>{formatMoney2(r.cashback_return)}</b></div>
+        <div className="a-hr" />
+        <div className="a-sr a-tot"><span>Qaytarılacaq</span><b className="a-n">{formatMoney2(r.refund).replace(' AZN', '')}<small>AZN</small></b></div>
       </div>
     </>
   );
@@ -37,6 +40,7 @@ export function CancelShoot({ id }: { id: number }) {
   const [previewErr, setPreviewErr] = useState('');
   const [refunded, setRefunded] = useState(false);
   const act = useAction();
+  const toast = useToast();
   const s = shoot.data;
 
   // ləğv vaxtı dəyişəndə önbaxış (bazaya yazılmır)
@@ -56,52 +60,49 @@ export function CancelShoot({ id }: { id: number }) {
     if (r) setRes(r);
   }
   async function refund() {
-    if (await act.run(() => call(`/shoots/${id}/refunded`, { body: {} })) !== undefined) setRefunded(true);
+    if (await act.run(() => call(`/shoots/${id}/refunded`, { body: {} })) !== undefined) { setRefunded(true); toast.show('Qaytarıldı qeyd olundu'); }
   }
+  const sp = bakuParts((res ?? s).starts_at);
 
   return (
-    <AdminShell active="calendar" title="Ləğvi qeyd et">
-      <BackLink to={`shoots/${id}`} />
-      <div className="ax-narrow col" style={{ gap: 14 }}>
-        <Card>
-          <span className="t15 w8">{s.client_name}</span>
-          <ShootTicket s={res ?? s} />
-          {!res && (
-            <>
-              <p className="t13 soft lh">Müştəri ləğvi nə vaxt istəyib? Hesab (24 saat qaydası) bu vaxta görə aparılır.</p>
+    <AdminShell active="calendar" title="Ləğvi qeyd et" bare full>
+      {toast.node}
+      <div className="a-narrow a-nofab">
+        <PageHead title="Ləğvi qeyd et" back={`shoots/${id}`} sub={`${s.client_name} · ${dateWd(sp.date)}, ${timeRange((res ?? s).starts_at, (res ?? s).duration_min)}`} />
+        {!res && (
+          <>
+            <p className="a-lead">Müştəri ləğvi nə vaxt istəyib? Hesab (24 saat qaydası) bu vaxta görə aparılır.</p>
+            <section className="a-g a-rise">
               <div className="g2">
                 <Field label="Ləğv tarixi" id="cn-d"><input id="cn-d" type="date" className="inp" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
                 <Field label="Saat" id="cn-t"><input id="cn-t" type="time" className="inp" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
               </div>
-            </>
-          )}
-        </Card>
-        {!res && (
-          <>
-            <Card>
-              <span className="lbl">Hesab (önbaxış)</span>
+            </section>
+            <section className="a-g a-rise a-gs" style={{ '--i': 1 } as CSSProperties}>
+              <h2 className="a-cardh">Hesab (önbaxış)</h2>
               <Err msg={previewErr} />
               {preview && <Calc r={preview} />}
-            </Card>
-            <span className="hint">Qayda: 24 saatdan az qalanda beh (ödəniləcək məbləğin 50%-i) qaytarılmır, istifadə olunmuş keşbek balansa qayıdır.</span>
+            </section>
+            <span className="a-note a-note-rule">Qayda: 24 saatdan az qalanda beh (ödəniləcək məbləğin 50%-i) qaytarılmır, istifadə olunmuş keşbek balansa qayıdır.</span>
             <Err msg={act.err} />
-            <Button variant="danger" disabled={!date || !time || act.busy} onClick={cancel}>Ləğvi qeyd et</Button>
+            <button type="button" className="a-bp a-bw a-bred" disabled={!date || !time || act.busy} onClick={cancel}>Ləğvi qeyd et</button>
           </>
         )}
         {res && (
-          <Card>
-            <span className="lbl">Hesab</span>
-            <Calc r={res} />
+          <>
+            <section className="a-g a-rise a-gs">
+              <h2 className="a-cardh">Hesab</h2>
+              <Calc r={res} />
+            </section>
             {res.refund > 0 && !refunded && (
-              <>
-                <span className="hint">Pulu müştərinin kartına qaytarın, sonra "Qaytarıldı" basın. Müştəriyə bildiriş gedəcək.</span>
+              <section className="a-g a-rise a-gs" style={{ '--i': 1 } as CSSProperties}>
+                <p className="a-p">Pulu müştərinin kartına qaytarın, sonra «Qaytarıldı» basın. Müştəriyə bildiriş gedəcək.</p>
                 <Err msg={act.err} />
-                <Button disabled={act.busy} onClick={refund}><Icon name="check" size={20} /> Qaytarıldı · {formatMoney(res.refund)}</Button>
-              </>
+                <button type="button" className="a-bp a-bw a-bgrn" disabled={act.busy} onClick={refund}><AIcon name="check" size={20} />Qaytarıldı · {formatMoney2(res.refund)}</button>
+              </section>
             )}
-            {refunded && <div className="toast" role="status"><Icon name="check" size={20} /><span>Qaytarıldı qeyd olundu</span></div>}
-            <a className="btn btn-out" href="#/panel">Panelə qayıt</a>
-          </Card>
+            <a className="a-bg a-bw" href="#/panel">Panelə qayıt</a>
+          </>
         )}
       </div>
     </AdminShell>

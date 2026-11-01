@@ -4,11 +4,12 @@ import { api, storedToken, storeToken } from '../shared/api';
 import '../shared/ypod.css';
 import '../shared/responsive.css';
 import './client.css';
+import './neon.css';
 import { CodeEntry, InvalidInvite, Welcome } from './auth';
 import { InAppScreen, Install } from './install';
 import { AiChat } from './ai';
 import { Calendar } from './calendar';
-import { AuthCtx, Loading, TOKEN_KEY, useRoute } from './core';
+import { AuthCtx, Splash, TOKEN_KEY, useRoute } from './core';
 import { ShootDetail } from './detail';
 import { Home } from './home';
 import { PushGate } from './push';
@@ -35,10 +36,10 @@ function Routes({ onLogout, pair, setPair, token }: { onLogout: () => void; pair
     case 'package': return <PackagePage />;
     case 'materials': return <Materials />;
     case 'notifications': return <Notifications />;
-    case 'profile': return <ProfilePage />;
+    case 'profile': return <ProfilePage onLogout={onLogout} />;
     case 'offer': return <OfferPage id={r1} key={r1} />;
     case 'install': return <Install token={token} pair={pair} setPair={setPair} required={needInstall} onDone={() => { location.hash = '#/'; }} />;
-    default: return <Home onLogout={onLogout} />;
+    default: return <Home />;
   }
 }
 
@@ -66,7 +67,7 @@ function App() {
       .finally(() => setBusy(false));
   }, []);
 
-  if (busy) return <main className="scr"><div className="au"><Loading /></div></main>;
+  if (busy) return <Splash />;
   if (inApp) return <InAppScreen url={inviteToken ? inviteUrl : `${location.origin}${location.pathname}`} />;
   if (!token) return badInvite ? <InvalidInvite onCode={() => setBadInvite(false)} /> : <CodeEntry onToken={signIn} />;
 

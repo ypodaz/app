@@ -48,6 +48,13 @@ def fmt(amount: int) -> str:
     return f"{sign}{manat},{qepik:02d} AZN" if qepik else f"{sign}{manat} AZN"
 
 
+def fmt2(amount: int) -> str:
+    """7000 → «70,00 AZN». Müştəriyə görünən ödəniş sətirlərində qəpik həmişə yazılır."""
+    sign = "−" if amount < 0 else ""
+    manat, qepik = divmod(abs(amount), AZN)
+    return f"{sign}{manat},{qepik:02d} AZN"
+
+
 def fmt_hours(minutes: int) -> str:
     """120 → «2 saat», 90 → «1,5 saat». Müddət yarım saat addımladır."""
     h, m = divmod(minutes, 60)
@@ -200,16 +207,16 @@ def payment_status(
         line = f"Paketdən {fmt_hours(package_minutes)}"
         if due > paid:
             label = "əlavə kamera" if total == extra_camera else "əlavələr"
-            line += f" · {label} {fmt(due - paid)} studiyada"
+            line += f" · {label} {fmt2(due - paid)} studiyada"
         return line
     if paid >= due:
         return "Tam ödənib"
     rest = due - paid
     if deposit_received and deposit_amount:
-        return f"Beh ödənib · {fmt(deposit_amount)} · qalıq studiyada {fmt(rest)}"
+        return f"Beh: {fmt2(deposit_amount)} ödənib · qalıq studiyada {fmt2(rest)}"
     if deposit_waived:
-        return f"Beh 0 AZN · ödəniş studiyada {fmt(rest)}"
-    return f"Beh gözlənilir · {fmt(deposit_expected(total, cashback_used, False))}"
+        return f"Beh 0 AZN · ödəniş studiyada {fmt2(rest)}"
+    return f"Beh gözlənilir · {fmt2(deposit_expected(total, cashback_used, False))}"
 
 
 def cashback_earned(p: Price, *, from_package: bool, first_shoot: bool) -> tuple[str, int]:

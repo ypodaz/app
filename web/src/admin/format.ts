@@ -63,6 +63,10 @@ export function dateShort(date: string): string {
   const [, m, d] = parts(date);
   return `${d} ${MONTHS_SHORT[m - 1]}`;
 }
+/** "28 okt, çərşənbə" */
+export function dateWd(date: string): string {
+  return `${dateShort(date)}, ${DAYS[weekday(date)].toLowerCase()}`;
+}
 /** "28 oktyabr 2026" */
 export function dateFull(date: string): string {
   const [y, m, d] = parts(date);

@@ -1,26 +1,20 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError } from '../shared/api';
-import { Button, Icon, Logo } from '../shared/ui';
-import { Brand } from './auth';
+import { NIcon } from '../shared/ui';
+import { AuthPage, Brand } from './auth';
+import { dl, NLogo } from './core';
 import { env } from './util';
 
-// ---------- brauzerin real ikonları ----------
+// ---------- brauzerin real ikonları (NIcon-da olmayanlar) ----------
 const svg = (size: number, children: ReactNode) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
-/** iOS "Paylaş": yuxarıdan açıq kvadrat + yuxarı ox. */
-export const ShareIcon = ({ size = 28 }: { size?: number }) => svg(size, <path d="M12 15V3M8 7l4-4 4 4M8 10H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-2" />);
-/** "Ana ekrana əlavə et": kvadratda +. */
-export const AddHomeIcon = ({ size = 28 }: { size?: number }) => svg(size, <path d="M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8v8M8 12h8" />);
 /** Chrome (Android) üç nöqtə ⋮. */
-export const DotsVIcon = ({ size = 28 }: { size?: number }) => svg(size, <><circle cx="12" cy="5" r="1.4" fill="currentColor" /><circle cx="12" cy="12" r="1.4" fill="currentColor" /><circle cx="12" cy="19" r="1.4" fill="currentColor" /></>);
-/** Üfüqi üç nöqtə …. */
-export const DotsHIcon = ({ size = 28 }: { size?: number }) => svg(size, <><circle cx="5" cy="12" r="1.4" fill="currentColor" /><circle cx="12" cy="12" r="1.4" fill="currentColor" /><circle cx="19" cy="12" r="1.4" fill="currentColor" /></>);
+const DotsVIcon = () => svg(20, <><circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" /></>);
 /** Samsung Internet menyusu ☰. */
-export const MenuIcon = ({ size = 28 }: { size?: number }) => svg(size, <path d="M4 7h16M4 12h16M4 17h16" />);
-/** Safari kompası. */
-export const CompassIcon = ({ size = 28 }: { size?: number }) => svg(size, <><circle cx="12" cy="12" r="9" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /></>);
-const HomeIcon = () => <Logo height={26} />;
+const MenuIcon = () => svg(20, <path d="M4 7h16M4 12h16M4 17h16" />);
+const ShareIcon = () => <NIcon name="share" />;
+const AddHomeIcon = () => <NIcon name="sqplus" />;
 
 // ---------- Android: beforeinstallprompt ----------
 type BipEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
@@ -47,19 +41,21 @@ function useInstallPrompt() {
 }
 
 // ---------- ümumi hissələr ----------
-type Step = { t: ReactNode; sub?: string; ic?: ReactNode };
+type Step = { t: ReactNode; sub?: string; ic?: ReactNode; app?: boolean; pill?: string };
 
-function StepList({ steps }: { steps: Step[] }) {
+function StepList({ steps, base }: { steps: Step[]; base: number }) {
   return (
-    <div className="ins-list">
+    <ol className="nins-ol">
       {steps.map((s, i) => (
-        <div key={i} className="ins-step">
-          <span className="stepn ins-n">{i + 1}</span>
-          <span className="col grow ins-t"><span>{s.t}</span>{s.sub && <span className="ins-sub">{s.sub}</span>}</span>
-          {s.ic && <span className="ins-ic">{s.ic}</span>}
-        </div>
+        <li key={i} className="g nau-li rz" style={dl(base + i * 80)}>
+          <span className="nins-n" aria-hidden="true">{i + 1}</span>
+          <span className="nins-t"><span>{s.t}</span>{s.sub && <span className="nins-sub">{s.sub}</span>}</span>
+          {s.pill && <span className="nins-pill" aria-hidden="true">{s.pill}</span>}
+          {s.ic && <span className="nins-ic" aria-hidden="true">{s.ic}</span>}
+          {s.app && <span className="nins-ic app" aria-hidden="true"><NLogo width={19.1} height={24} /></span>}
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
@@ -68,6 +64,8 @@ const appUrl = () => `${location.origin}${location.pathname}`;
 
 function CopyButton({ url, label = 'Linki kopyala' }: { url: string; label?: string }) {
   const [ok, setOk] = useState(false);
+  const timer = useRef<number>();
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   async function copy() {
     try { await navigator.clipboard.writeText(url); }
     catch {
@@ -78,11 +76,19 @@ function CopyButton({ url, label = 'Linki kopyala' }: { url: string; label?: str
       t.remove();
     }
     setOk(true);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setOk(false), 2000);
   }
-  return <Button variant="out" onClick={copy}><Icon name="link" size={20} />{ok ? 'Kopyalandı' : label}</Button>;
+  return (
+    <button type="button" className="nb nb-s nau-sec nins-cpy" onClick={copy}>
+      {ok
+        ? <span className="ok" role="status"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" pathLength={1} /></svg>Kopyalandı</span>
+        : <span><NIcon name="copy" size={18} />{label}</span>}
+    </button>
+  );
 }
 
-function PairCard({ token, pair, setPair }: { token: string; pair: string | null; setPair: (c: string) => void }) {
+function PairCard({ token, pair, setPair, delay }: { token: string; pair: string | null; setPair: (c: string) => void; delay: number }) {
   const [err, setErr] = useState('');
   const asked = useRef(false);
   async function fresh() {
@@ -92,19 +98,21 @@ function PairCard({ token, pair, setPair }: { token: string; pair: string | null
   }
   useEffect(() => { if (!pair && !asked.current) { asked.current = true; fresh(); } }, []);
   return (
-    <div className="card ins-pair">
-      <span className="t14 w8 lh">Ana ekrandakı app kod istəsə, bu kodu yazın</span>
-      {pair ? <div className="code-big" aria-label="Giriş kodu">{pair}</div> : <div className="code-big ins-wait">······</div>}
-      <div className="row sb">
-        <span className="hint">15 dəqiqə etibarlıdır</span>
-        <Button variant="ghost" small auto onClick={fresh}>Yeni kod</Button>
+    <section className="g nins-pair rz" aria-label="Giriş kodu" style={dl(delay)}>
+      <div>Ana ekrandakı app kod istəsə, bu kodu yazın</div>
+      {pair
+        ? <div className="nins-code" aria-label={`Giriş kodu ${pair}`}><span>{pair.length === 6 ? `${pair.slice(0, 3)} ${pair.slice(3)}` : pair}</span></div>
+        : <div className="nins-code w"><span>······</span></div>}
+      <div className="nins-foot">
+        <span className="n-meta">15 dəqiqə etibarlıdır</span>
+        <button type="button" className="nins-new" onClick={fresh}>Yeni kod</button>
       </div>
-      {err && <p className="err">{err}</p>}
-    </div>
+      {err && <p className="nau-err" role="alert" style={{ marginTop: 4 }}>{err}</p>}
+    </section>
   );
 }
 
-const OPEN_STEP: Step = { t: <>Ana ekranda <b>Y Pod</b> ikonundan açın</>, ic: <HomeIcon /> };
+const OPEN_STEP: Step = { t: <>Ana ekranda <b>Y Pod</b> ikonundan açın</>, app: true };
 
 function stepsFor(): { steps: Step[]; note?: ReactNode; copy?: boolean } {
   switch (env) {
@@ -112,21 +120,21 @@ function stepsFor(): { steps: Step[]; note?: ReactNode; copy?: boolean } {
       return { steps: [
         { t: <>Aşağıdakı <b>Paylaş</b> düyməsinə basın</>, sub: 'Görünmürsə: «…» menyusu → Paylaş', ic: <ShareIcon /> },
         { t: <>Siyahını aşağı sürüşdürüb <b>«Ana ekrana əlavə et»</b> seçin</>, ic: <AddHomeIcon /> },
-        { t: <>Sağ yuxarıda <b>«Əlavə et»</b></> },
+        { t: <>Sağ yuxarıda <b>«Əlavə et»</b></>, pill: 'Əlavə et' },
         OPEN_STEP,
       ] };
     case 'ios-chrome':
       return { copy: true, steps: [
         { t: <>Ünvan sətrinin yanındakı <b>Paylaş</b> ikonuna basın</>, sub: 'iOS 16.4 və yuxarı', ic: <ShareIcon /> },
         { t: <><b>«Ana ekrana əlavə et»</b> seçin</>, ic: <AddHomeIcon /> },
-        { t: <>Sağ yuxarıda <b>«Əlavə et»</b></> },
+        { t: <>Sağ yuxarıda <b>«Əlavə et»</b></>, pill: 'Əlavə et' },
         OPEN_STEP,
       ] };
     case 'ios-other':
       return { copy: true, note: <><b>Safari-də açmaq tövsiyə olunur.</b> Bu brauzerdə «Ana ekrana əlavə et» olmaya bilər.</>, steps: [
         { t: <>Ünvan sətrindəki və ya menyudakı <b>Paylaş</b> ikonuna basın</>, ic: <ShareIcon /> },
         { t: <><b>«Ana ekrana əlavə et»</b> seçin</>, ic: <AddHomeIcon /> },
-        { t: <>Sağ yuxarıda <b>«Əlavə et»</b></> },
+        { t: <>Sağ yuxarıda <b>«Əlavə et»</b></>, pill: 'Əlavə et' },
         OPEN_STEP,
       ] };
     case 'android-samsung':
@@ -160,31 +168,32 @@ export function Install({ token, pair, setPair, required, onDone }: { token: str
   const desktop = env === 'desktop';
   const { steps, note, copy } = stepsFor();
   const showBtn = android && ip.can && !ip.installed;
+  const short = showBtn || ip.installed;
+  const list: Step[] = desktop
+    ? [{ t: 'Brauzerin menyusunu (⋮) açın.' }, { t: '«Ana ekrana əlavə et» və ya «Quraşdır» seçin.' }, { t: 'Ana ekrandakı Y Pod-u açın. Kod istəsə, bu kodu yazın.' }]
+    : short ? [{ t: <><b>«Quraşdır»</b> düyməsinə basıb təsdiqləyin</> }, OPEN_STEP] : steps;
+  const base = showBtn ? 260 : 200;
   return (
-    <main className="scr"><div className="au ins" style={env === 'ios-safari' ? { paddingBottom: 'calc(120px + env(safe-area-inset-bottom))' } : undefined}>
-      <div className="top"><Brand /></div>
-      <h1 className="h1 ins-h">Ana ekrana əlavə edin</h1>
-      <p className="t14 soft lh">{required ? 'Əvvəl app-ı telefonunuza quraşdırın.' : 'App kimi bir toxunuşla açılsın, brauzer çubuğu olmadan.'}</p>
-
-      {ip.installed ? (
-        <div className="banner ins-ok" role="status"><Icon name="check" size={22} strokeWidth={2.6} /><span><b>Quraşdırıldı!</b> Bu pəncərəni bağlayın və ana ekrandakı <b>Y Pod</b> ikonundan açın.</span></div>
-      ) : (
-        <>
-          {showBtn && <Button className="ins-big" onClick={ip.prompt}><Icon name="plus" size={22} strokeWidth={2.6} />App-ı quraşdır</Button>}
-          {note && <div className="banner"><Icon name="alert" size={18} /><span>{note}</span></div>}
-          {desktop
-            ? <StepList steps={[
-                { t: 'Brauzerin menyusunu (⋮) açın.' }, { t: '«Ana ekrana əlavə et» və ya «Quraşdır» seçin.' }, { t: 'Ana ekrandakı Y Pod-u açın. Kod istəsə, bu kodu yazın.' },
-              ]} />
-            : showBtn ? <StepList steps={[{ t: <><b>«Quraşdır»</b> düyməsinə basıb təsdiqləyin</> }, OPEN_STEP]} /> : <StepList steps={steps} />}
-          {copy && <CopyButton url={appUrl()} label="Safari-də açmaq üçün linki kopyala" />}
-        </>
+    <AuthPage innerStyle={env === 'ios-safari' ? { paddingBottom: 'calc(120px + env(safe-area-inset-bottom))' } : undefined}>
+      <Brand />
+      {ip.installed && (
+        <div className="nins-ok rz" role="status" style={dl(60)}>
+          <span className="nchip nchip-cb"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path className="nins-draw" d="M20 6 9 17l-5-5" pathLength={1} /></svg></span>
+          <span><b>Quraşdırıldı!</b> Bu pəncərəni bağlayın və ana ekrandakı <b>Y Pod</b> ikonundan açın.</span>
+        </div>
       )}
+      <h1 className="nau-h1 s rz" style={dl(ip.installed ? 120 : 60)}>Ana ekrana əlavə edin</h1>
+      <p className="nau-p rz" style={dl(ip.installed ? 180 : 120)}>{required ? 'Əvvəl app-ı telefonunuza quraşdırın.' : 'App kimi bir toxunuşla açılsın, brauzer çubuğu olmadan.'}</p>
 
-      <PairCard token={token} pair={pair} setPair={setPair} />
-      {!required && <><div className="grow" /><Button onClick={onDone}>Anladım</Button></>}
-      {env === 'ios-safari' && <div className="ins-arrow" aria-hidden="true"><b>Paylaş düyməsi burada</b><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v15M6 13l6 6 6-6" /></svg></div>}
-    </div></main>
+      {showBtn && <button type="button" className="nb nb-p nins-big rz" style={dl(180)} onClick={ip.prompt}><NIcon name="plus" size={20} sw={2} />App-ı quraşdır</button>}
+      {note && !ip.installed && <div className="g nins-note rz" style={dl(180)}><NIcon name="alert" size={18} /><span>{note}</span></div>}
+      <StepList steps={list} base={ip.installed ? 260 : base} />
+      {copy && !ip.installed && !desktop && <CopyButton url={appUrl()} label="Safari-də açmaq üçün linki kopyala" />}
+
+      <PairCard token={token} pair={pair} setPair={setPair} delay={(ip.installed ? 260 : base) + list.length * 80} />
+      {!required && <div className="nau-foot"><button type="button" className="nb nb-p nau-big" onClick={onDone}>Anladım</button></div>}
+      {env === 'ios-safari' && <div className="nins-arrow rz" style={dl(600)} aria-hidden="true"><div><span>Paylaş düyməsi burada</span><NIcon name="down" size={22} sw={2} /></div></div>}
+    </AuthPage>
   );
 }
 
@@ -192,20 +201,21 @@ export function Install({ token, pair, setPair, required, onDone }: { token: str
 export function InAppScreen({ url }: { url: string }) {
   const ios = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
   const steps: Step[] = [
-    { t: <>Sağ yuxarıda (və ya aşağıda) <b>«…»</b> düyməsinə basın</>, ic: <DotsHIcon /> },
-    { t: <><b>{ios ? '«Safari-də aç»' : '«Brauzerdə aç»'}</b> seçin</>, ic: ios ? <CompassIcon /> : <DotsVIcon /> },
-    { t: <>Açılan {ios ? 'Safari' : 'Chrome'}-da ana ekrana əlavə etmə təlimatını izləyin</>, ic: <AddHomeIcon /> },
+    { t: <>Sağ yuxarıda (və ya aşağıda) <b>«…»</b> düyməsinə basın</>, ic: <NIcon name="ellipsis" /> },
+    { t: <><b>{ios ? '«Safari-də aç»' : '«Brauzerdə aç»'}</b> seçin</>, ic: ios ? <NIcon name="compass" /> : <DotsVIcon /> },
+    { t: <>Açılan {ios ? 'Safari' : 'Chrome'}-da ana ekrana əlavə etmə təlimatını izləyin</>, ic: <NIcon name="mobile" /> },
   ];
   return (
-    <main className="scr"><div className="au ins">
-      <div className="top"><Brand /></div>
-      <h1 className="h1 ins-h">Linki {ios ? 'Safari-də' : 'Chrome-da'} açın</h1>
-      <p className="t14 soft lh">Bu tətbiqin daxili brauzerindən app-ı ana ekrana əlavə etmək mümkün deyil.</p>
-      <StepList steps={steps} />
-      <div className="card ins-pair">
-        <span className="t14 w8 lh">Açılmasa, linki kopyalayıb {ios ? 'Safari-yə' : 'Chrome-a'} yapışdırın</span>
+    <AuthPage>
+      <div className="nins-top" aria-hidden="true"><div><NIcon name="ext" size={24} sw={2} /></div></div>
+      <Brand />
+      <h1 className="nau-h1 s rz" style={dl(60)}>Linki {ios ? 'Safari-də' : 'Chrome-da'} açın</h1>
+      <p className="nau-p rz" style={dl(120)}>Bu tətbiqin daxili brauzerindən app-ı ana ekrana əlavə etmək mümkün deyil.</p>
+      <StepList steps={steps} base={200} />
+      <div className="nins-cp rz" style={dl(440)}>
+        <p>Açılmasa, linki kopyalayıb {ios ? 'Safari-yə' : 'Chrome-a'} yapışdırın</p>
         <CopyButton url={url} />
       </div>
-    </div></main>
+    </AuthPage>
   );
 }

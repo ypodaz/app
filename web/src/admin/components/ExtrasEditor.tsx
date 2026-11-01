@@ -1,4 +1,4 @@
-import { Button, Icon } from '../../shared/ui';
+import { AIcon } from './AIcon';
 import { aznInput, parseAzn } from '../format';
 import type { Extra } from '../types';
 
@@ -24,22 +24,22 @@ export function extrasOf(rows: ExtraRow[]): { list: Extra[]; bad: boolean } {
 export function ExtrasEditor({ rows, onChange }: { rows: ExtraRow[]; onChange: (r: ExtraRow[]) => void }) {
   const set = (i: number, p: Partial<ExtraRow>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
   return (
-    <div className="col" style={{ gap: 8 }}>
+    <div className="a-ex">
       {rows.map((r, i) => {
         const name = r.name.trim(), has = name || r.amount.trim();
         const msg = !has ? '' : !name ? 'Adı yazın' : !parseAzn(r.amount) ? 'Məbləği düzgün yazın, məs. 20 və ya 12,5' : '';
         return (
-          <div key={i} className="col" style={{ gap: 4 }}>
-            <div className="row" style={{ gap: 8, alignItems: 'stretch' }}>
-              <input className={`inp grow${msg && !name ? ' inp-err' : ''}`} style={{ minWidth: 0 }} aria-label={`Əlavə xərc ${i + 1} adı`} value={r.name} maxLength={80} placeholder="məs. Mikrofon icarəsi" onChange={(e) => set(i, { name: e.target.value })} />
-              <input className={`inp${msg && name ? ' inp-err' : ''}`} style={{ width: 96, flex: 'none' }} inputMode="decimal" aria-label={`Əlavə xərc ${i + 1} məbləği (AZN)`} value={r.amount} placeholder="AZN" onChange={(e) => set(i, { amount: e.target.value })} />
-              <Button variant="ghost" auto aria-label={`Əlavə xərc ${i + 1} sil`} style={{ flex: 'none', padding: '8px 10px' }} onClick={() => onChange(rows.filter((_, j) => j !== i))}><Icon name="close" size={18} /></Button>
+          <div key={i} className="a-exr">
+            <div className="a-exi">
+              <input className={`inp${msg && !name ? ' inp-err' : ''}`} aria-label={`Əlavə xərc ${i + 1} adı`} value={r.name} maxLength={80} placeholder="məs. Mikrofon icarəsi" onChange={(e) => set(i, { name: e.target.value })} />
+              <div className="a-unit a-unit-s"><input className={`inp${msg && name ? ' inp-err' : ''}`} inputMode="decimal" aria-label={`Əlavə xərc ${i + 1} məbləği (AZN)`} value={r.amount} placeholder="0" onChange={(e) => set(i, { amount: e.target.value })} /><span aria-hidden="true">AZN</span></div>
+              <button type="button" className="a-bg a-bg-i" aria-label={`Əlavə xərc ${i + 1} sil`} onClick={() => onChange(rows.filter((_, j) => j !== i))}><AIcon name="x" size={18} /></button>
             </div>
-            {msg && <span className="hint" role="alert" style={{ color: '#fda4af' }}>{msg}</span>}
+            {msg && <span className="a-ferr2" role="alert">{msg}</span>}
           </div>
         );
       })}
-      {rows.length < MAX && <Button variant="out" small auto onClick={() => onChange([...rows, { name: '', amount: '' }])}><Icon name="plus" size={16} /> Əlavə xərc</Button>}
+      {rows.length < MAX && <button type="button" className="a-bg a-ex-add" onClick={() => onChange([...rows, { name: '', amount: '' }])}><AIcon name="plus" size={16} />Əlavə xərc</button>}
     </div>
   );
 }

@@ -23,7 +23,7 @@ def test_aysel_b9_t4():
     assert m.studio_balance(p.total, 20 * A, 100 * A) == 100 * A
     assert m.payment_status(total=p.total, cashback_used=20 * A, deposit_amount=100 * A,
                             deposit_received=True, deposit_waived=False) \
-        == "Beh ödənib · 100 AZN · qalıq studiyada 100 AZN"
+        == "Beh: 100,00 AZN ödənib · qalıq studiyada 100,00 AZN"
     # keşbeklə ödənən hissə çıxılmır: 220-dən +22
     assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 22 * A)
 
@@ -33,7 +33,7 @@ def test_t4b_leyla_montaj_reels():
     assert (p.base, p.editing, p.reels, p.total) == (70 * A, 100 * A, 40 * A, 210 * A)
     assert m.deposit_expected(p.total, 0, False) == 105 * A
     assert m.payment_status(total=p.total, cashback_used=0, deposit_amount=0,
-                            deposit_received=False, deposit_waived=False) == "Beh gözlənilir · 105 AZN"
+                            deposit_received=False, deposit_waived=False) == "Beh gözlənilir · 105,00 AZN"
     assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 21 * A)
 
 
@@ -53,7 +53,7 @@ def test_b4b_kamran_package():
     assert (kind, 18 * A + amount) == ("earn", 28 * A)
     assert m.payment_status(total=p.total, cashback_used=0, deposit_amount=0, deposit_received=False,
                             deposit_waived=False, package_minutes=120) \
-        == "Paketdən 2 saat · əlavələr 100 AZN studiyada"
+        == "Paketdən 2 saat · əlavələr 100,00 AZN studiyada"
 
 
 def test_package_extra_camera():
@@ -61,7 +61,7 @@ def test_package_extra_camera():
     assert p.extra_camera == 75 * A  # 50 AZN × 1,5 saat
     assert m.payment_status(total=p.total, cashback_used=0, deposit_amount=0, deposit_received=False,
                             deposit_waived=False, package_minutes=90, extra_camera=p.extra_camera) \
-        == "Paketdən 1,5 saat · əlavə kamera 75 AZN studiyada"
+        == "Paketdən 1,5 saat · əlavə kamera 75,00 AZN studiyada"
     plain = shoot(cameras=2, package_cameras=2)
     assert m.payment_status(total=plain.total, cashback_used=0, deposit_amount=0, deposit_received=False,
                             deposit_waived=False, package_minutes=60) == "Paketdən 1 saat"
@@ -84,7 +84,7 @@ def test_t5_fully_paid():
 
 def test_waived_deposit():
     assert m.payment_status(total=70 * A, cashback_used=0, deposit_amount=0,
-                            deposit_received=False, deposit_waived=True) == "Beh 0 AZN · ödəniş studiyada 70 AZN"
+                            deposit_received=False, deposit_waived=True) == "Beh 0 AZN · ödəniş studiyada 70,00 AZN"
 
 
 def test_a7a_history_sums_to_76():

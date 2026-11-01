@@ -1,9 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Button, Card, Icon, Sheet, formatMoney } from '../../shared/ui';
+import { Button, Sheet, formatMoney } from '../../shared/ui';
 import { useAction, useAuth, useLoad } from '../ctx';
 import { appLine, aznInput, bakuParts, dateFull, dateShort, parseAzn } from '../format';
 import type { ClientDetail, InviteOut, LedgerRow } from '../types';
-import { Avatar, Err, Field, ShootRow, sourceName } from './common';
+import { AIcon } from './AIcon';
+import { Av, stag } from './a3';
+import { Err, Field, shootDesc, sourceName } from './common';
+import { ConfirmDialog, ShootChip, useCountUp } from './neon';
 import { ProfileSheet } from './ProfileSheet';
 
 const KIND: Record<LedgerRow['kind'], string> = {
@@ -11,6 +14,8 @@ const KIND: Record<LedgerRow['kind'], string> = {
   profile_bonus: 'Profil bonusu', referral: 'Dost dəvəti bonusu', birthday: 'Ad günü hədiyyəsi',
 };
 const azn = (q: number) => formatMoney(q).replace(' AZN', '');
+// Neon cədvəldə mənfi işarə «−» (U+2212)
+const signed = (q: number) => `${q > 0 ? '+' : q < 0 ? '−' : ''}${azn(Math.abs(q))}`;
 
 // B6c: müştəri kartı (mobil tam ekran, desktopda sağ panel).
 export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => void }) {
@@ -25,104 +30,123 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
   const [prof, setProf] = useState(false);
   const [inv, setInv] = useState<InviteOut | null>(null);
   const [copied, setCopied] = useState(false);
+  const [askInv, setAskInv] = useState(false);
   const inviteAct = useAction();
+  const bal = useCountUp(c?.cashback_balance, 700);
 
-  if (!c) return err ? <Err msg={err} /> : <p className="t13 muted">Yüklənir…</p>;
+  if (!c) return err ? <Err msg={err} /> : <p className="a-empty">Yüklənir…</p>;
 
   async function invite() {
-    if (c!.activated && !confirm('Müştərinin köhnə girişləri bağlanacaq. Davam edək?')) return;
     const r = await inviteAct.run(() => call<InviteOut>(`/clients/${id}/invite`, { body: {} }));
     if (r) { setInv(r); setCopied(false); }
   }
 
   return (
-    <div className="col" style={{ gap: 14 }}>
-      <div className="row" style={{ gap: 12 }}>
-        <Avatar name={c.full_name} />
-        <span className="col grow" style={{ gap: 2 }}>
-          <span className="h2" style={{ fontSize: 17, overflowWrap: 'anywhere' }}>{c.full_name}</span>
-          <span className="t13 soft">{c.phone || 'telefon yoxdur'} · {c.activated ? 'app-a qoşulub' : 'qoşulmayıb'}</span>
+    <div className="a3-cc" key={c.id}>
+      <div className="a3-ch a-rise" style={stag(0)}>
+        <Av name={c.full_name} size={48} />
+        <span className="a3-chm">
+          <b>{c.full_name}</b>
+          <span>{c.phone || 'telefon yoxdur'} · {c.activated ? 'app-a qoşulub' : 'qoşulmayıb'}</span>
         </span>
-        <button type="button" className="iconbtn" aria-label="Redaktə et" title="Redaktə et" onClick={() => setEdit(true)}><Icon name="edit" size={20} /></button>
+        <button type="button" className="a-bg a-bg-i" aria-label="Redaktə et" title="Redaktə et" onClick={() => setEdit(true)}><AIcon name="pencil" size={20} /></button>
       </div>
-      <span className="t13 soft" data-testid="app-line">{appLine(c)}</span>
-      {c.notes && <p className="t13 soft lh" style={{ overflowWrap: 'anywhere' }}>{c.notes}</p>}
-      <a className="btn btn-primary btn-sm" href={`#/shoots/new?client=${c.id}`}><Icon name="plus" size={18} /> Çəkiliş əlavə et</a>
-      {c.deposit_required && <div className="banner"><Icon name="alert" size={18} /><span><b>Beh mütləqdir</b> — müştəri əvvəl gəlməyib.</span></div>}
+      <span className="a3-app a-rise" style={stag(1)} data-testid="app-line"><i className={c.activated ? 'on' : ''} aria-hidden="true" /><span>{appLine(c)}</span></span>
+      {c.notes && <p className="a3-notes a-rise" style={stag(1)}>Qeyd: {c.notes.charAt(0).toLowerCase() + c.notes.slice(1)}</p>}
+      <a className="a-bp a3-wide a-rise" style={stag(2)} href={`#/shoots/new?client=${c.id}`}><AIcon name="plus" size={18} /> Çəkiliş əlavə et</a>
+      {c.deposit_required && <div className="a3-ban a-rise" style={stag(3)}><AIcon name="alert" size={18} /><span><b>Beh mütləqdir</b> — müştəri əvvəl gəlməyib.</span></div>}
 
-      <Card>
-        <div className="row sb">
-          <span className="h3">Profil</span>
-          <button type="button" className="iconbtn" aria-label="Profili redaktə et" title="Profili redaktə et" onClick={() => setProf(true)}><Icon name="edit" size={20} /></button>
+      <section className="a-g a-rise" style={stag(4)} aria-label="Profil">
+        <div className="a3-sh"><h2>Profil</h2>
+          <button type="button" className="a3-ib" aria-label="Profili redaktə et" title="Profili redaktə et" onClick={() => setProf(true)}><AIcon name="pencil" size={18} /></button>
         </div>
-        <div className="ax-rows" data-testid="profile">
+        <div className="a3-rows" data-testid="profile">
           <PRow label="İxtisas" value={c.profession} />
           <PRow label="İş yeri" value={c.workplace} />
-          <PRow label="Instagram" value={c.instagram && <a href={`https://instagram.com/${c.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">@{c.instagram.replace(/^@/, '')}</a>} />
-          <PRow label="Nişa" value={c.niche} />
+          <PRow label="Instagram" value={c.instagram && <a className="a3-pv" href={`https://instagram.com/${c.instagram.replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer">@{c.instagram.replace(/^@/, '')}</a>} />
+          <PRow label="Kontent mövzusu" value={c.niche} />
           <PRow label="Doğum günü" value={c.birthday && dateFull(c.birthday)} />
           <PRow label="Haradan tapıb" value={sourceName(c.source)} />
           <PRow label="Təkliflər" value={c.marketing_opt_in === false ? 'Bağlıdır' : 'Açıqdır'} />
-          <PRow label="Dəvət edən" value={c.referred_by && <a href={`#/clients/${c.referred_by.id}`}>{c.referred_by.full_name}</a>} />
+          <PRow label="Dəvət edən" value={c.referred_by && <a className="a3-pl" href={`#/clients/${c.referred_by.id}`}>{c.referred_by.full_name}</a>} />
           {c.referral_code && <PRow label="Dəvət kodu" value={c.referral_code} />}
         </div>
-        <div className="chips">{(c.tags ?? []).map((t) => <span key={t.id} className="tag">{t.name}</span>)}</div>
-        {c.profile_complete === false && <span className="hint">Profil tam doldurulmayıb.</span>}
-      </Card>
+        {!!c.tags?.length && <div className="a3-tags a3-tags-p">{c.tags.map((t) => <span key={t.id} className="a3-tag">{t.name}</span>)}</div>}
+        {c.profile_complete === false && <p className="a-note">Profil tam doldurulmayıb.</p>}
+      </section>
 
-      <Card tone="violet">
-        <span className="lbl" style={{ color: '#e9d5ff' }}>Keşbek</span>
-        <span className="num-l">{azn(c.cashback_balance)}<span className="unit">AZN</span></span>
-        <span className="t12 muted">Müddətsizdir</span>
-        <Button variant="cream" small onClick={() => setCb(true)}>Başlanğıc keşbek</Button>
-      </Card>
+      <section className="a-g a-g-kb a-rise" style={stag(5)} aria-label="Keşbek">
+        <span className="a-hot-glow a3-glow-g" aria-hidden="true" />
+        <div className="a3-kh"><span className="a-ic a-ic-cb"><AIcon name="coins" size={16} /></span><span>Keşbek</span></div>
+        <div className="a3-kn">{azn(bal ?? c.cashback_balance)}<small>AZN</small></div>
+        <span className="a3-kt">Müddətsizdir</span>
+        <button type="button" className="a-bg a3-wide" onClick={() => setCb(true)}>Başlanğıc keşbek</button>
+      </section>
 
-      <Card>
-        <span className="h3">Keşbek tarixçəsi</span>
-        <div className="list">
+      <section className="a-g a-rise" style={stag(6)} aria-label="Keşbek tarixçəsi">
+        <h2 className="a-cardh">Keşbek tarixçəsi</h2>
+        <div>
           {c.cashback_rows.map((r) => {
             const body = (
               <>
-                <span className={r.amount < 0 ? 'amt-minus' : 'amt-plus'} style={{ minWidth: 70 }}>{r.amount > 0 ? '+' : ''}{azn(r.amount)}</span>
-                <span className="col grow" style={{ gap: 2 }}><span className="t14 w7">{KIND[r.kind]}</span>{r.note && <span className="t12 muted">{r.note}</span>}</span>
-                <span className="t12 muted">{dateShort(bakuParts(r.created_at).date)}</span>
+                <span className={`a3-amt${r.amount > 0 ? ' pos' : ''}`}>{signed(r.amount)}</span>
+                <span className="a3-hm"><b>{KIND[r.kind]}</b>{r.note && <span>{r.note}</span>}</span>
+                <span className="a3-hd">{dateShort(bakuParts(r.created_at).date)}</span>
               </>
             );
             return r.kind === 'manual'
-              ? <button key={r.id} type="button" className="li li-edit" aria-label={`${KIND[r.kind]} — redaktə et`} onClick={() => setRow(r)}>{body}<Icon name="edit" size={16} /></button>
-              : <div key={r.id} className="li">{body}</div>;
+              ? <button key={r.id} type="button" className="a3-hr" aria-label={`${KIND[r.kind]} — redaktə et`} onClick={() => setRow(r)}>{body}<AIcon name="pencil" size={16} /></button>
+              : <div key={r.id} className="a3-hr">{body}</div>;
           })}
-          {!c.cashback_rows.length && <p className="t13 muted">Hələ keşbek yoxdur.</p>}
+          {!c.cashback_rows.length && <p className="a-empty">Hələ keşbek yoxdur.</p>}
         </div>
-      </Card>
+      </section>
 
-      <Card>
-        <span className="h3">Paketlər</span>
+      <section className="a-g a-rise" style={stag(7)} aria-label="Paketlər">
+        <h2 className="a-cardh">Paketlər</h2>
         {c.packages.map((p) => (
-          <a key={p.id} className="col" href="#/packages" style={{ gap: 4, color: 'inherit', textDecoration: 'none' }}>
-            <span className="t14 w8">{p.title}</span>
-            <span className="t12 muted">{p.minutes_left / 60} / {p.minutes_total / 60} saat qalıb · {dateShort(p.ends_on)}-dək · {p.cameras} kamera</span>
-            <div className="prog"><span style={{ width: `${(p.minutes_left / p.minutes_total) * 100}%` }} /></div>
+          <a key={p.id} className="a3-pk" href="#/packages">
+            <b>{p.title}</b>
+            <span>{p.minutes_left / 60} / {p.minutes_total / 60} saat qalıb · {dateShort(p.ends_on)}-dək · {p.cameras} kamera</span>
+            <div className="a3-prog"><span style={{ width: `${(p.minutes_left / p.minutes_total) * 100}%` }} /></div>
           </a>
         ))}
-        {!c.packages.length && <p className="t13 muted">Saat paketi yoxdur.</p>}
-      </Card>
+        {!c.packages.length && <p className="a-empty">Saat paketi yoxdur.</p>}
+      </section>
 
-      <Card>
-        <span className="h3">Çəkilişlər</span>
-        <div className="list">{c.shoots.map((s) => <ShootRow key={s.id} s={s} withDate />)}</div>
-        {!c.shoots.length && <p className="t13 muted">Çəkiliş yoxdur.</p>}
-      </Card>
-
-      <Button variant="out" small onClick={invite} disabled={inviteAct.busy}><Icon name="link" size={18} /> {c.activated ? 'Yeni dəvət linki' : 'Dəvət linki'}</Button>
-      {c.activated && <p className="hint">Yeni link yaradanda köhnə link etibarsız olur.</p>}
-      <Err msg={inviteAct.err} />
-      {inv && (
-        <div className="btns">
-          {inv.whatsapp_url && <a className="btn btn-primary btn-sm" href={inv.whatsapp_url} target="_blank" rel="noopener">WhatsApp-da göndər</a>}
-          <Button variant="out" small onClick={() => navigator.clipboard.writeText(inv.url).then(() => setCopied(true))}>{copied ? 'Kopyalandı' : 'Linki kopyala'}</Button>
+      <section className="a-g a-rise" style={stag(8)} aria-label="Çəkilişlər">
+        <h2 className="a-cardh">Çəkilişlər</h2>
+        <div>
+          {c.shoots.map((s) => {
+            const p = bakuParts(s.starts_at);
+            return (
+              <a key={s.id} className="a3-sr" href={`#/shoots/${s.id}`}>
+                <span className="a3-hm"><b>{dateShort(p.date)} · {p.time}</b><span>{shootDesc(s)}</span></span>
+                <ShootChip s={s} />
+              </a>
+            );
+          })}
         </div>
-      )}
+        {!c.shoots.length && <p className="a-empty">Çəkiliş yoxdur.</p>}
+      </section>
+
+      <section className="a3-inv a-rise" style={stag(9)} aria-label="Dəvət linki">
+        <button type="button" className="a-bg a3-wide" onClick={() => (c.activated ? setAskInv(true) : invite())} disabled={inviteAct.busy}><AIcon name="link" size={18} /> {c.activated ? 'Yeni dəvət linki' : 'Dəvət linki'}</button>
+        {c.activated && <p className="a-note">Yeni link yaradanda köhnə link etibarsız olur.</p>}
+        <Err msg={inviteAct.err} />
+        {inv && (
+          <div className="a-g a3-il">
+            <span className="a3-iu">{inv.url.replace(/^https?:\/\//, '')}</span>
+            <div className="a3-ib2">
+              {inv.whatsapp_url && <a className="a-bp" href={inv.whatsapp_url} target="_blank" rel="noopener">WhatsApp-da göndər</a>}
+              <button type="button" className={`a-bg${copied ? ' a3-ok' : ''}`} onClick={() => navigator.clipboard.writeText(inv.url).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 2000); })}>
+                {copied && <AIcon name="check" size={16} className="a3-draw" />}{copied ? 'Kopyalandı' : 'Linki kopyala'}
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+      <ConfirmDialog open={askInv} confirmLabel="Davam et" text="Müştərinin köhnə girişləri bağlanacaq. Davam edək?" onCancel={() => setAskInv(false)} onConfirm={() => { setAskInv(false); invite(); }} />
       <EditSheet open={edit} c={c} onClose={() => setEdit(false)} onDone={() => { reload(); onChanged?.(); }} />
       <ProfileSheet open={prof} c={c} onClose={() => setProf(false)} onDone={() => { reload(); onChanged?.(); }} />
       <CashbackSheet open={cb} id={id} onClose={() => setCb(false)} onDone={reload} />
@@ -132,7 +156,7 @@ export function ClientCard({ id, onChanged }: { id: number; onChanged?: () => vo
 }
 
 function PRow({ label, value }: { label: string; value: ReactNode }) {
-  return <div className="sum-r"><span className="muted">{label}</span><span style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{value || '—'}</span></div>;
+  return <div className="a3-pr"><span>{label}</span><span>{value || '—'}</span></div>;
 }
 
 function CashbackSheet({ open, id, onClose, onDone }: { open: boolean; id: number; onClose: () => void; onDone: () => void }) {
@@ -147,9 +171,9 @@ function CashbackSheet({ open, id, onClose, onDone }: { open: boolean; id: numbe
   }
   return (
     <Sheet open={open} onClose={onClose} title="Başlanğıc keşbek">
-      <p className="t13 soft lh">Müştərinin əvvəlki keşbekini balansa yazın. Düzəliş üçün mənfi məbləğ (məs. −5) də olar.</p>
+      <p className="a3-sp">Müştərinin əvvəlki keşbekini balansa yazın. Düzəliş üçün mənfi məbləğ (məs. −5) də olar.</p>
       <Field label="Məbləğ (AZN)" id="cb-a"><input id="cb-a" className="inp" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="məs. 35" /></Field>
-      <Field label="Səbəb" id="cb-n"><input id="cb-n" className="inp" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+      <Field label="Səbəb" id="cb-n"><input id="cb-n" className="inp" value={note} onChange={(e) => setNote(e.target.value)} placeholder="məs. Köhnə sistemdən keçid" /></Field>
       <Err msg={err} />
       <Button disabled={!q || busy} onClick={submit}>Yaz</Button>
     </Sheet>
@@ -161,6 +185,7 @@ function RowSheet({ row, onClose, onDone }: { row: LedgerRow | null; onClose: ()
   const { busy, err, setErr, run } = useAction();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  const [ask, setAsk] = useState(false);
   useEffect(() => { if (row) { setAmount(`${row.amount < 0 ? '-' : ''}${aznInput(row.amount)}`); setNote(row.note ?? ''); setErr(''); } }, [row]);
   const q = parseAzn(amount, true);
   async function save() {
@@ -168,7 +193,8 @@ function RowSheet({ row, onClose, onDone }: { row: LedgerRow | null; onClose: ()
     if (await run(() => call(`/cashback/${row.id}`, { method: 'PATCH', body: { amount: q, note: note.trim() } })) !== undefined) { onClose(); onDone(); }
   }
   async function remove() {
-    if (!row || !confirm('Bu sətir silinsin? Balans dəyişəcək.')) return;
+    setAsk(false);
+    if (!row) return;
     if (await run(() => call(`/cashback/${row.id}`, { method: 'DELETE' })) !== undefined) { onClose(); onDone(); }
   }
   return (
@@ -176,8 +202,11 @@ function RowSheet({ row, onClose, onDone }: { row: LedgerRow | null; onClose: ()
       <Field label="Məbləğ (AZN)" id="cr-a" hint="Mənfi də ola bilər, məs. −5"><input id="cr-a" className="inp" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
       <Field label="Səbəb" id="cr-n"><input id="cr-n" className="inp" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       <Err msg={err} />
-      <Button disabled={!q || busy} onClick={save}>Yadda saxla</Button>
-      <Button variant="danger" disabled={busy} onClick={remove}>Sil</Button>
+      <div className="a3-brow">
+        <button type="button" className="a3-dng" disabled={busy} onClick={() => setAsk(true)}>Sil</button>
+        <Button disabled={!q || busy} onClick={save}>Yadda saxla</Button>
+      </div>
+      <ConfirmDialog open={ask} confirmLabel="Sil" text="Bu sətir silinsin? Balans dəyişəcək." onCancel={() => setAsk(false)} onConfirm={remove} />
     </Sheet>
   );
 }

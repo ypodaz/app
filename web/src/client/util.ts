@@ -33,6 +33,11 @@ export const monShort = (iso: string) => MON_SHORT[baku(iso).m];
 export const dateLong = (iso: string) => { const b = baku(iso); return `${WD[b.wd]}, ${b.d} ${MON[b.m]}`; };
 export const dateShort = (iso: string) => { const b = baku(iso); return `${b.d} ${MON[b.m].slice(0, 3)}`; };
 export const dateFull = (iso: string) => { const b = baku(iso); return `${b.d} ${MON[b.m]} ${b.y}`; };
+/** Neon: «31 okt, şənbə» və «31 okt» (qısa kiçik hərfli ay). */
+const MON3 = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avq', 'sen', 'okt', 'noy', 'dek'];
+export const monLow = (iso: string) => MON3[baku(iso).m];
+export const dayMon = (iso: string) => { const b = baku(iso); return `${b.d} ${MON3[b.m]}`; };
+export const dayLabel = (iso: string) => `${dayMon(iso)}, ${weekday(iso).toLocaleLowerCase('az')}`;
 /** 'YYYY-MM-DD' (təqvim tarixi, qurşaqsız) üçün. */
 export const plainDate = (s: string) => { const [y, m, d] = s.split('-').map(Number); return `${d} ${MON[m - 1]} ${y}`; };
 export const plainDateShort = (s: string) => { const [, m, d] = s.split('-').map(Number); return `${d} ${MON[m - 1]}`; };
@@ -70,6 +75,7 @@ export type Shoot = {
   payment_line: string | null; studio_balance: number | null; deposit_expected: number | null;
   materials: { id: number; title: string; drive_url: string }[]; cashback_earned: number | null;
   cashback_expected: { amount: number; first_shoot: boolean } | null;
+  confirmed_at: string; refund_amount: number | null;
 };
 
 const TAG: Record<string, string> = { podcast: 'Podcast', reels: 'Reels', other: 'Digər' };
