@@ -406,3 +406,19 @@ def test_client_shoot_extras_refund_confirmed_materials_pending(api):
     api.patch(f"/api/admin/shoots/{s2['id']}/production", json={"production": "ready", "delivery_on": None},
               headers=bearer(adm))
     assert api.get("/api/me/materials", headers=bearer(tok)).json() == []
+
+
+def test_delete_client_only_without_records(api):
+    adm = admin_token(api)
+    empty, tok = new_client(api, adm, "Səhv Müştəri")
+    busy, _ = new_client(api, adm, "Aysel Məmmədova")
+    make_shoot(api, adm, busy)
+    r = api.delete(f"/api/admin/clients/{busy}", headers=bearer(adm))
+    assert r.status_code == 409 and "silmək olmaz" in r.json()["detail"]
+    assert api.delete(f"/api/admin/clients/{empty}", headers=bearer(adm)).status_code == 200
+    assert api.get("/api/me/home", headers=bearer(tok)).status_code == 401
+    ids = {c["id"] for c in api.get("/api/admin/clients", headers=bearer(adm)).json()}
+    assert empty not in ids and busy in ids
+    assert api.delete(f"/api/admin/clients/{empty}", headers=bearer(adm)).status_code == 404
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "delete")) == 1

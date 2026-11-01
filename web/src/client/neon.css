@@ -61,7 +61,7 @@ a{color:var(--yp-accent)}a:hover{color:var(--yp-accent)}
 @keyframes yp-ring{from{stroke-dashoffset:125.66}}
 @keyframes yp-pulse{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.6);opacity:0}}
 @keyframes yp-sk{0%,100%{opacity:.5}50%{opacity:1}}
-.rise{animation:yp-rise 360ms var(--yp-ease) both;animation-delay:calc(var(--i,0) * 30ms)}
+.rise{animation:yp-rise 360ms var(--yp-ease) backwards;animation-delay:calc(var(--i,0) * 30ms)}
 
 /* şüşə kart; --glow: künc parıltısı (məlumat rəngi) */
 .g{position:relative;overflow:hidden;box-sizing:border-box;padding:16px;border-radius:22px;color:var(--yp-text);text-decoration:none;display:flex;flex-direction:column;min-width:0;
@@ -143,7 +143,7 @@ a.g:hover{color:var(--yp-text)}
 .skel{background:rgba(255,255,255,.06);border-radius:8px;animation:yp-sk 1.4s ease-in-out infinite}
 
 @media (prefers-reduced-motion:reduce){
-  .rise,.drop{animation:yp-fade 200ms both!important}
+  .rise,.drop{animation:yp-fade 200ms backwards!important}
   .nbar>span,.ring-v,.live::before{animation:none!important}
   .skel{animation:none;opacity:.6}
   .nb{transition:none}
@@ -212,7 +212,7 @@ button.rbtn{cursor:pointer;font-family:inherit}
   background:var(--yp-glass-bg);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid var(--yp-glass-border);box-shadow:var(--yp-glass-hl);transition:transform 120ms var(--yp-ease)}
 .nticket:hover{color:var(--yp-text)}
 .nticket:active{transform:scale(.98)}
-.nticket.dim{animation-name:yp-rise-dim}
+.nticket.dim{animation-name:yp-rise-dim;animation-fill-mode:both}
 .nticket-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .nticket-body .n-meta{font-variant-numeric:tabular-nums}
 .nticket-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -306,7 +306,7 @@ button.ncd{cursor:pointer}
 .nmat-row .nmat-o{font-size:12px;line-height:16px}
 
 @media (prefers-reduced-motion:reduce){
-  .npush,.ncal-g{animation:yp-fade 200ms both!important}
+  .npush,.ncal-g{animation:yp-fade 200ms backwards!important}
   .rise.dim{animation-name:yp-fade-dim!important}
   .ncd-s,.nsteps>li.nsteps-fill,.nsteps-dot.beat{animation:none!important}
   .nseg-pill,.nseg button,.nticket,.nmat-r,.nmat-row,.nmat-a,.nrule,.nrule-c,.nhead{transition:none!important}
@@ -465,7 +465,7 @@ button.ncd{cursor:pointer}
 .nlogout button{min-width:88px;height:44px;border:0;background:none;font-family:inherit;font-size:13px;line-height:18px;font-weight:500;color:var(--yp-text-3);cursor:pointer}
 
 @media (prefers-reduced-motion:reduce){
-  .nwarn,.g.nok{animation:yp-fade 200ms both!important}
+  .nwarn,.g.nok{animation:yp-fade 200ms backwards!important}
   .npk-ring circle+circle,.ncb-pop,.npf-chip i,.nref-code .nb path,.nnt-dot{animation:none!important}
   .npf-chip i{display:none}
   .nrules-p,.nrules-c,.nnt,.nperm-l,.nnt-dot,.ntg-t,.ntg-k,.nsrc span,.nin,.npf-prog .nbar>span{transition:none!important}
@@ -489,7 +489,7 @@ button.ncd{cursor:pointer}
 @keyframes yp-dash{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
 @keyframes yp-slide{from{transform:translateX(-32px)}to{transform:translateX(80px)}}
 @keyframes yp-splash{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
-.rz{animation:yp-rise 360ms var(--yp-ease) both;animation-delay:var(--dl,0ms)}
+.rz{animation:yp-rise 360ms var(--yp-ease) backwards;animation-delay:var(--dl,0ms)}
 .nchip-ac{background:var(--yp-accent-tint);color:var(--yp-accent)}
 .nchip-40{width:40px;height:40px;border-radius:20px}
 
@@ -633,13 +633,13 @@ button.ncd{cursor:pointer}
 .nsplash-tile{animation:yp-splash 400ms var(--yp-ease) both;position:relative;width:96px;height:96px;border-radius:22px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-sizing:border-box;
   background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,0) 32%),radial-gradient(circle at 50% 50%,rgba(167,139,250,.18),rgba(167,139,250,0) 68%),#0B0B0D;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 0 0 1px rgba(255,255,255,.06)}
 .nsplash-t{position:relative;margin-top:16px;display:flex;flex-direction:column;align-items:center;gap:6px}
-.nsplash-n{animation:yp-rise 360ms var(--yp-ease) 120ms both;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-.01em}
-.nsplash-t .n-meta{animation:yp-rise 360ms var(--yp-ease) 160ms both}
+.nsplash-n{animation:yp-rise 360ms var(--yp-ease) 120ms backwards;font-size:24px;line-height:30px;font-weight:700;letter-spacing:-.01em}
+.nsplash-t .n-meta{animation:yp-rise 360ms var(--yp-ease) 160ms backwards}
 .nsplash-bar{position:absolute;left:50%;bottom:40px;width:80px;height:2px;margin-left:-40px;border-radius:1px;background:rgba(255,255,255,.12);overflow:hidden}
 .nsplash-bar i{display:block;width:32px;height:2px;border-radius:1px;background:var(--yp-accent);animation:yp-slide 1.2s ease-in-out infinite}
 
 @media (prefers-reduced-motion:reduce){
-  .rz,.nai-fresh,.nsplash-tile,.nsplash-n,.nsplash-t .n-meta{animation:yp-fade 200ms both!important}
+  .rz,.nai-fresh,.nsplash-tile,.nsplash-n,.nsplash-t .n-meta{animation:yp-fade 200ms backwards!important}
   .nai-typ i,.nai-send.fly span,.nau-cell.f,.nau-cell i,.nau-cells.shake,.nins-arrow>div,.nins-top>div,.nins-draw,.nins-cpy .ok path{animation:none!important}
   .nau-cell i{opacity:1}
   .nau-glow.anim,.nsplash-glow{animation-duration:200ms!important;animation-delay:0ms!important}

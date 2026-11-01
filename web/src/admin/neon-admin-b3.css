@@ -17,7 +17,7 @@
 
 /* ---------- ortaq ---------- */
 .a3-av{flex:none;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);color:var(--yp-text);font-weight:700}
-.a3-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;min-height:52vh;padding:32px 24px;animation:yp-rise 360ms var(--yp-ease) both}
+.a3-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;min-height:52vh;padding:32px 24px;animation:yp-rise 360ms var(--yp-ease) backwards}
 .a3-empty-i{width:40px;height:40px;border-radius:20px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
 .a3-empty-acc{background:var(--yp-accent-tint);color:var(--yp-accent)}
 .a3-empty-pkg{background:rgba(255,201,77,.16);color:var(--yp-package)}
@@ -318,7 +318,7 @@ button.a3-hr{cursor:pointer}
 .a3-cdl{display:inline-flex;align-items:center;gap:4px;margin-bottom:8px;font-size:14px;font-weight:600;color:var(--yp-accent);text-decoration:none;overflow-wrap:anywhere}
 .a3-cdm{display:block;margin-bottom:14px;font-size:12px;color:var(--yp-text-2)}
 .a3-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px}
-.a3-tile{padding:12px;border-radius:16px;background:var(--yp-inner);animation:yp-rise 240ms var(--yp-ease) calc(var(--i,0) * 40ms) both}
+.a3-tile{padding:12px;border-radius:16px;background:var(--yp-inner);animation:yp-rise 240ms var(--yp-ease) calc(var(--i,0) * 40ms) backwards}
 .a3-tile.acc{background:var(--yp-accent-tint)}
 .a3-tile b{display:block;font-size:24px;line-height:30px;font-weight:700}
 .a3-tile span{font-size:12px;line-height:16px;color:var(--yp-text-2)}

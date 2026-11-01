@@ -8,6 +8,7 @@ import { Av, stag } from './a3';
 import { Err, Field, shootDesc, sourceName } from './common';
 import { ConfirmDialog, ShootChip, useCountUp } from './neon';
 import { ProfileSheet } from './ProfileSheet';
+import { go } from '../router';
 
 const KIND: Record<LedgerRow['kind'], string> = {
   earn: 'Çəkiliş keşbeki', earn_first: 'İlk çəkiliş bonusu', spend: 'Keşbekdən istifadə', spend_return: 'Keşbek qaytarıldı', manual: 'Əl ilə düzəliş',
@@ -217,9 +218,14 @@ function EditSheet({ open, c, onClose, onDone }: { open: boolean; c: ClientDetai
   const [name, setName] = useState(c.full_name);
   const [phone, setPhone] = useState(c.phone);
   const [notes, setNotes] = useState(c.notes ?? '');
+  const [ask, setAsk] = useState(false);
   useEffect(() => { if (open) { setName(c.full_name); setPhone(c.phone); setNotes(c.notes ?? ''); setErr(''); } }, [open]);
   async function submit() {
     if (await run(() => call(`/clients/${c.id}`, { method: 'PATCH', body: { full_name: name.trim(), phone: phone.trim(), notes: notes.trim() } })) !== undefined) { onClose(); onDone(); }
+  }
+  async function remove() {
+    setAsk(false);
+    if (await run(() => call(`/clients/${c.id}`, { method: 'DELETE' })) !== undefined) { onClose(); go('clients'); onDone(); }
   }
   return (
     <Sheet open={open} onClose={onClose} title="Müştərini redaktə et">
@@ -227,7 +233,11 @@ function EditSheet({ open, c, onClose, onDone }: { open: boolean; c: ClientDetai
       <Field label="Telefon" id="ce-p"><input id="ce-p" className="inp" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
       <Field label="Qeyd" id="ce-q"><textarea id="ce-q" className="inp ta" value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
       <Err msg={err} />
-      <Button disabled={!name.trim() || busy} onClick={submit}>Yadda saxla</Button>
+      <div className="a3-brow">
+        <button type="button" className="a3-dng" disabled={busy} onClick={() => setAsk(true)}>Müştərini sil</button>
+        <Button disabled={!name.trim() || busy} onClick={submit}>Yadda saxla</Button>
+      </div>
+      <ConfirmDialog open={ask} confirmLabel="Sil" text="Müştəri silinsin? Yalnız çəkilişi, ödənişi və paketi olmayan müştəri silinir." onCancel={() => setAsk(false)} onConfirm={remove} />
     </Sheet>
   );
 }

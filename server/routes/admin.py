@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session as DB
 
 import booking
@@ -13,7 +13,7 @@ import growth
 import settings
 from auth import create_invite, current_admin, new_card_code
 from db import get_db
-from models import Admin, AuditLog, CashbackLedger, Client, Package, PackageHoursLedger, PackageMember, Shoot
+from models import Admin, AuditLog, CashbackLedger, Client, Package, PackageHoursLedger, PackageMember, Session, Shoot
 from views import baku_today, day_bounds, iso
 
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
@@ -164,6 +164,24 @@ def edit_client(client_id: int, body: ClientEdit, db: DB = Depends(get_db), admi
                         before={k: before.get(k) for k in changes}, after=changes))
     db.commit()
     return client_full(db, c)
+
+
+@router.delete("/clients/{client_id}")
+def delete_client(client_id: int, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
+    """Yalnız səhvən yaradılan müştəri: çəkilişi, keşbeki və paketi olan silinmir (pul qeydləri borcdur)."""
+    c = db.get(Client, client_id)
+    if not c:
+        raise HTTPException(404, "Müştəri tapılmadı")
+    has = lambda model, col: db.scalar(select(func.count()).select_from(model).where(col == client_id))  # noqa: E731
+    if (has(Shoot, Shoot.client_id) or has(CashbackLedger, CashbackLedger.client_id)
+            or has(Package, Package.owner_client_id) or has(PackageMember, PackageMember.client_id)):
+        raise HTTPException(409, "Bu müştərinin çəkiliş, ödəniş və ya paket qeydləri var, silmək olmaz")
+    db.add(AuditLog(admin_id=admin.id, action="delete", entity="client", entity_id=c.id,
+                    before={"full_name": c.full_name, "phone": c.phone}, after=None))
+    db.execute(delete(Session).where(Session.subject_type == "client", Session.subject_id == client_id))
+    db.execute(delete(Client).where(Client.id == client_id))
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/clients/{client_id}/invite")
