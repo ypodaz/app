@@ -23,7 +23,7 @@ const KIND: Record<string, string> = {
 const WA_CB = 'Salam, keşbek haqqında soruşmaq istəyirəm.';
 
 export function Cashback() {
-  const q = useApi<{ balance: number; min_use?: number; rows: CbRow[] }>('/me/cashback', 'ypod.cashback');
+  const q = useApi<{ balance: number; min_use?: number; shoots_left?: number; rows: CbRow[] }>('/me/cashback', 'ypod.cashback');
   const d = q.data;
   const min = d?.min_use ?? 7000;
   const bal = Math.max(0, d?.balance ?? 0);
@@ -35,7 +35,8 @@ export function Cashback() {
   const ok = d.balance >= min;
   const isOpen = open ?? (!ok && d.rows.length > 0);
   const RULES = [
-    'İlk çəkilişə 50% keşbek',
+    'İlk çəkilişə 40% keşbek',
+    'Keşbek 2 çəkiliş bağlandıqdan sonra, 3-cü çəkilişdən istifadə olunur',
     'Hər çəkilişdən məbləğin 10%-i keşbek',
     'Keşbek çəkiliş bağlananda yazılır',
     `Balans ${azn2(min)}-ə çatanda istifadə olunur; istifadə olunanda bir dəfəyə tam xərclənir`,
@@ -56,7 +57,7 @@ export function Cashback() {
           <div className="nbar ncb-bar" role="progressbar" aria-label={`${azn2(min)}-ə qədər`} aria-valuemin={0} aria-valuemax={min / 100} aria-valuenow={Math.min(bal, min) / 100}>
             <span style={{ width: `${Math.min(100, (bal / min) * 100)}%` }} />
           </div>
-          <div className="n-meta ncb-sub">{ok ? 'Növbəti çəkilişdə istifadə edə bilərsiniz' : `Balans ${azn2(min)}-ə çatanda növbəti çəkilişdə istifadə olunur · daha ${azn2(min - bal)} qalıb`}</div>
+          <div className="n-meta ncb-sub">{(d.shoots_left ?? 0) > 0 ? (d.shoots_left === 2 ? '3-cü çəkilişdən istifadə olunur' : 'Növbəti çəkilişdən sonra istifadə olunur') : ok ? 'Növbəti çəkilişdə istifadə edə bilərsiniz' : `Balans ${azn2(min)}-ə çatanda növbəti çəkilişdə istifadə olunur · daha ${azn2(min - bal)} qalıb`}</div>
         </section>
 
         <section aria-label="Qaydalar" className="g nrules rise" style={rise(1)}>
@@ -72,7 +73,7 @@ export function Cashback() {
         </section>
 
         {d.rows.length === 0 ? (
-          <NEmpty fill icon="coins" tone="cb" title="Hələ keşbek yoxdur" text="İlk çəkilişinizdən sonra keşbek burada yığılacaq. İlk çəkilişə 50%.">
+          <NEmpty fill icon="coins" tone="cb" title="Hələ keşbek yoxdur" text="İlk çəkilişinizdən sonra keşbek burada yığılacaq. İlk çəkilişə 40%.">
             <a className="nb nb-p nb-auto" href={waLink(WA_CB)} target="_blank" rel="noopener">WhatsApp-da yaz</a>
           </NEmpty>
         ) : (

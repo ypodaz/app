@@ -31,6 +31,14 @@ def cashback_balance(db: DB, client_id: int) -> int:
                      .where(CashbackLedger.client_id == client_id))
 
 
+def shoots_done(db: DB, client_id: int, exclude_id: int | None = None) -> int:
+    """Müştərinin bağlanmış (completed) çəkilişlərinin sayı."""
+    q = select(func.count(Shoot.id)).where(Shoot.client_id == client_id, Shoot.status == "completed")
+    if exclude_id is not None:
+        q = q.where(Shoot.id != exclude_id)
+    return db.scalar(q)
+
+
 def package_left(db: DB, pkg: Package) -> int:
     """Paketdə qalan dəqiqə."""
     used = db.scalar(select(func.coalesce(func.sum(PackageHoursLedger.delta_minutes), 0))
@@ -77,7 +85,8 @@ def _spend_cashback(db: DB, s: Shoot, amount: int) -> None:
         return
     try:
         paid = s.cashback_used + (s.deposit_amount if s.deposit_received_at else 0)
-        money.check_cashback_use(amount, cashback_balance(db, s.client_id), s.total - paid)
+        money.check_cashback_use(amount, cashback_balance(db, s.client_id), s.total - paid,
+                                 shoots_done(db, s.client_id, s.id))
     except ValueError as e:
         raise Rejected(str(e)) from e
     s.cashback_used += amount

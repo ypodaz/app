@@ -10,7 +10,7 @@ export type HomeData = {
   full_name: string; cashback_balance: number; next_shoot: Shoot | null; package: Pkg | null; unread_notifications: number;
   active_offer: { id: number; title: string; body: string } | null;
   last_material: { id: number; title: string; drive_url: string; shoot_id: number; shoot_title: string | null } | null;
-  profile_pct: number; referral_code: string; cashback_min_use: number;
+  profile_pct: number; referral_code: string; cashback_min_use: number; cashback_shoots_left: number;
 };
 
 // --- köməkçilər ---
@@ -172,7 +172,7 @@ function NoShoot({ i }: { i: number }) {
 }
 
 // --- bento: keşbek + paket ---
-function CashbackTile({ bal, min, i }: { bal: number; min: number; i: number }) {
+function CashbackTile({ bal, min, left, i }: { bal: number; min: number; left: number; i: number }) {
   const v = useCountUp(bal);
   const pct = Math.min(100, (bal / min) * 100);
   const azn = (q: number) => amount2(q).replace(/,00$/, '');
@@ -185,7 +185,7 @@ function CashbackTile({ bal, min, i }: { bal: number; min: number; i: number }) 
       </span>
       <span className="nbar" style={{ marginTop: 10 }}>{bal > 0 && <span style={{ width: `${pct}%`, background: 'var(--yp-cashback)' }} />}</span>
       <span className="n-meta" style={{ marginTop: 8 }}>
-        {bal >= min ? 'Növbəti çəkilişdə istifadə olunur' : `${azn(min)} AZN-ə qədər daha ${azn(min - bal)} AZN`}
+        {left > 0 ? (left === 2 ? '3-cü çəkilişdən istifadə olunur' : 'Növbəti çəkilişdən sonra istifadə olunur') : bal >= min ? 'Növbəti çəkilişdə istifadə olunur' : `${azn(min)} AZN-ə qədər daha ${azn(min - bal)} AZN`}
       </span>
     </a>
   );
@@ -279,7 +279,7 @@ export function Home() {
       {!s ? <NoShoot i={i++} /> : today ? <ShootDay s={s} now={now} i={i++} /> : soon ? <Countdown s={s} now={now} i={i++} /> : <NextShoot s={s} i={i++} />}
 
       <div className="bento">
-        <CashbackTile bal={d.cashback_balance} min={d.cashback_min_use} i={i++} />
+        <CashbackTile bal={d.cashback_balance} min={d.cashback_min_use} left={d.cashback_shoots_left} i={i++} />
         <PackageTile p={d.package} i={i++} />
       </div>
 

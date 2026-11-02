@@ -295,7 +295,7 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
             </>
           ) : (
             <section className="a-g a-rise a-gs" style={rs()}>
-              {cbRow(useCb && usable > 0, usable === 0, () => setUseCb(!useCb), usable > 0 ? `Keşbekdən istifadə et · ${formatMoney(usable)}` : 'Keşbekdən istifadə', usable === 0 && balance > 0 ? `Balans ${formatMoney(balance)} — ${formatMoney(quote?.cashback_min_use ?? 7000)}-ə çatanda istifadə olunur` : undefined)}
+              {cbRow(useCb && usable > 0, usable === 0, () => setUseCb(!useCb), usable > 0 ? `Keşbekdən istifadə et · ${formatMoney(usable)}` : 'Keşbekdən istifadə', usable === 0 && balance > 0 ? ((quote?.cashback_shoots_left ?? 0) > 0 ? `Balans ${formatMoney(balance)} — 3-cü çəkilişdən istifadə olunur` : `Balans ${formatMoney(balance)} — ${formatMoney(quote?.cashback_min_use ?? 7000)}-ə çatanda istifadə olunur`) : undefined)}
               {quote?.deposit_required && <div className="a-warn"><AIcon name="warn" size={18} /><span><b>Beh mütləqdir</b> — müştəri əvvəl gəlməyib. Behi mütləq alın.</span></div>}
               {depositExpected > 0 && <div><span className="a-lb">Beh</span><ASeg label="Beh" value={depositNow ? 'got' : 'wait'} onChange={(v) => setDepositNow(v === 'got')} options={[{ value: 'wait', label: 'Gözlənilir' }, { value: 'got', label: 'Alındı' }]} /></div>}
               {noteField}

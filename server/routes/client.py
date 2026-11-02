@@ -49,7 +49,7 @@ def shoots_view(db: DB, client: Client, shoots: list[Shoot]) -> list[dict]:
         mine = s.client_id == client.id
         expected = None
         if mine and s.status == "confirmed":
-            # bağlananda yazılacaq keşbekin proqnozu: ilk çəkilişdə 50%, sonra 10%
+            # bağlananda yazılacaq keşbekin proqnozu: ilk çəkilişdə 40%, sonra 10%
             p = money.Price(s.price_base, s.price_editing, s.price_reels, s.price_extra_camera, s.discount,
                             booking.extras_total(s.extras))
             kind, amount = money.cashback_earned(p, from_package=s.package_id is not None,
@@ -68,6 +68,10 @@ def shoots_view(db: DB, client: Client, shoots: list[Shoot]) -> list[dict]:
             "materials": mats[s.id] if mine else [], "cashback_earned": earned.get(s.id, 0) if mine else None,
         })
     return out
+
+
+def _shoots_left(db: DB, client: Client) -> int:
+    return max(0, money.CASHBACK_UNLOCK_SHOOTS - booking.shoots_done(db, client.id))
 
 
 def active_package(db: DB, client: Client) -> Package | None:
@@ -116,7 +120,8 @@ def home(client: Client = Depends(current_client), db: DB = Depends(get_db)):
             "last_material": {**material_out(mat[0]), "shoot_id": mat[0].shoot_id, "shoot_title": mat[1]}
             if mat else None,
             "profile_pct": 100 * filled // len(growth.PROFILE_FIELDS),
-            "referral_code": code, "cashback_min_use": money.CASHBACK_MIN_USE}
+            "referral_code": code, "cashback_min_use": money.CASHBACK_MIN_USE,
+            "cashback_shoots_left": _shoots_left(db, client)}
 
 
 @router.get("/shoots")
@@ -138,6 +143,7 @@ def my_cashback(client: Client = Depends(current_client), db: DB = Depends(get_d
     rows = db.execute(select(CashbackLedger, Shoot.title).outerjoin(Shoot, Shoot.id == CashbackLedger.shoot_id)
                       .where(CashbackLedger.client_id == client.id).order_by(CashbackLedger.id.desc())).all()
     return {"balance": booking.cashback_balance(db, client.id), "min_use": money.CASHBACK_MIN_USE,
+            "shoots_left": _shoots_left(db, client),
             "rows": [{"kind": r.kind, "amount": r.amount, "note": r.note, "created_at": iso(r.created_at),
                       "shoot_title": title} for r, title in rows]}
 

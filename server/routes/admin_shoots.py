@@ -226,11 +226,12 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
     if body.kind == "studio_rent":
         location = "studio"
     balance = booking.cashback_balance(db, client.id)
+    done = booking.shoots_done(db, client.id, exclude_id)
     try:
         p = money.price(kind=body.kind, location=location, cameras=body.cameras, duration_min=body.duration_min,
                         editing=editing, reels_count=reels, package_cameras=pkg.cameras if pkg else None,
                         discount=body.discount, extras=sum(e.amount for e in body.extras))
-        money.check_cashback_use(body.cashback_use, balance, p.total)
+        money.check_cashback_use(body.cashback_use, balance, p.total, done)
         draft = Shoot(client_id=client.id, starts_at=utc(body.starts_at), kind=body.kind)
         first = booking.is_first_shoot(db, client, draft)
         kind, earn = money.cashback_earned(p, from_package=pkg is not None, first_shoot=first)
@@ -242,7 +243,8 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         "conflicts": booking.conflicts(db, starts_at=utc(body.starts_at), duration_min=body.duration_min,
                                        prep_min=body.prep_min, wrap_min=body.wrap_min, exclude_id=exclude_id),
         "deposit_expected": money.deposit_expected(p.total, body.cashback_use, pkg is not None),
-        "cashback_usable": money.cashback_usable(balance, p.total), "cashback_min_use": money.CASHBACK_MIN_USE,
+        "cashback_usable": money.cashback_usable(balance, p.total, done), "cashback_min_use": money.CASHBACK_MIN_USE,
+        "cashback_shoots_left": max(0, money.CASHBACK_UNLOCK_SHOOTS - done),
         "cashback_earn": earn, "cashback_kind": kind, "first_shoot_bonus": first,
         "cashback_balance": balance, "deposit_required": client.deposit_required,
     }

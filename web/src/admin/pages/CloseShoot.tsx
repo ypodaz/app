@@ -53,7 +53,7 @@ export function CloseShoot({ id }: { id: number }) {
   const pkg = client?.packages.find((p) => p.id === s.package_id);
   const deposit = s.deposit_received_at ? s.deposit_amount : 0;
   const payable = quote ? Math.max(0, quote.total - s.cashback_used - deposit) : 0;
-  const usable = quote && quote.cashback_balance >= quote.cashback_min_use ? Math.min(quote.cashback_balance, payable) : 0;
+  const usable = quote && quote.cashback_shoots_left === 0 && quote.cashback_balance >= quote.cashback_min_use ? Math.min(quote.cashback_balance, payable) : 0;
   const extra = useCb ? usable : 0;
   const due = quote ? Math.max(0, quote.total - s.cashback_used - extra - deposit) : 0;
 
@@ -148,7 +148,7 @@ export function CloseShoot({ id }: { id: number }) {
             <>
               <div className="a-hr" />
               <div className="a-trow">
-                <span className="a-trow-m"><b>Əlavə keşbek tətbiq et</b><span>{usable > 0 ? `Tətbiq olunacaq · ${formatMoney(usable)}` : quote.cashback_balance > 0 ? `Keşbek balansı ${formatMoney(quote.cashback_balance)} — ${formatMoney(quote.cashback_min_use)}-ə çatanda istifadə olunur` : 'Keşbek balansı yoxdur'}</span></span>
+                <span className="a-trow-m"><b>Əlavə keşbek tətbiq et</b><span>{usable > 0 ? `Tətbiq olunacaq · ${formatMoney(usable)}` : quote.cashback_balance > 0 && quote.cashback_shoots_left > 0 ? `Balans ${formatMoney(quote.cashback_balance)} — 3-cü çəkilişdən istifadə olunur` : quote.cashback_balance > 0 ? `Keşbek balansı ${formatMoney(quote.cashback_balance)} — ${formatMoney(quote.cashback_min_use)}-ə çatanda istifadə olunur` : 'Keşbek balansı yoxdur'}</span></span>
                 <button type="button" className={`tgl${extra > 0 ? ' tgl-on' : ''}`} role="switch" aria-checked={extra > 0} aria-label="Keşbekdən istifadə" disabled={usable === 0} onClick={() => setUseCb(!useCb)} />
               </div>
               <div className="a-hr" />

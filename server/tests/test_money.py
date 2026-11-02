@@ -41,7 +41,7 @@ def test_b4a_leyla_first_shoot_two_hours():
     p = shoot(duration_min=120)
     assert p.total == 140 * A
     assert m.studio_balance(p.total, 0, 50 * A) == 90 * A
-    assert m.cashback_earned(p, from_package=False, first_shoot=True) == ("earn_first", 70 * A)
+    assert m.cashback_earned(p, from_package=False, first_shoot=True) == ("earn_first", 56 * A)
 
 
 def test_b4b_kamran_package():
@@ -87,15 +87,15 @@ def test_waived_deposit():
                             deposit_received=False, deposit_waived=True) == "Beh 0 AZN · ödəniş studiyada 70,00 AZN"
 
 
-def test_a7a_history_sums_to_76():
+def test_a7a_history_sums_to_61():
     reels = m.price(kind="reels_pack", location="studio", cameras=1, duration_min=60, editing=False)
     first = m.cashback_earned(reels, from_package=False, first_shoot=True)
-    assert first == ("earn_first", 75 * A)
+    assert first == ("earn_first", 60 * A)
     s170 = m.cashback_earned(shoot(editing=True), from_package=False, first_shoot=False)[1]
     s340 = m.cashback_earned(shoot(location="onsite", cameras=2, editing=True),
                              from_package=False, first_shoot=False)[1]
     assert (s170, s340) == (17 * A, 34 * A)
-    assert first[1] + s170 - 50 * A + s340 == 76 * A
+    assert first[1] + s170 - 50 * A + s340 == 61 * A
 
 
 def test_onsite_and_reels_pack_prices():
@@ -119,17 +119,23 @@ def test_validation():
     with pytest.raises(ValueError, match="studiyada"):
         shoot(location="onsite", package_cameras=1)
     with pytest.raises(ValueError, match="kifayət etmir"):
-        m.check_cashback_use(80 * A, 76 * A, 220 * A)
+        m.check_cashback_use(80 * A, 76 * A, 220 * A, 2)
     with pytest.raises(ValueError, match="çox ola bilməz"):
-        m.check_cashback_use(80 * A, 100 * A, 70 * A)
+        m.check_cashback_use(80 * A, 100 * A, 70 * A, 2)
     with pytest.raises(ValueError, match="70,00 AZN-a çatanda|çatanda"):
-        m.check_cashback_use(15 * A, 15 * A, 220 * A)  # 70-dən az balans istifadə olunmur
+        m.check_cashback_use(15 * A, 15 * A, 220 * A, 2)  # 70-dən az balans istifadə olunmur
     with pytest.raises(ValueError, match="tam istifadə"):
-        m.check_cashback_use(20 * A, 76 * A, 220 * A)
-    m.check_cashback_use(76 * A, 76 * A, 220 * A)
-    m.check_cashback_use(70 * A, 100 * A, 70 * A)  # balans çəkilişdən çoxdursa, çəkilişin məbləği qədər
-    m.check_cashback_use(0, 15 * A, 220 * A)
-    assert (m.cashback_usable(69 * A, 220 * A), m.cashback_usable(100 * A, 70 * A)) == (0, 70 * A)
+        m.check_cashback_use(20 * A, 76 * A, 220 * A, 2)
+    m.check_cashback_use(76 * A, 76 * A, 220 * A, 2)
+    m.check_cashback_use(70 * A, 100 * A, 70 * A, 2)  # balans çəkilişdən çoxdursa, çəkilişin məbləği qədər
+    m.check_cashback_use(0, 15 * A, 220 * A, 2)
+    assert (m.cashback_usable(69 * A, 220 * A, 2), m.cashback_usable(100 * A, 70 * A, 2)) == (0, 70 * A)
+    # 2-dən az bağlanmış çəkilişlə keşbek istifadə olunmur
+    assert m.cashback_usable(100 * A, 220 * A, 1) == 0
+    with pytest.raises(ValueError, match="3-cü çəkilişdən"):
+        m.check_cashback_use(100 * A, 100 * A, 220 * A, 1)
+    m.check_cashback_use(0, 100 * A, 220 * A, 0)
+    m.check_cashback_use(100 * A, 100 * A, 220 * A, 2)
 
 
 def test_b8_cancel_more_than_24h():

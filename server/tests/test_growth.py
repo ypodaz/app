@@ -27,6 +27,15 @@ def backdate(shoot_id, days):
         db.commit()
 
 
+def add_done(cid, n):
+    """n bağlanmış çəkiliş (keşbek yazmadan): 3-cü çəkilişdən keşbek açılır."""
+    with SessionLocal() as db:
+        for i in range(n):
+            db.add(Shoot(client_id=cid, starts_at=datetime(2020, 1, 1 + i, 8, tzinfo=timezone.utc), duration_min=60,
+                         kind="shoot", tag="podcast", location="studio", cameras=1, status="completed"))
+        db.commit()
+
+
 def slot(days):
     d = datetime.now(timezone.utc) + timedelta(days=days)
     return iso(d.replace(hour=8, minute=0, second=0, microsecond=0))
@@ -164,7 +173,7 @@ def test_run_daily_automations(api):
     old, _ = new_client(api, adm, "Aysel Məmmədova")
     bday, btok = new_client(api, adm, "Leyla Hüseynova")
     s = make_shoot(api, adm, old)
-    close(api, adm, s)  # ilk çəkiliş keşbeki 120 AZN → keşbek xatırlatması da düşür
+    close(api, adm, s)  # ilk çəkiliş keşbeki 96 AZN → keşbek xatırlatması da düşür
     backdate(s["id"], 90)
     add_material(s["id"])
     today = baku_today()
@@ -187,7 +196,7 @@ def test_run_daily_automations(api):
         msgs = {n.payload["title"]: n.payload["body"] for n in rows}
     assert set(msgs) == {"Yeni çəkiliş vaxtıdır?", "Keşbekiniz sizi gözləyir"}
     assert "darıxdıq" not in " ".join(msgs.values()) and "Aysel," in msgs["Yeni çəkiliş vaxtıdır?"]
-    assert "120" in msgs["Keşbekiniz sizi gözləyir"]
+    assert "96" in msgs["Keşbekiniz sizi gözləyir"]
     assert ledger(bday, "birthday") == [1000]
 
 
@@ -270,8 +279,17 @@ def test_quote_cashback_min_rule(api):
     assert (q["cashback_usable"], q["cashback_min_use"]) == (0, 7000)
     assert api.post("/api/admin/shoots", json={**body, "cashback_use": 1500}, headers=bearer(adm)).status_code == 400
     api.post(f"/api/admin/clients/{cid}/cashback", json={"amount": 8500}, headers=bearer(adm))
+    # 0 bağlanmış çəkiliş: balans 100 AZN olsa da keşbek kilidlidir
     q = api.post("/api/admin/shoots/quote", json=body, headers=bearer(adm)).json()
-    assert q["cashback_usable"] == 10000
+    assert (q["cashback_usable"], q["cashback_shoots_left"]) == (0, 2)
+    r = api.post("/api/admin/shoots", json={**body, "cashback_use": 10000}, headers=bearer(adm))
+    assert r.status_code == 400 and "3-cü çəkilişdən" in r.json()["detail"]
+    add_done(cid, 1)
+    q = api.post("/api/admin/shoots/quote", json=body, headers=bearer(adm)).json()
+    assert (q["cashback_usable"], q["cashback_shoots_left"]) == (0, 1)
+    add_done(cid, 1)
+    q = api.post("/api/admin/shoots/quote", json=body, headers=bearer(adm)).json()
+    assert (q["cashback_usable"], q["cashback_shoots_left"]) == (10000, 0)
     r = api.post("/api/admin/shoots", json={**body, "cashback_use": 10000}, headers=bearer(adm))
     assert r.status_code == 200 and r.json()["cashback_used"] == 10000
 
@@ -282,7 +300,7 @@ def test_home_growth_fields(api):
     home = lambda: api.get("/api/me/home", headers=bearer(tok)).json()  # noqa: E731
     h = home()
     assert h["active_offer"] is None and h["last_material"] is None
-    assert h["profile_pct"] == 0 and h["cashback_min_use"] == 7000
+    assert h["profile_pct"] == 0 and h["cashback_min_use"] == 7000 and h["cashback_shoots_left"] == 2
     assert len(h["referral_code"]) == 6 and home()["referral_code"] == h["referral_code"]
     api.patch("/api/me/profile", json={"profession": "Psixoloq", "instagram": "@aysel"}, headers=bearer(tok))
     assert home()["profile_pct"] == 50

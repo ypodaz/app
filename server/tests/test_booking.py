@@ -46,9 +46,18 @@ def shoot(db, c, **kw):
     return b.create_shoot(db, None, **args)
 
 
+def done_shoots(db, c, n):
+    """Keşbekin açılması üçün n bağlanmış çəkiliş (aktivləşmədən əvvəl, ilk çəkiliş bonusuna təsir etmir)."""
+    for i in range(n):
+        db.add(Shoot(client_id=c.id, starts_at=at(1 + i, 12, month=1), duration_min=60, kind="shoot", tag="podcast",
+                     location="studio", cameras=1, status="completed"))
+    db.flush()
+
+
 def test_aysel_b9_cashback_spend_and_close(db):
     c = client(db, "Aysel", activated=at(1, 10, month=10))
     b.manual_cashback(db, None, c.id, 76 * A, "Əvvəlki keşbek")
+    done_shoots(db, c, 2)
     with pytest.raises(b.Rejected, match="tam istifadə"):  # hissə-hissə yox
         shoot(db, c, cameras=2, editing=True, cashback_use=20 * A)
     s = shoot(db, c, cameras=2, editing=True, cashback_use=76 * A)
@@ -68,7 +77,7 @@ def test_leyla_b4a_first_shoot_two_hours(db):
     s = shoot(db, c, starts_at=at(28, 12, month=10))
     b.receive_deposit(db, None, s, 50 * A)
     earned = b.close_shoot(db, None, s, duration_min=120, paid_method="card")
-    assert (s.total, s.paid_at_studio, earned) == (140 * A, 90 * A, 70 * A)
+    assert (s.total, s.paid_at_studio, earned) == (140 * A, 90 * A, 56 * A)
     assert db.query(CashbackLedger).filter_by(kind="earn_first").count() == 1
     # ikinci çəkiliş artıq 10%
     s2 = shoot(db, c, editing=True, reels_count=4)
@@ -114,9 +123,22 @@ def test_package_rules(db):
     assert s.price_extra_camera == 75 * A
 
 
+def test_cashback_locked_until_two_closed_shoots(db):
+    c = client(db, "Rauf")
+    b.manual_cashback(db, None, c.id, 80 * A, "")
+    done_shoots(db, c, 1)
+    with pytest.raises(b.Rejected, match="3-cü çəkilişdən"):
+        shoot(db, c, cameras=2, editing=True, cashback_use=80 * A)
+    done_shoots(db, c, 1)
+    s = shoot(db, c, cameras=2, editing=True, cashback_use=80 * A)
+    assert s.cashback_used == 80 * A
+    assert b.shoots_done(db, c.id) == 2
+
+
 def test_b8_cancel_gt24_refund_and_cashback_back(db):
     c = client(db, "Tural")
     b.manual_cashback(db, None, c.id, 80 * A, "")
+    done_shoots(db, c, 2)
     s = shoot(db, c, starts_at=at(4, 14), cameras=2, editing=True, cashback_use=80 * A)
     assert b.cashback_balance(db, c.id) == 0
     b.receive_deposit(db, None, s, 30 * A)
@@ -157,6 +179,7 @@ def test_validation_messages(db):
     c = client(db, "Test")
     with pytest.raises(b.Rejected, match="montaj olmadan"):
         shoot(db, c, reels_count=2)
+    done_shoots(db, c, 2)
     with pytest.raises(b.Rejected, match="kifayət etmir"):
         shoot(db, c, cashback_use=5 * A)
     s = shoot(db, c, editing=True)

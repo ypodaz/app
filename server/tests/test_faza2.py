@@ -75,7 +75,7 @@ def test_monthly_report(api):
     assert r["shoots"]["completed"] == 1 and r["shoots"]["revenue"] == 20000 and r["shoots"]["discounts"] == 4000
     now_m = datetime.now(BAKU).strftime("%Y-%m")
     cb = api.get("/api/admin/report", params={"month": now_m}, headers=bearer(adm)).json()["cashback"]
-    assert cb["earned"] == 10000 and cb["liability"] == 10000  # keşbek bağlama günü yazılır
+    assert cb["earned"] == 8000 and cb["liability"] == 8000  # keşbek bağlama günü yazılır
     assert r["shoots"]["by_kind"]["shoot"] == {"count": 1, "minutes": 120, "total": 20000}
     assert api.get("/api/admin/report", params={"month": "2026-13"}, headers=bearer(adm)).status_code == 422
 
@@ -159,7 +159,7 @@ def test_extras_in_price_cashback_and_discount(api):
     edit = {"name": "Əlavə montaj", "amount": 5000}
     c = api.post(f"/api/admin/shoots/{s['id']}/close", json={"duration_min": 120, "paid_method": "cash",
                  "extras": [edit]}, headers=bearer(adm)).json()
-    assert c["total"] == 29000 and c["extras"] == [edit] and c["cashback_earned"] == 14500  # ilk çəkiliş: 50%
+    assert c["total"] == 29000 and c["extras"] == [edit] and c["cashback_earned"] == 11600  # ilk çəkiliş: 40%
     bad = api.post("/api/admin/shoots/quote", json=shoot_body(cid, extras=[{"name": "", "amount": 100}]),
                    headers=bearer(adm))
     assert bad.status_code == 422

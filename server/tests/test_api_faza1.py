@@ -44,7 +44,7 @@ def test_quote_matches_create(api):
     assert q["total"] == s["total"] == 24000
     assert (q["base"], q["editing"]) == (14000, 10000)
     assert q["deposit_expected"] == s["deposit_expected"] == 12000
-    assert q["first_shoot_bonus"] is True and q["cashback_kind"] == "earn_first" and q["cashback_earn"] == 12000
+    assert q["first_shoot_bonus"] is True and q["cashback_kind"] == "earn_first" and q["cashback_earn"] == 9600
     assert q["deposit_required"] is False and q["cashback_balance"] == 0
     assert s["client_name"] == "Aysel Məmmədova" and s["payment_line"].startswith("Beh gözlənilir")
 
@@ -67,14 +67,15 @@ def test_deposit_close_client_sees_paid_and_cashback(api):
     assert r.status_code == 200 and r.json()["studio_balance"] == 12000
     r = api.post(f"/api/admin/shoots/{s['id']}/close", json={"duration_min": 120, "paid_method": "cash"},
                  headers=bearer(adm))
-    assert r.status_code == 200 and r.json()["cashback_earned"] == 12000 and r.json()["status"] == "completed"
+    assert r.status_code == 200 and r.json()["cashback_earned"] == 9600 and r.json()["status"] == "completed"
     mine = api.get(f"/api/me/shoots/{s['id']}", headers=bearer(tok)).json()
-    assert mine["payment_line"] == "Tam ödənib" and mine["cashback_earned"] == 12000
+    assert mine["payment_line"] == "Tam ödənib" and mine["cashback_earned"] == 9600
     assert "note" not in mine and "source_note" not in mine
     me = api.get("/api/me", headers=bearer(tok)).json()
-    assert me["cashback_balance"] == 12000
+    assert me["cashback_balance"] == 9600
     cb = api.get("/api/me/cashback", headers=bearer(tok)).json()
-    assert cb["balance"] == 12000 and cb["rows"][0]["kind"] == "earn_first"
+    assert cb["balance"] == 9600 and cb["rows"][0]["kind"] == "earn_first"
+    assert cb["shoots_left"] == 1
 
 
 def test_package_member_sees_package_shoot_but_not_others(api):
@@ -232,7 +233,7 @@ def test_client_sees_cashback_forecast(api):
     s1 = make_shoot(api, adm, cid)
     s2 = make_shoot(api, adm, cid, starts_at=soon(days=9))
     assert api.get(f"/api/me/shoots/{s1['id']}", headers=bearer(tok)).json()["cashback_expected"] == \
-        {"amount": 12000, "first_shoot": True}
+        {"amount": 9600, "first_shoot": True}
     api.post(f"/api/admin/shoots/{s1['id']}/close", json={"duration_min": 120, "paid_method": "cash"},
              headers=bearer(adm))
     assert api.get(f"/api/me/shoots/{s1['id']}", headers=bearer(tok)).json()["cashback_expected"] is None
@@ -339,7 +340,7 @@ def test_studio_rent_earns_cashback(api):
     assert rent["total"] == 10000 and rent["cameras"] == 0
     r = api.post(f"/api/admin/shoots/{rent['id']}/close", json={"duration_min": 120, "paid_method": "cash"},
                  headers=bearer(adm))
-    assert r.json()["cashback_earned"] == 5000  # ilk çəkiliş bonusu: 50%
+    assert r.json()["cashback_earned"] == 4000  # ilk çəkiliş bonusu: 40%
 
 
 def test_discount_flows_to_deposit_and_close(api):
@@ -351,7 +352,7 @@ def test_discount_flows_to_deposit_and_close(api):
     assert mine["discount"] == 5000 and "discount_note" not in mine
     r = api.post(f"/api/admin/shoots/{s['id']}/close", json={"duration_min": 45, "discount": 7000,
                                                             "paid_method": "card"}, headers=bearer(adm)).json()
-    assert r["total"] == 8000 and r["cashback_earned"] == 4000  # ilk çəkiliş: 50%
+    assert r["total"] == 8000 and r["cashback_earned"] == 3200  # ilk çəkiliş: 40%
 
 
 def test_buffers_produce_conflict_warning(api):

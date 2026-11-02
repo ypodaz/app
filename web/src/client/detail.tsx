@@ -81,7 +81,7 @@ function Payment({ s, i }: { s: Shoot; i: number }) {
         </div>
       )}
       {s.status === 'confirmed' && s.cashback_expected && s.cashback_expected.amount > 0 && (
-        <div className="nsum-cb"><NIcon name="coins" size={14} />Çəkiliş bağlananda +{azn(s.cashback_expected.amount)} keşbek{s.cashback_expected.first_shoot ? ' · ilk çəkiliş bonusu (50%)' : ''}</div>
+        <div className="nsum-cb"><NIcon name="coins" size={14} />Çəkiliş bağlananda +{azn(s.cashback_expected.amount)} keşbek{s.cashback_expected.first_shoot ? ' · ilk çəkiliş bonusu (40%)' : ''}</div>
       )}
       {done && earn > 0 && <div className="nsum-cb"><NIcon name="coins" size={14} />+{azn(earn)} keşbek yazıldı</div>}
     </section>
