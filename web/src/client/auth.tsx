@@ -69,6 +69,25 @@ export function InvalidInvite({ onCode }: { onCode: () => void }) {
   );
 }
 
+/** A1b: link yoxlanmadı (bağlantı xətası və ya çox cəhd), link özü etibarsız deyil. */
+export function InviteProblem({ kind, onRetry, onCode }: { kind: 'limit' | 'net'; onRetry: () => void; onCode: () => void }) {
+  const limit = kind === 'limit';
+  return (
+    <AuthPage>
+      <Brand />
+      <div className="nau-center">
+        <span className="nchip nchip-40 rz" style={dl(60)}><NIcon name={limit ? 'clock' : 'alert'} size={20} /></span>
+        <h1 className="n-h2 rz" style={dl(120)}>{limit ? 'Çox cəhd edildi' : 'Bağlantı yoxdur'}</h1>
+        <p className="nau-p rz" role="alert" style={dl(180)}>{limit ? 'Çox cəhd, bir neçə dəqiqə sonra yenidən yoxlayın.' : 'İnternet bağlantısını yoxlayın və yenidən cəhd edin. Linkiniz etibarlıdır.'}</p>
+      </div>
+      <div className="nau-foot rz" style={dl(240)}>
+        <button type="button" className="nb nb-p nau-big" onClick={onRetry}><NIcon name="retry" size={18} />Yenidən cəhd et</button>
+        <button type="button" className="nau-link" onClick={onCode}>Telefonda kodum var</button>
+      </div>
+    </AuthPage>
+  );
+}
+
 /** Kod ilə giriş. */
 export function CodeEntry({ onToken }: { onToken: (t: string) => void }) {
   const [code, setCode] = useState('');

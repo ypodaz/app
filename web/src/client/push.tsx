@@ -132,7 +132,14 @@ function ping(token: string, force = false) {
   api('/me/ping', { token, body: { standalone, permission: permission() } }).catch(() => {});
 }
 
-let promptShown = false; // yalnız bu açılış (səhifə yüklənməsi) üçün
+const DISMISS_KEY = 'ypod.pushAsk';
+const DISMISS_MS = 7 * 24 * 3600_000;
+let promptShown = false; // eyni səhifə yüklənməsində təkrar açılmasın
+/** «Sonra» seçimi: 7 gün təkrar göstərilmir (yaddaş əlçatmazdırsa yalnız bu açılış). */
+const dismissedRecently = () => {
+  try { return Date.now() - Number(localStorage.getItem(DISMISS_KEY) || 0) < DISMISS_MS; } catch { return false; }
+};
+const rememberDismiss = () => { try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* gizli rejim */ } };
 
 const PERKS: [string, string, string][] = [
   ['cal', 'cal', 'Çəkilişdən 1 gün əvvəl xatırlatma'],
@@ -146,6 +153,7 @@ export function PushGate() {
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   useEffect(() => {
     ping(token);
@@ -161,18 +169,23 @@ export function PushGate() {
       setKey(info.key);
       const perm = Notification.permission;
       if (perm === 'granted' && !info.subscribed) { infoCache.delete(token); subscribe(token, info.key).catch(() => {}); }
-      else if (perm === 'default' && !promptShown) { promptShown = true; setOpen(true); }
+      else if (perm === 'default' && !promptShown && !dismissedRecently()) { promptShown = true; setOpen(true); }
     }).catch(() => {});
     return () => { live = false; };
   }, [token]);
 
   async function enable() {
-    setBusy(true);
+    setBusy(true); setErr('');
     try {
-      if ((await Notification.requestPermission()) === 'granted') { infoCache.delete(token); await subscribe(token, key); }
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') { infoCache.delete(token); await subscribe(token, key); }
+      else rememberDismiss();
       ping(token, true);
-    } catch { /* Bildirişlər səhifəsində yenidən cəhd olunur */ } finally { setBusy(false); setOpen(false); }
+      setOpen(false);
+    } catch { setErr('Bildirişləri açmaq alınmadı. Yenidən cəhd edin və ya sonra Bildirişlər səhifəsindən açın.'); } finally { setBusy(false); }
   }
+
+  function later() { rememberDismiss(); setOpen(false); }
 
   if (!open) return null;
   return (
@@ -188,8 +201,9 @@ export function PushGate() {
         ))}
       </ul>
       <div className="nau-foot rz" style={dl(300)}>
+        {err && <div className="nau-err" role="alert"><NIcon name="alert" size={16} />{err}</div>}
         <button type="button" className="nb nb-p nau-big" disabled={busy} onClick={enable}>Bildirişləri aç</button>
-        <button type="button" className="nb nb-s nau-sec" disabled={busy} onClick={() => setOpen(false)}>Sonra</button>
+        <button type="button" className="nb nb-s nau-sec" disabled={busy} onClick={later}>Sonra</button>
       </div>
     </AuthPage>
   );

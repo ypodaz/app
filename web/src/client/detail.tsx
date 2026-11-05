@@ -39,18 +39,22 @@ function Timeline({ s, i }: { s: Shoot; i: number }) {
 }
 
 function Payment({ s, i }: { s: Shoot; i: number }) {
+  // Başqasının çəkilişində server məbləğləri null qaytarır: ödəniş bölməsi göstərilmir
+  if (s.total == null) return null;
+  const total = s.total;
   const used = s.cashback_used ?? 0;
-  const due = Math.max(0, s.total - used);
+  const discount = s.discount ?? 0;
+  const due = Math.max(0, total - used);
   const fromPkg = s.package_id != null;
   const done = s.status === 'completed';
   const waiting = !!s.payment_line?.startsWith('Beh gözlənilir');
   const rows: [string, number][] = [];
-  if (!fromPkg || s.price_base) rows.push([s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : 'Çəkiliş', s.price_base]);
+  if (!fromPkg || s.price_base) rows.push([s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : 'Çəkiliş', s.price_base ?? 0]);
   if (s.price_extra_camera) rows.push(['Əlavə kamera', s.price_extra_camera]);
   if (s.price_editing) rows.push(['Montaj', s.price_editing]);
   if (s.price_reels) rows.push([`Reels · ${s.reels_count} əd.`, s.price_reels]);
-  for (const x of s.extras ?? []) rows.push([x.name, x.amount]);
-  const sum = s.discount > 0 ? rows.reduce((a, r) => a + r[1], 0) : s.total;
+  for (const x of s.extras ?? []) if (x.amount != null) rows.push([x.name, x.amount]);
+  const sum = discount > 0 ? rows.reduce((a, r) => a + r[1], 0) : total;
   const earn = s.cashback_earned ?? 0;
   const balance = s.status === 'confirmed' && (s.studio_balance ?? 0) > 0;
   const full = s.payment_line === 'Tam ödənib';
@@ -62,7 +66,7 @@ function Payment({ s, i }: { s: Shoot; i: number }) {
         {fromPkg && <div><span className="c2">Çəkiliş — Paketdən {fmtHours(s.duration_min)} saat</span><span>{fmt2(0)}</span></div>}
         {rows.map(([l, v]) => <div key={l}><span className="c2">{l}</span><span>{fmt2(v)}</span></div>)}
         {(rows.length > 0 || fromPkg) && <><hr /><div style={{ fontWeight: 600 }}><span>Cəmi</span><span>{fmt2(sum)}</span></div></>}
-        {s.discount > 0 && <div><span className="c2">Endirim</span><span className="nsum-g">−{fmt2(s.discount)}</span></div>}
+        {discount > 0 && <div><span className="c2">Endirim</span><span className="nsum-g">−{fmt2(discount)}</span></div>}
         {used > 0 && <div><span className="c2">Keşbekdən</span><span className="nsum-g">−{fmt2(used)}</span></div>}
         <hr />
         <div className="nsum-tot">
@@ -143,7 +147,7 @@ function Body({ s }: { s: Shoot }) {
   );
   let i = 0;
   const ticket = (
-    <section aria-label="Bilet" className={`g ntk rise${cancelled ? '' : ' glow-tk'}`} style={rise(i++)}>
+    <section aria-label="Bilet" className={`g ntk rise${cancelled ? ' ntk-dim' : ' glow-tk'}`} style={rise(i++)}>
       <div className="ntk-top">
         <DateBox iso={s.starts_at} />
         <div className="n-col" style={{ gap: 2 }}>
@@ -166,9 +170,9 @@ function Body({ s }: { s: Shoot }) {
   );
   return (
     <div className="npush">
-      {cancelled ? <div style={{ opacity: 0.6 }}>{ticket}</div> : ticket}
+      {ticket}
       {s.mine && s.materials.length > 0 && <Materials s={s} i={i++} />}
-      {s.mine && !cancelled && s.payment_line != null && <Payment s={s} i={i++} />}
+      {s.mine && !cancelled && s.total != null && s.payment_line != null && <Payment s={s} i={i++} />}
       {s.mine && cancelled && s.refund_amount != null && <Refund amount={s.refund_amount} i={i++} />}
       <Timeline s={s} i={i++} />
       <div className="ndbtns rise" style={rise(i++)}>
@@ -187,7 +191,7 @@ export function ShootDetail({ id }: { id: string }) {
   const s = q.data;
   return (
     <Screen tab="calendar">
-      <InnerHeader title="Çəkiliş" back="#/calendar" />
+      <InnerHeader title="Çəkiliş" back="#/calendar" history />
       {q.offline && s && <OfflineBadge />}
       {!s ? (q.loading ? <Loading /> : <ErrorState q={q} title={q.err || 'Çəkiliş tapılmadı'} />) : <Body s={s} />}
     </Screen>

@@ -48,7 +48,7 @@ export function Clients({ id }: { id?: number }) {
   const filtered = !!q.trim() || !!tag;
 
   if (id && !desktop) {
-    return <AdminShell active="clients" title="Müştəri" bare full><PageHead back="clients" title="Müştəri" label="Müştərilər" /><ClientCard id={id} onChanged={reload} /></AdminShell>;
+    return <AdminShell active="clients" title="Müştəri" bare full><PageHead back="clients" title="Müştəri" label="Müştərilər" /><ClientCard key={id} id={id} onChanged={reload} /></AdminShell>;
   }
   return (
     <AdminShell
@@ -56,7 +56,7 @@ export function Clients({ id }: { id?: number }) {
       title="Müştərilər"
       sub={wide ? 'Müştəri bazası, paketlər və keşbek' : undefined}
       actions={<button type="button" className="a-bp" onClick={() => setAdd(true)}><AIcon name="plus" size={18} /> Yeni müştəri</button>}
-      detail={id ? <ClientCard id={id} onChanged={reload} /> : undefined}
+      detail={id ? <ClientCard key={id} id={id} onChanged={reload} /> : undefined}
     >
       <label className="a3-search a-rise" style={st(1)}>
         <AIcon name="search" size={18} />

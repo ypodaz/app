@@ -124,7 +124,8 @@ def test_cancel_returns_refund(api):
     assert (body["refund"], body["retained"], body["window"]) == (12000, 0, "gt24")
     assert body["status"] == "cancelled"
     assert api.post(f"/api/admin/shoots/{s['id']}/refunded", headers=bearer(adm)).json()["refunded_at"]
-    assert api.post(f"/api/admin/shoots/{s['id']}/cancel", json={}, headers=bearer(adm)).status_code == 400
+    assert api.post(f"/api/admin/shoots/{s['id']}/cancel", json={}, headers=bearer(adm)).status_code == 409
+    assert api.post(f"/api/admin/shoots/{s['id']}/refunded", headers=bearer(adm)).status_code == 409
 
 
 def test_rejected_maps_to_400_and_leaves_db_unchanged(api):
@@ -257,7 +258,7 @@ def test_cancel_quote_matches_cancel_and_writes_nothing(api):
     r = api.post(f"/api/admin/shoots/{s['id']}/cancel", json=near, headers=bearer(adm)).json()
     assert {k: r[k] for k in ("window", "retained", "refund", "cashback_return")} == \
         {k: q.json()[k] for k in ("window", "retained", "refund", "cashback_return")}
-    assert api.post(f"/api/admin/shoots/{s['id']}/cancel/quote", json={}, headers=bearer(adm)).status_code == 400
+    assert api.post(f"/api/admin/shoots/{s['id']}/cancel/quote", json={}, headers=bearer(adm)).status_code == 409
 
 
 def test_clients_list_has_balance_package_last_shoot(api):
@@ -379,7 +380,7 @@ def test_edit_client_writes_audit(api):
     assert api.patch("/api/admin/clients/9999", json={"phone": "1"}, headers=bearer(adm)).status_code == 404
     with SessionLocal() as db:
         row = db.scalar(select(AuditLog).where(AuditLog.entity == "client"))
-        assert row.before["full_name"] == "Aysel Məmmədova" and row.after["phone"] == "050 111 22 33"
+        assert row.before["full_name"] == "Aysel Məmmədova" and row.after["phone"] == "0501112233"
 
 
 def test_client_shoot_extras_refund_confirmed_materials_pending(api):
@@ -423,3 +424,78 @@ def test_delete_client_only_without_records(api):
     assert api.delete(f"/api/admin/clients/{empty}", headers=bearer(adm)).status_code == 404
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "delete")) == 1
+
+
+def test_blank_birthday_and_bad_names_phones(api):
+    adm = admin_token(api)
+    cid, tok = new_client(api, adm, "Aysel Məmmədova")
+    assert api.patch(f"/api/admin/clients/{cid}", json={"birthday": "  "}, headers=bearer(adm)).status_code == 200
+    assert api.patch("/api/me/profile", json={"birthday": ""}, headers=bearer(tok)).status_code == 200
+    for bad in ({"full_name": "   "}, {"phone": "abc"}, {"phone": "123"}):
+        assert api.patch(f"/api/admin/clients/{cid}", json=bad, headers=bearer(adm)).status_code == 422
+    assert api.post("/api/admin/clients", json={"full_name": "   ", "phone": ""}, headers=bearer(adm)).status_code == 422
+    r = api.post("/api/admin/clients", json={"full_name": "Test Ad", "phone": "+994 (55) 530-35-32"}, headers=bearer(adm))
+    assert r.status_code == 200 and r.json()["phone"] == "+994555303532"
+
+
+def test_health_ok_and_db_down(api, monkeypatch):
+    assert api.get("/api/health").json() == {"ok": True}
+    import main
+
+    def boom():
+        raise RuntimeError("db yoxdur")
+    monkeypatch.setattr(main, "SessionLocal", boom)
+    r = api.get("/api/health")
+    assert r.status_code == 503 and r.json() == {"ok": False}
+
+
+def test_close_twice_and_deposit_after_close_409(api):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Aysel Məmmədova")
+    s = make_shoot(api, adm, cid)
+    body = {"duration_min": 120, "paid_method": "cash"}
+    assert api.post(f"/api/admin/shoots/{s['id']}/close", json=body, headers=bearer(adm)).status_code == 200
+    assert api.post(f"/api/admin/shoots/{s['id']}/close", json=body, headers=bearer(adm)).status_code == 409
+    assert api.post(f"/api/admin/shoots/{s['id']}/deposit", json={"amount": 100}, headers=bearer(adm)).status_code == 409
+    assert api.post(f"/api/admin/shoots/{s['id']}/cancel", json={}, headers=bearer(adm)).status_code == 409
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(CashbackLedger).where(CashbackLedger.kind == "earn_first")) == 1
+
+
+def test_past_shoot_sends_no_new_shoot_notification(api):
+    from models import Notification
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Aysel Məmmədova")
+    make_shoot(api, adm, cid, starts_at=soon(days=-3))
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Notification).where(Notification.type == "shoot_created")) == 0
+    make_shoot(api, adm, cid)
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Notification).where(Notification.type == "shoot_created")) == 1
+
+
+def test_push_survives_send_exception(api, monkeypatch):
+    import push
+    from models import Notification, PushSubscription
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Aysel Məmmədova")
+    make_shoot(api, adm, cid)
+    make_shoot(api, adm, cid)
+    monkeypatch.setattr(push.settings, "VAPID_PRIVATE_KEY", "x")
+    monkeypatch.setattr(push, "webpush", lambda *a, **k: (_ for _ in ()).throw(TimeoutError("t")))
+    with SessionLocal() as db:
+        db.add(PushSubscription(client_id=cid, endpoint="https://e.example/abc", p256dh="p" * 20, auth="a" * 8))
+        db.commit()
+        push.send_pending(db)
+        assert db.scalar(select(func.count()).select_from(Notification).where(Notification.pushed_at.is_(None))) == 0
+        assert db.scalar(select(func.count()).select_from(PushSubscription)) == 1
+
+
+def test_campaign_name_safe_for_blank_name(api):
+    import growth
+    from models import Client
+    with SessionLocal() as db:
+        c = Client(full_name="   ", phone="", card_code="x1")
+        db.add(c)
+        db.flush()
+        growth.send(db, title="Salam {name}", body="Mətn burada", url=None, clients=[c])

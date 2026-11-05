@@ -41,7 +41,7 @@ function AiText({ text }: { text: string }) {
 }
 
 export function AiChat() {
-  const { token } = useContext(AuthCtx);
+  const { token, signOut } = useContext(AuthCtx);
   const q = useApi<AiData>('/me/ai');
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [remaining, setRemaining] = useState(0);
@@ -60,11 +60,12 @@ export function AiChat() {
     setFail(null); setPending(true);
     if (!retry) { setMsgs((m) => [...m, { role: 'user', text: body, fresh: true }]); setText(''); }
     try {
-      const r = await api<Reply>('/me/ai', { token, body: { text: body } });
+      const r = await api<Reply>('/me/ai', { token, body: { text: body }, timeout: 70_000 });
       setMsgs((m) => [...m, { role: 'model', text: r.text, whatsapp: r.whatsapp, fresh: true }]);
       setRemaining(r.remaining);
     } catch (e) {
       const err = e as ApiError;
+      if (err.status === 401) return signOut();
       if (err.status === 429 && /limit/i.test(err.message)) setRemaining(0);
       setFail({ text: body, msg: err.status === 0 ? 'Bağlantıda problem oldu. Yenidən cəhd edin və ya bizə yazın.' : err.message });
     } finally { setPending(false); }

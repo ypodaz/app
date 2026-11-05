@@ -10,6 +10,9 @@ type Auth = { token: string; signOut: () => void };
 export const AuthCtx = createContext<Auth>({ token: '', signOut: () => {} });
 
 // --- hash router ---
+// Bu səhifə yüklənməsində app daxilində neçə hash keçidi olub (geri düyməsi tarixçəyə qayıtsın deyə).
+let hashMoves = 0;
+window.addEventListener('hashchange', () => { hashMoves++; });
 export function useRoute(): string[] {
   const read = () => location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   const [r, setR] = useState(read);
@@ -123,7 +126,8 @@ export function NEmpty({ icon, tone, title, text, fill, children }: { icon: NIco
 }
 
 /** Neon daxili səhifə başlığı: geri düyməsi + ad; sürüşəndə blur fon və 1px xətt. */
-export function InnerHeader({ title, back = '#/calendar' }: { title: string; back?: string }) {
+/** history: true olanda «Geri» app daxilində əvvəlki ekrana qayıdır, yoxdursa back ünvanına gedir. */
+export function InnerHeader({ title, back = '#/calendar', history: useHistory }: { title: string; back?: string; history?: boolean }) {
   const [sc, setSc] = useState(false);
   useEffect(() => {
     const on = () => setSc(window.scrollY > 4);
@@ -133,7 +137,7 @@ export function InnerHeader({ title, back = '#/calendar' }: { title: string; bac
   }, []);
   return (
     <header className={`nhead${sc ? ' nhead-sc' : ''}`}>
-      <a className="nhead-back" href={back} aria-label="Geri"><NIcon name="back" /></a>
+      <a className="nhead-back" href={back} aria-label="Geri" onClick={useHistory ? (e) => { if (hashMoves > 0) { e.preventDefault(); window.history.back(); } } : undefined}><NIcon name="back" /></a>
       <h1 className="n-h2">{title}</h1>
     </header>
   );

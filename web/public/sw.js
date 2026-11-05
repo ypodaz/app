@@ -13,6 +13,35 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Təzə HTML-i keşləyir; HTML-in göstərmədiyi köhnə /assets/ fayllarını silir.
+// Admin və müştəri eyni /assets/ qovluğunu bölüşür, ona görə hər HTML-in siyahısı ayrıca saxlanır
+// və yalnız heç bir siyahıda olmayan fayllar silinir.
+const REFS = SCOPE + '__refs/';
+async function storeShell(req, url, res) {
+  const cache = await caches.open(CACHE);
+  const html = await res.clone().text();
+  await cache.put(url.origin + url.pathname, res); // ?i=token kimi sorğu hissəsi keşə düşmür
+  const used = new Set();
+  for (const m of html.matchAll(/(?:src|href)\s*=\s*["']([^"']+)["']/g)) {
+    try {
+      const u = new URL(m[1], req.url);
+      if (u.origin === self.location.origin && u.pathname.startsWith(SCOPE + 'assets/')) used.add(u.pathname);
+    } catch { /* yararsız URL */ }
+  }
+  if (!used.size) return; // HTML build faylı göstərmirsə (gözlənilməz cavab) heç nə silmə
+  await cache.put(new Request(self.location.origin + REFS + encodeURIComponent(url.pathname)), new Response(JSON.stringify([...used])));
+  const keep = new Set(used);
+  for (const r of await cache.keys()) {
+    const p = new URL(r.url).pathname;
+    if (!p.startsWith(REFS)) continue;
+    try { (await (await cache.match(r)).json()).forEach((x) => keep.add(x)); } catch { /* pozulmuş siyahı */ }
+  }
+  for (const r of await cache.keys()) {
+    const p = new URL(r.url).pathname;
+    if (p.startsWith(SCOPE + 'assets/') && !keep.has(p)) await cache.delete(r);
+  }
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -20,11 +49,15 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin || !url.pathname.startsWith(SCOPE)) return;
 
   // Səhifə açılışı: əvvəl şəbəkə (yeni deploy görünsün), oflayn olanda keş.
+  // no-cache: brauzerin HTTP keşini (GitHub Pages max-age=600) yoxlamadan keçmək üçün həmişə revalidate.
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req)
-        .then((res) => { if (res.ok) { const c = res.clone(); caches.open(CACHE).then((x) => x.put(req, c)); } return res; })
-        .catch(() => caches.match(req).then((m) => m || caches.match(SCOPE))),
+      fetch(req, { cache: 'no-cache' })
+        .then((res) => {
+          if (res.ok) e.waitUntil(storeShell(req, url, res.clone()));
+          return res;
+        })
+        .catch(() => caches.match(req, { ignoreSearch: true }).then((m) => m || caches.match(SCOPE))),
     );
     return;
   }

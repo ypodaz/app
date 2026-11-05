@@ -4,6 +4,7 @@ import { AIcon } from './AIcon';
 import { formatMoney } from '../../shared/ui';
 import type { Shoot } from '../types';
 import { depositPending } from './common';
+import { goBack } from '../router';
 
 export type ChipTone = 'cal' | 'cb' | 'beh' | 'off';
 
@@ -68,7 +69,7 @@ export function useToast() {
 export function PageHead({ title, sub, back, label, actions }: { title: string; sub?: string; back: string; label?: string; actions?: ReactNode }) {
   return (
     <header className={`a-ph${label ? ' a-ph-l' : ''}`}>
-      <a className="a-back" href={`#/${back}`} aria-label={label ? `Geri: ${label}` : 'Geri'}><AIcon name="chevl" size={20} />{label && <span>{label}</span>}</a>
+      <a className="a-back" href={`#/${back}`} onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey) { e.preventDefault(); goBack(back); } }} aria-label={label ? `Geri: ${label}` : 'Geri'}><AIcon name="chevl" size={20} />{label && <span>{label}</span>}</a>
       <div className="a-ph-t"><h1>{title}</h1>{sub && <div className="a-sub">{sub}</div>}</div>
       {actions && <div className="a-acts">{actions}</div>}
     </header>

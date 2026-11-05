@@ -67,12 +67,33 @@ export function ReferralCard() {
   );
 }
 
+// ---------- Çıxış təsdiqi ----------
+function ConfirmLogout({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => { if (e.key === 'Escape') onNo(); };
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, []);
+  return (
+    <div className="nconf" onClick={onNo}>
+      <div className="g nconf-b" role="alertdialog" aria-modal="true" aria-labelledby="lo-t" onClick={(e) => e.stopPropagation()}>
+        <h2 id="lo-t" className="n-h2">Çıxmaq istəyirsiniz?</h2>
+        <p className="n-body c2">Yenidən girmək üçün studiyadan yeni link lazım olacaq.</p>
+        <div className="nconf-btns">
+          <button type="button" className="nb nb-s" autoFocus onClick={onNo}>Ləğv et</button>
+          <button type="button" className="nb nb-p" onClick={onYes}>Çıx</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Profilim ----------
 const SPARKS: [number, number, boolean, number][] = [[20, 0, false, 300], [15, 15, true, 330], [0, 21, false, 300], [-15, 15, true, 340], [-20, 0, false, 300], [-15, -15, true, 330], [0, -21, false, 310], [15, -15, true, 340]];
 const isoToText = (iso: string) => (iso ? iso.split('-').reverse().join('.') : '');
 
 export function ProfilePage({ onLogout }: { onLogout: () => void }) {
-  const { token } = useContext(AuthCtx);
+  const { token, signOut } = useContext(AuthCtx);
   const q = useApi<Profile>('/me/profile');
   const [f, setF] = useState({ profession: '', workplace: '', instagram: '', niche: '', birthday: '', source: '' });
   const [opt, setOpt] = useState(true);
@@ -80,6 +101,7 @@ export function ProfilePage({ onLogout }: { onLogout: () => void }) {
   const [err, setErr] = useState('');
   const [granted, setGranted] = useState(0);
   const [saved, setSaved] = useState(false);
+  const [askOut, setAskOut] = useState(false);
   const p = q.data;
   const fill = (d: Profile) => { setF({ profession: d.profession ?? '', workplace: d.workplace ?? '', instagram: d.instagram ?? '', niche: d.niche ?? '', birthday: d.birthday ?? '', source: d.source ?? '' }); setOpt(d.marketing_opt_in); };
   useEffect(() => { if (p) fill(p); }, [p]);
@@ -88,11 +110,14 @@ export function ProfilePage({ onLogout }: { onLogout: () => void }) {
   async function save() {
     setBusy(true); setErr(''); setGranted(0);
     try {
-      const body = { profession: f.profession.trim(), workplace: f.workplace.trim(), instagram: f.instagram.trim().replace(/^@/, ''), niche: f.niche.trim(), birthday: f.birthday, source: f.source, marketing_opt_in: opt };
+      const body = { profession: f.profession.trim(), workplace: f.workplace.trim(), instagram: f.instagram.trim().replace(/^@/, ''), niche: f.niche.trim(), birthday: f.birthday || null, source: f.source, marketing_opt_in: opt };
       const r = await api<Profile & { granted: number }>('/me/profile', { method: 'PATCH', token, body });
       fill(r); setGranted(r.granted); setSaved(true);
       q.reload();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Xəta baş verdi.'); }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return signOut();
+      setErr(e instanceof ApiError ? e.message : 'Xəta baş verdi.');
+    }
     setBusy(false);
   }
 
@@ -166,7 +191,8 @@ export function ProfilePage({ onLogout }: { onLogout: () => void }) {
         </div>
 
         <ReferralCard />
-        <div className="nlogout rise" style={rise(5)}><button type="button" onClick={onLogout}>Çıxış</button></div>
+        <div className="nlogout rise" style={rise(5)}><button type="button" onClick={() => setAskOut(true)}>Çıxış</button></div>
+        {askOut && <ConfirmLogout onYes={onLogout} onNo={() => setAskOut(false)} />}
       </div>
     </Screen>
   );
@@ -174,7 +200,7 @@ export function ProfilePage({ onLogout }: { onLogout: () => void }) {
 
 // ---------- Təklif ----------
 export function OfferPage({ id }: { id: string }) {
-  const { token } = useContext(AuthCtx);
+  const { token, signOut } = useContext(AuthCtx);
   const [o, setO] = useState<Offer | null>(null);
   const [state, setState] = useState<'load' | 'none' | 'err'>('load');
   const [n, setN] = useState(0);
@@ -183,7 +209,7 @@ export function OfferPage({ id }: { id: string }) {
     setState('load'); setO(null);
     api<Offer>(`/me/campaigns/${encodeURIComponent(id)}`, { token })
       .then((d) => live && setO(d))
-      .catch((e: ApiError) => live && setState(e.status === 404 ? 'none' : 'err'));
+      .catch((e: ApiError) => { if (!live) return; if (e.status === 401) return signOut(); setState(e.status === 404 ? 'none' : 'err'); });
     return () => { live = false; };
   }, [id, token, n]);
   const paras = o ? o.body.split(/\n\s*\n/).filter((x) => x.trim()) : [];

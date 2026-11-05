@@ -80,6 +80,8 @@ def _send(sub: PushSubscription, data: dict) -> bool:
         if e.response is not None and e.response.status_code in (404, 410):
             return False
         log.warning("push alınmadı: %s", e)
+    except Exception:  # timeout, şəbəkə və s.: bu abunə üçün cəhd sayılır, növbə ilişməsin
+        log.warning("push göndərilmədi", exc_info=True)
     return True
 
 
@@ -90,14 +92,18 @@ def send_pending(db: DB) -> int:
     for n in rows:
         n.pushed_at = now()
         if not settings.VAPID_PRIVATE_KEY or aware(n.created_at) < now() - timedelta(hours=6):
+            db.commit()
             continue  # açar yoxdur və ya çox köhnədir: yalnız app-da görünür
-        data = message(db, n)
-        for sub in db.scalars(select(PushSubscription).where(PushSubscription.client_id == n.client_id)).all():
-            if _send(sub, data):
-                sent += 1
-            else:
-                db.delete(sub)
-    db.commit()
+        try:
+            data = message(db, n)
+            for sub in db.scalars(select(PushSubscription).where(PushSubscription.client_id == n.client_id)).all():
+                if _send(sub, data):
+                    sent += 1
+                else:
+                    db.delete(sub)
+        except Exception:  # bir bildirişin xətası qalanlarını saxlamasın
+            log.exception("bildiriş hazırlanmadı: %s", n.id)
+        db.commit()  # hər bildirişdən sonra: irəliləyiş itməsin
     return sent
 
 

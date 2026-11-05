@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../shared/api';
 
-type Opts = { method?: string; body?: unknown };
+type Opts = { method?: string; body?: unknown; timeout?: number };
 export type Call = <T>(path: string, opts?: Opts) => Promise<T>;
 const Ctx = createContext<{ call: Call; signOut: () => void }>(null as never);
 

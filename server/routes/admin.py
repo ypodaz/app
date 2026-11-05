@@ -4,7 +4,7 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session as DB
 
@@ -17,6 +17,26 @@ from models import Admin, AuditLog, CashbackLedger, Client, Package, PackageHour
 from views import baku_today, day_bounds, iso
 
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
+
+
+def blank_to_none(v):
+    """Boş və ya yalnız boşluqdan ibarət sətir (formdan «tarix yoxdur») → None."""
+    return None if isinstance(v, str) and not v.strip() else v
+
+
+def clean_name(v: str) -> str:
+    v = v.strip()
+    if len(v) < 2:
+        raise HTTPException(422, "Ad ən azı 2 simvol olmalıdır")
+    return v
+
+
+def clean_phone(v: str) -> str:
+    """Boşluq, tire və mötərizə atılır; isteğe bağlı + və 7–15 rəqəm. Boş qala bilər."""
+    v = re.sub(r"[\s\-()]", "", v)
+    if v and not re.fullmatch(r"\+?\d{7,15}", v):
+        raise HTTPException(422, "Telefon nömrəsi düzgün deyil")
+    return v
 
 
 class ClientIn(BaseModel):
@@ -36,6 +56,8 @@ class ProfileIn(BaseModel):
     birthday: date | None = None
     source: Source | Literal[""] | None = None
     marketing_opt_in: bool | None = None
+
+    _birthday_blank = field_validator("birthday", mode="before")(blank_to_none)
 
 
 class ClientEdit(ProfileIn):
@@ -124,7 +146,7 @@ def list_clients(db: DB = Depends(get_db)):
 
 @router.post("/clients")
 def add_client(body: ClientIn, db: DB = Depends(get_db)):
-    c = Client(full_name=body.full_name.strip(), phone=body.phone.strip(), card_code=new_card_code())
+    c = Client(full_name=clean_name(body.full_name), phone=clean_phone(body.phone), card_code=new_card_code())
     db.add(c)
     db.commit()
     return client_out(c)
@@ -140,6 +162,10 @@ def edit_client(client_id: int, body: ClientEdit, db: DB = Depends(get_db), admi
     before = {k: getattr(c, k) for k in body.model_fields_set if hasattr(c, k)}
     before = {k: v.isoformat() if isinstance(v, date) else v for k, v in before.items()}
     changes = {k: v.strip() for k, v in body.model_dump(exclude_none=True, include={"full_name", "phone", "notes"}).items()}
+    if "full_name" in changes:
+        changes["full_name"] = clean_name(changes["full_name"])
+    if "phone" in changes:
+        changes["phone"] = clean_phone(changes["phone"])
     for k, v in changes.items():
         setattr(c, k, v)
     changes |= {k: v.isoformat() if isinstance(v, date) else v for k, v in apply_profile(c, body).items()}

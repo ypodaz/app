@@ -1,6 +1,7 @@
 import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { storedToken, storeToken } from '../shared/api';
+import { watchSwUpdates } from '../shared/swUpdate';
 import '../shared/ypod.css';
 import '../shared/responsive.css';
 import './admin.css';
@@ -73,4 +74,5 @@ function App() {
   return <AuthProvider value={auth}><Routes /><AssistantButton /></AuthProvider>;
 }
 
+watchSwUpdates(); // SW-ni müştəri səhifəsi qeydiyyatdan keçirir; burada yalnız yeniləməyə baxılır
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError } from '../shared/api';
 import { NIcon } from '../shared/ui';
 import { AuthPage, Brand } from './auth';
-import { dl, NLogo } from './core';
+import { AuthCtx, dl, NLogo } from './core';
 import { env } from './util';
 
 // ---------- brauzerin real ikonları (NIcon-da olmayanlar) ----------
@@ -89,12 +89,13 @@ function CopyButton({ url, label = 'Linki kopyala' }: { url: string; label?: str
 }
 
 function PairCard({ token, pair, setPair, delay }: { token: string; pair: string | null; setPair: (c: string) => void; delay: number }) {
+  const { signOut } = useContext(AuthCtx);
   const [err, setErr] = useState('');
   const asked = useRef(false);
   async function fresh() {
     setErr('');
     try { setPair((await api<{ pair_code: string }>('/me/pair-code', { token, body: {} })).pair_code); }
-    catch (e) { setErr((e as ApiError).message); }
+    catch (e) { if ((e as ApiError).status === 401) return signOut(); setErr((e as ApiError).message); }
   }
   useEffect(() => { if (!pair && !asked.current) { asked.current = true; fresh(); } }, []);
   return (

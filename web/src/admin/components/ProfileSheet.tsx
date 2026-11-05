@@ -37,7 +37,7 @@ export function ProfileSheet({ open, c, onClose, onDone }: { open: boolean; c: C
   async function submit() {
     const body: Record<string, unknown> = {
       profession: f.profession.trim(), workplace: f.workplace.trim(), instagram: f.instagram.trim().replace(/^@/, ''), niche: f.niche.trim(),
-      birthday: f.birthday, source: f.source, marketing_opt_in: opt, tag_ids: tags,
+      birthday: f.birthday || null, source: f.source, marketing_opt_in: opt, tag_ids: tags,
     };
     if ((ref?.id ?? 0) !== (c.referred_by?.id ?? 0)) body.referred_by_id = ref?.id ?? 0;
     if (await run(() => call(`/clients/${c.id}`, { method: 'PATCH', body })) !== undefined) { onClose(); onDone(); }

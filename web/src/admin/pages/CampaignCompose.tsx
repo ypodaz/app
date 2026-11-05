@@ -22,6 +22,19 @@ type Fs = {
 };
 const EMPTY: Fs = { tags: [], professions: '', services: [], sources: [], inactive: '', pkg: '', cashback: '', month: 0, joined: '', push: '', preset: '' };
 
+// Yazılmış qaralama tab dəyişəndə itməsin: sessionStorage (yalnız bu sessiya)
+const DRAFT = 'ypod:campaign-draft';
+type Draft = { mode: Mode; f: Fs; picked: { id: number; full_name: string }[]; title: string; body: string; url: string };
+const loadDraft = (): Draft | null => {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT) ?? 'null');
+    return d && typeof d.title === 'string' && typeof d.body === 'string' && typeof d.url === 'string' && d.f && Array.isArray(d.picked) ? { ...d, f: { ...EMPTY, ...d.f } } : null;
+  } catch { return null; }
+};
+const saveDraft = (d: Draft | null) => {
+  try { if (d) sessionStorage.setItem(DRAFT, JSON.stringify(d)); else sessionStorage.removeItem(DRAFT); } catch { /* yaddaş bağlıdır */ }
+};
+
 const tri = (v: Tri) => (v === '' ? undefined : v === 'yes');
 
 function buildFilters(mode: Mode, f: Fs, picked: { id: number }[]): Filters {
@@ -57,13 +70,14 @@ function toggle<T>(list: T[], x: T): T[] { return list.includes(x) ? list.filter
 
 export function CampaignCompose({ onSent, onHistory }: { onSent: () => void; onHistory: () => void }) {
   const { call } = useAuth();
-  const [mode, setMode] = useState<Mode>('all');
-  const [f, setF] = useState<Fs>(EMPTY);
-  const [picked, setPicked] = useState<{ id: number; full_name: string }[]>([]);
+  const [draft] = useState(loadDraft);
+  const [mode, setMode] = useState<Mode>(draft?.mode ?? 'all');
+  const [f, setF] = useState<Fs>(draft?.f ?? EMPTY);
+  const [picked, setPicked] = useState<{ id: number; full_name: string }[]>(draft?.picked ?? []);
   const [pickOpen, setPickOpen] = useState(false);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [url, setUrl] = useState('');
+  const [title, setTitle] = useState(draft?.title ?? '');
+  const [body, setBody] = useState(draft?.body ?? '');
+  const [url, setUrl] = useState(draft?.url ?? '');
   const [confirm, setConfirm] = useState(false);
   const [done, setDone] = useState('');
   const [fopen, setFopen] = useState(true);
@@ -71,6 +85,8 @@ export function CampaignCompose({ onSent, onHistory }: { onSent: () => void; onH
   const [fly, setFly] = useState(false);
   const send = useAction();
   const set = (p: Partial<Fs>) => setF((x) => ({ ...x, ...p }));
+
+  useEffect(() => { saveDraft(title || body || url ? { mode, f, picked, title, body, url } : null); }, [mode, f, picked, title, body, url]);
 
   const filters = useMemo(() => buildFilters(mode, f, picked), [mode, f, picked]);
   const key = JSON.stringify(filters);
@@ -100,7 +116,7 @@ export function CampaignCompose({ onSent, onHistory }: { onSent: () => void; onH
   async function submit() {
     const r = await send.run(() => call<Campaign>('/campaigns', { body: { title: title.trim(), body: body.trim(), ...(url.trim() ? { url: url.trim() } : {}), filters: JSON.parse(key) } }));
     setConfirm(false);
-    if (r) { setDone(`Göndərildi: ${r.recipients} alıcı`); setFly(true); window.setTimeout(() => { setFly(false); setTitle(''); setBody(''); setUrl(''); }, 420); window.setTimeout(() => setDone(''), 8000); onSent(); }
+    if (r) { saveDraft(null); setDone(`Göndərildi: ${r.recipients} alıcı`); setFly(true); window.setTimeout(() => { setFly(false); setTitle(''); setBody(''); setUrl(''); }, 420); window.setTimeout(() => setDone(''), 8000); onSent(); }
   }
 
   // Şablonlar formu doldurur

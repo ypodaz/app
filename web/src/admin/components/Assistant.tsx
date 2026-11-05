@@ -49,10 +49,25 @@ function Assistant({ open, onClose }: { open: boolean; onClose: () => void }) {
   const recorder = useRef<MediaRecorder | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const end = useRef<HTMLDivElement>(null);
+  const dropped = useRef(new WeakSet<MediaRecorder>()); // bağlananda ləğv edilən yazılar: göndərilmir
+  const openRef = useRef(open);
+  openRef.current = open;
   const canRecord = !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
 
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [turns, busy]);
-  useEffect(() => () => { window.clearInterval(timer.current); recorder.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
+  // Yazını ləğv et: səs atılır (AI-ə getmir), mikrofon buraxılır
+  function cancelRec() {
+    window.clearInterval(timer.current);
+    const mr = recorder.current;
+    if (!mr) return;
+    dropped.current.add(mr);
+    if (mr.state !== 'inactive') mr.stop();
+    mr.stream.getTracks().forEach((t) => t.stop());
+    recorder.current = null;
+    setRec(false);
+  }
+  useEffect(() => { if (!open) cancelRec(); }, [open]);
+  useEffect(() => () => { openRef.current = false; cancelRec(); }, []);
 
   async function ask(input: { text?: string; audio?: string; mime?: string }) {
     setBusy(true); setErr('');
@@ -60,7 +75,7 @@ function Assistant({ open, onClose }: { open: boolean; onClose: () => void }) {
     const shown: Turn = { role: 'user', text: input.text ?? '(səs)', voice: !!input.audio, dur: input.audio ? secRef.current : undefined };
     setTurns((t) => [...t, shown]);
     try {
-      const r = await call<Reply>('/assistant', { body: { ...input, history } });
+      const r = await call<Reply>('/assistant', { body: { ...input, history }, timeout: 70_000 });
       const heard = r.reply.split('\n').find((l) => l.trim().startsWith('Eşitdim'));
       setTurns((t) => {
         const c = [...t];
@@ -86,6 +101,7 @@ function Assistant({ open, onClose }: { open: boolean; onClose: () => void }) {
     setErr('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!openRef.current) { stream.getTracks().forEach((t) => t.stop()); return; } // icazə gözləyəndə panel bağlanıb
       const mime = pickMime();
       const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       const chunks: Blob[] = [];
@@ -94,6 +110,7 @@ function Assistant({ open, onClose }: { open: boolean; onClose: () => void }) {
         stream.getTracks().forEach((t) => t.stop());
         window.clearInterval(timer.current);
         setRec(false);
+        if (dropped.current.has(mr)) return;
         const type = mr.mimeType || mime || 'audio/webm';
         if (!chunks.length) return;
         try { ask({ audio: await toBase64(new Blob(chunks, { type })), mime: type.split(';')[0] }); }

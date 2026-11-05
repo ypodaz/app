@@ -141,8 +141,8 @@
 .a3-pr{display:flex;justify-content:space-between;gap:16px;min-height:28px;padding:3px 0;font-size:14px;line-height:20px}
 .a3-pr>span:first-child{flex:none;color:var(--yp-text-2);font-weight:500}
 .a3-pr>span:last-child{min-width:0;text-align:right;font-weight:600;overflow-wrap:anywhere}
-.a3-pv{color:var(--yp-text);text-decoration:none}
-.a3-pl{color:var(--yp-accent);text-decoration:none}
+.a3-pv{display:inline-block;padding:3px 0;margin:-3px 0;color:var(--yp-text);text-decoration:none}
+.a3-pl{display:inline-block;padding:3px 0;margin:-3px 0;color:var(--yp-accent);text-decoration:none}
 .a3-tags-p{margin-top:10px}
 .a-g-kb{border-color:rgba(91,227,166,.18);display:flex;flex-direction:column;gap:6px}
 .a3-kh{position:relative;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--yp-text-2)}
@@ -216,6 +216,7 @@ button.a3-hr{cursor:pointer}
 .a3-mr{display:flex;align-items:center;gap:12px;min-height:52px}
 .a3-mn{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--yp-text);text-decoration:none;overflow-wrap:anywhere}
 .a3-mn:hover{color:var(--yp-text)}
+a.a3-mn{display:flex;align-items:center;min-height:44px}
 .a3-role{flex:none;height:24px;padding:0 10px;border-radius:12px;background:rgba(255,255,255,.07);font-size:12px;line-height:24px;font-weight:600;color:var(--yp-text-2)}
 .a3-role.own{background:rgba(255,201,77,.14);color:var(--yp-text)}
 .a3-mx{flex:none;width:36px;height:36px;border-radius:18px;border:0;background:none;color:var(--yp-text-2);display:flex;align-items:center;justify-content:center;cursor:pointer}

@@ -1,11 +1,12 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { api, storedToken, storeToken } from '../shared/api';
+import { api, ApiError, storedToken, storeToken } from '../shared/api';
+import { watchSwUpdates } from '../shared/swUpdate';
 import '../shared/ypod.css';
 import '../shared/responsive.css';
 import './client.css';
 import './neon.css';
-import { CodeEntry, InvalidInvite, Welcome } from './auth';
+import { CodeEntry, InvalidInvite, InviteProblem, Welcome } from './auth';
 import { InAppScreen, Install } from './install';
 import { AiChat } from './ai';
 import { Calendar } from './calendar';
@@ -49,7 +50,7 @@ function App() {
   const [name, setName] = useState('');
   const [stage, setStage] = useState<Stage>('app');
   const [busy, setBusy] = useState(!!inviteToken && !inApp);
-  const [badInvite, setBadInvite] = useState(false);
+  const [badInvite, setBadInvite] = useState<'bad' | 'limit' | 'net' | null>(null);
   const redeemed = useRef(false);
 
   function signIn(t: string) { storeToken(TOKEN_KEY, t); setToken(t); }
@@ -58,18 +59,32 @@ function App() {
     try { Object.keys(localStorage).filter((k) => k.startsWith('ypod.')).forEach((k) => localStorage.removeItem(k)); } catch { /* gizli rejim */ }
   }
 
+  function redeem() {
+    if (!inviteToken) return;
+    setBusy(true); setBadInvite(null);
+    api<{ token: string; pair_code: string; full_name?: string }>('/auth/redeem', { body: { token: inviteToken } })
+      .then((r) => { signIn(r.token); setPair(r.pair_code); setName(r.full_name ?? ''); setStage('welcome'); })
+      .catch((e: unknown) => {
+        const st = e instanceof ApiError ? e.status : 0;
+        // Link yalnız həqiqi rədd (4xx, 429 xaric) olanda etibarsız sayılır
+        setBadInvite(st === 429 ? 'limit' : st >= 400 && st < 500 ? 'bad' : 'net');
+      })
+      .finally(() => setBusy(false));
+  }
+
   useEffect(() => {
     if (!inviteToken || inApp || redeemed.current) return;
     redeemed.current = true;
-    api<{ token: string; pair_code: string; full_name?: string }>('/auth/redeem', { body: { token: inviteToken } })
-      .then((r) => { signIn(r.token); setPair(r.pair_code); setName(r.full_name ?? ''); setStage('welcome'); })
-      .catch(() => setBadInvite(true))
-      .finally(() => setBusy(false));
+    redeem();
   }, []);
 
   if (busy) return <Splash />;
   if (inApp) return <InAppScreen url={inviteToken ? inviteUrl : `${location.origin}${location.pathname}`} />;
-  if (!token) return badInvite ? <InvalidInvite onCode={() => setBadInvite(false)} /> : <CodeEntry onToken={signIn} />;
+  if (!token) {
+    if (badInvite === 'bad') return <InvalidInvite onCode={() => setBadInvite(null)} />;
+    if (badInvite) return <InviteProblem kind={badInvite} onRetry={redeem} onCode={() => setBadInvite(null)} />;
+    return <CodeEntry onToken={signIn} />;
+  }
 
   const logout = async () => { await api('/me/logout', { token, body: {} }).catch(() => {}); signOut(); };
   const toApp = () => { setStage('app'); location.hash = '#/'; };
@@ -84,4 +99,5 @@ function App() {
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+watchSwUpdates();
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

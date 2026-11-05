@@ -179,7 +179,8 @@ def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: dat
     _spend_cashback(db, s, cashback_use)
     s.deposit_expected = money.deposit_expected(s.total, s.cashback_used, pkg is not None)
     _audit(db, admin_id, "create", s, None)
-    _notify(db, client_id, "shoot_created", shoot_id=s.id)
+    if aware(starts_at) > now():  # keçmiş çəkilişi sonradan qeyd edəndə müştəriyə «Yeni çəkiliş» getməsin
+        _notify(db, client_id, "shoot_created", shoot_id=s.id)
     return s
 
 

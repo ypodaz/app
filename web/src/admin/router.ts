@@ -19,6 +19,13 @@ export function useRoute(): Route {
   return r;
 }
 
+// Geri: əvvəlki ekran tətbiq daxilindədirsə history.back(); birbaşa linkdə və ya əvvəlki ekran
+// forma idisə (yeni/düzəliş/bağlama/ləğv — artıq göndərilib) ehtiyat səhifəyə.
+const FORM = /(^|\/)(new|edit|close|cancel)(\/|\?|$)/;
+let prev = '';
+window.addEventListener('hashchange', (e) => { prev = new URL(e.oldURL).hash.replace(/^#\/?/, ''); });
+export const goBack = (fallback: string) => { if (prev && !FORM.test(prev)) history.back(); else go(fallback); };
+
 export const go = (to: string) => { location.hash = '#/' + to.replace(/^#?\/?/, ''); };
 
 export function useMedia(q: string): boolean {

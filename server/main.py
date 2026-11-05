@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 import push
 import settings
@@ -39,4 +41,9 @@ app.include_router(ai_routes.router)
 
 @app.get("/api/health")
 def health():
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse({"ok": False}, status_code=503)
     return {"ok": True}

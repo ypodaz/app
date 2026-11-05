@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { ApiError } from '../../shared/api';
 import { AdminShell, formatHours, formatMin, formatMoney } from '../../shared/ui';
 import { AIcon } from '../components/AIcon';
 import { AChip, ASeg, AStep, PageHead } from '../components/neon';
@@ -46,6 +47,7 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
   const [quote, setQuote] = useState<Quote | null>(null);
   const [qerr, setQerr] = useState('');
   const submit = useAction();
+  const [created, setCreated] = useState<Shoot | null>(null); // yaradılıb, lakin beh qeydi alınmayıb: təkrar basanda çəkiliş yenidən yaradılmır
 
   // Düzəlişdə çəkilişin məlumatı bir dəfə sahələrə yazılır
   useEffect(() => {
@@ -116,10 +118,17 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
 
   async function create() {
     if (!body) return;
-    const s = await submit.run(() => call<Shoot>('/shoots', { body }));
-    if (!s) return;
-    if (depositNow && depositExpected > 0) await call(`/shoots/${s.id}/deposit`, { body: { amount: depositExpected } }).catch(() => {});
-    go(`shoots/${s.id}`);
+    // Forma beh sorğusu bitənə qədər məşğul qalır (ikinci kliklə təkrar çəkiliş yaranmasın)
+    const id = await submit.run(async () => {
+      const s = created ?? await call<Shoot>('/shoots', { body });
+      setCreated(s);
+      if (depositNow && depositExpected > 0) {
+        try { await call(`/shoots/${s.id}/deposit`, { body: { amount: depositExpected } }); }
+        catch (e) { throw new ApiError(0, `Çəkiliş yaradıldı, lakin beh qeyd olunmadı: ${errMsg(e)} Yenidən basın — çəkiliş təkrar yaradılmayacaq, yalnız beh qeyd olunacaq.`); }
+      }
+      return s.id;
+    });
+    if (id !== undefined) go(`shoots/${id}`);
   }
 
   function pickKind(k: Kind) {
@@ -142,7 +151,7 @@ export function ShootForm({ query, editId }: { query: URLSearchParams; editId?: 
   const back = edit ? `shoots/${editId}` : 'calendar';
   const left = quote ? Math.max(0, quote.total - cbShown - (edit ? depPaid : depositExpected)) : 0;
   const totalTxt = quote ? formatMoney(quote.total).replace(' AZN', '') : '—';
-  const submitLabel = edit ? (quote ? `Yadda saxla · ${formatMoney(quote.total)}` : 'Yadda saxla') : quote ? `Əlavə et · ${formatMoney(quote.total)}` : 'Əlavə et';
+  const submitLabel = created ? 'Behi qeyd et' : edit ? (quote ? `Yadda saxla · ${formatMoney(quote.total)}` : 'Yadda saxla') : quote ? `Əlavə et · ${formatMoney(quote.total)}` : 'Əlavə et';
   const noteField = <Field label="Qeyd" id="sf-note"><textarea id="sf-note" className="inp ta" value={note} onChange={(e) => setNote(e.target.value)} placeholder="məs. Qonaqla gələcək" /></Field>;
   const cbRow = (on: boolean, dis: boolean, onClick: () => void, title: string, sub?: string, lock?: boolean) => (
     <div className="a-trow">

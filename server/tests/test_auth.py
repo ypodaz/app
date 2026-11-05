@@ -70,6 +70,12 @@ def test_invite_is_single_use(api):
     adm = admin_token(api)
     _, inv = invite_link(api, adm)
     assert api.post("/api/auth/redeem", json={"token": token_of(inv["url"])}).status_code == 200
+    # cavab itəndə eyni link 10 dəqiqə ərzində yenidən işləyir, sonra yox
+    assert api.post("/api/auth/redeem", json={"token": token_of(inv["url"])}).status_code == 200
+    with SessionLocal() as db:
+        for i in db.query(Invite):
+            i.used_at = now() - timedelta(minutes=11)
+        db.commit()
     assert api.post("/api/auth/redeem", json={"token": token_of(inv["url"])}).status_code == 400
 
 

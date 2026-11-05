@@ -70,8 +70,8 @@ export const money = formatMoney;
 export type Shoot = {
   id: number; package_id: number | null; starts_at: string; duration_min: number; kind: string; tag: string; location: string;
   address: string | null; cameras: number; editing: boolean; reels_count: number; title: string | null; status: string;
-  production: string; delivery_on: string | null; price_base: number; price_editing: number; price_reels: number;
-  price_extra_camera: number; discount: number; extras?: { name: string; amount: number }[]; total: number; mine: boolean; who: string; cashback_used: number | null;
+  production: string; delivery_on: string | null; price_base: number | null; price_editing: number | null; price_reels: number | null;
+  price_extra_camera: number | null; discount: number | null; extras?: { name: string; amount: number | null }[]; total: number | null; mine: boolean; who: string; cashback_used: number | null;
   payment_line: string | null; studio_balance: number | null; deposit_expected: number | null;
   materials: { id: number; title: string; drive_url: string }[]; cashback_earned: number | null;
   cashback_expected: { amount: number; first_shoot: boolean } | null;

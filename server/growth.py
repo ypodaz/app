@@ -191,7 +191,7 @@ def send(db: DB, *, title: str, body: str, url: str | None, clients: list[Client
     db.add(camp)
     db.flush()
     for c in clients:
-        v = {"name": c.full_name.split()[0], **(values or {}).get(c.id, {})}
+        v = {"name": (c.full_name.split() or [""])[0], **(values or {}).get(c.id, {})}
         db.add(CampaignRecipient(campaign_id=camp.id, client_id=c.id))
         booking._notify(db, c.id, "campaign", campaign_id=camp.id, title=_fill(title, **v), body=_fill(body, **v),
                         url=url or None)

@@ -20,6 +20,7 @@ CLIENT_TTL = timedelta(days=180)
 ADMIN_TTL = timedelta(days=30)
 INVITE_TTL = timedelta(days=7)
 PAIR_TTL = timedelta(minutes=15)
+REDEEM_GRACE = timedelta(minutes=10)  # cavab itəndə eyni linklə təkrar giriş
 ADMIN_MAX_FAILS = 5
 ADMIN_LOCK = timedelta(minutes=15)
 
@@ -101,7 +102,7 @@ def revoke_client_sessions(db: DB, client_id: int) -> None:
 
 def create_invite(db: DB, client: Client) -> str:
     """Yeni link köhnə linkləri və müştərinin bütün girişlərini bağlayır."""
-    for old in db.scalars(select(Invite).where(Invite.client_id == client.id, Invite.used_at.is_(None))):
+    for old in db.scalars(select(Invite).where(Invite.client_id == client.id, Invite.expires_at > now())):
         old.expires_at = now()
     revoke_client_sessions(db, client.id)
     token = secrets.token_urlsafe(32)
@@ -111,9 +112,12 @@ def create_invite(db: DB, client: Client) -> str:
 
 def redeem_invite(db: DB, token: str) -> Optional[Client]:
     inv = db.scalar(select(Invite).where(Invite.token_hash == digest(token)))
-    if not inv or inv.used_at or aware(inv.expires_at) <= now():
+    if not inv or aware(inv.expires_at) <= now():
         return None
-    inv.used_at = now()
+    if not inv.used_at:
+        inv.used_at = now()
+    elif now() - aware(inv.used_at) > REDEEM_GRACE:
+        return None
     client = db.get(Client, inv.client_id)
     if client and not client.activated_at:
         client.activated_at = now()

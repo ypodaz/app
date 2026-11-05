@@ -67,7 +67,7 @@ function Column({ date, shoots, blocks, onBlock, full, selectedId }: { date: str
   // «Hazırlıq N dəq» yazısı: bu günün ən yaxın gələn çəkilişində
   const next = isToday ? list.find((s) => s.status === 'confirmed' && s.prep_min > 0 && bakuParts(s.starts_at).time >= now.time) : undefined;
   return (
-    <div className={`a-day${isToday ? ' tod' : ''}`} onClick={onEmpty} onMouseMove={onMove} onMouseLeave={() => setGhost(null)} role="presentation" aria-label={`${dateShort(date)} boş vaxt`}>
+    <div className={`a-day${isToday ? ' tod' : ''}`} onClick={onEmpty} onMouseMove={onMove} onMouseLeave={() => setGhost(null)} role="group" aria-label={`${dateShort(date)} boş vaxt`}>
       <div className="a-in">
         {blocks.map((b) => {
           const sp = blockSpan(b, date);

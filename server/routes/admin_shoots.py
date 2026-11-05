@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
@@ -17,7 +17,7 @@ import money
 from auth import current_admin
 from db import get_db, now
 from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot
-from routes.admin import client_full, client_out
+from routes.admin import blank_to_none, client_full, client_out
 from views import (baku_today, day_bounds, iso, material_out, materials_of, payment_line, shoot_core,
                    studio_balance, utc)
 
@@ -96,6 +96,8 @@ class ProductionIn(BaseModel):
     production: Literal["none", "editing", "ready"]
     delivery_on: Optional[date] = None
 
+    _delivery_blank = field_validator("delivery_on", mode="before")(blank_to_none)
+
 
 class MaterialIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
@@ -132,10 +134,26 @@ def reject(db: DB, e: booking.Rejected):
     raise HTTPException(400, str(e))
 
 
-def get_shoot(db: DB, shoot_id: int) -> Shoot:
-    s = db.get(Shoot, shoot_id)
+def get_shoot(db: DB, shoot_id: int, lock: bool = False) -> Shoot:
+    """lock: pul əməliyyatlarında sətri tranzaksiya bitənədək kilidləyir (Postgres; SQLite-da təsirsiz)."""
+    if lock:
+        s = db.scalar(select(Shoot).where(Shoot.id == shoot_id).with_for_update()
+                      .execution_options(populate_existing=True))
+    else:
+        s = db.get(Shoot, shoot_id)
     if not s:
         raise HTTPException(404, "Çəkiliş tapılmadı")
+    return s
+
+
+def get_open_shoot(db: DB, shoot_id: int) -> Shoot:
+    """Pul əməliyyatı üçün kilidli çəkiliş; artıq bağlanıb/ləğv olunubsa 409."""
+    s = get_shoot(db, shoot_id, lock=True)
+    if s.status != "confirmed":
+        db.rollback()
+        raise HTTPException(409, {"completed": "Çəkiliş artıq bağlanıb", "cancelled": "Çəkiliş artıq ləğv olunub",
+                                  "no_show": "Çəkiliş artıq «gəlmədi» kimi qeyd olunub"}.get(
+            s.status, "Çəkilişin vəziyyəti bu əməliyyata imkan vermir"))
     return s
 
 
@@ -264,7 +282,7 @@ def get_one(shoot_id: int, db: DB = Depends(get_db)):
 
 @router.post("/shoots/{shoot_id}/deposit")
 def deposit(shoot_id: int, body: DepositIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
-    s = get_shoot(db, shoot_id)
+    s = get_open_shoot(db, shoot_id)
     try:
         booking.receive_deposit(db, admin.id, s, body.amount)
     except booking.Rejected as e:
@@ -275,7 +293,7 @@ def deposit(shoot_id: int, body: DepositIn, db: DB = Depends(get_db), admin: Adm
 
 @router.post("/shoots/{shoot_id}/deposit/waive")
 def waive(shoot_id: int, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
-    s = get_shoot(db, shoot_id)
+    s = get_open_shoot(db, shoot_id)
     try:
         booking.waive_deposit(db, admin.id, s)
     except booking.Rejected as e:
@@ -286,7 +304,7 @@ def waive(shoot_id: int, db: DB = Depends(get_db), admin: Admin = Depends(curren
 
 @router.post("/shoots/{shoot_id}/close")
 def close(shoot_id: int, body: CloseIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
-    s = get_shoot(db, shoot_id)
+    s = get_open_shoot(db, shoot_id)
     try:
         earned = booking.close_shoot(db, admin.id, s, duration_min=body.duration_min,
                                      paid_method=body.paid_method, cashback_use=body.cashback_use,
@@ -300,7 +318,7 @@ def close(shoot_id: int, body: CloseIn, db: DB = Depends(get_db), admin: Admin =
 
 @router.post("/shoots/{shoot_id}/no-show")
 def no_show(shoot_id: int, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
-    s = get_shoot(db, shoot_id)
+    s = get_open_shoot(db, shoot_id)
     try:
         booking.no_show(db, admin.id, s)
     except booking.Rejected as e:
@@ -322,7 +340,7 @@ def cancel_out(db: DB, admin_id: int, s: Shoot, requested_at: datetime | None) -
 
 @router.post("/shoots/{shoot_id}/cancel")
 def cancel(shoot_id: int, body: CancelIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
-    out = cancel_out(db, admin.id, get_shoot(db, shoot_id), body.requested_at)
+    out = cancel_out(db, admin.id, get_open_shoot(db, shoot_id), body.requested_at)
     db.commit()
     return out
 
@@ -330,14 +348,17 @@ def cancel(shoot_id: int, body: CancelIn, db: DB = Depends(get_db), admin: Admin
 @router.post("/shoots/{shoot_id}/cancel/quote")
 def cancel_quote(shoot_id: int, body: CancelIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
     """Ləğv önbaxışı: eyni hesab, bazaya heç nə yazılmır."""
-    out = cancel_out(db, admin.id, get_shoot(db, shoot_id), body.requested_at)
+    out = cancel_out(db, admin.id, get_open_shoot(db, shoot_id), body.requested_at)
     db.rollback()
     return out
 
 
 @router.post("/shoots/{shoot_id}/refunded")
 def refunded(shoot_id: int, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
-    s = get_shoot(db, shoot_id)
+    s = get_shoot(db, shoot_id, lock=True)
+    if s.refunded_at:
+        db.rollback()
+        raise HTTPException(409, "Ödəniş artıq qaytarılıb")
     try:
         booking.mark_refunded(db, admin.id, s)
     except booking.Rejected as e:
