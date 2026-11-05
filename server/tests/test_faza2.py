@@ -122,7 +122,9 @@ def test_edit_closed_shoot_rejected(api):
     s = make_shoot(api, adm, cid)
     api.post(f"/api/admin/shoots/{s['id']}/close", json={"duration_min": 120, "paid_method": "cash"}, headers=bearer(adm))
     r = api.patch(f"/api/admin/shoots/{s['id']}", json=edit_body(s, duration_min=60), headers=bearer(adm))
-    assert r.status_code == 400
+    assert r.status_code == 409
+    r = api.post(f"/api/admin/shoots/{s['id']}/reschedule", json={"starts_at": s["starts_at"]}, headers=bearer(adm))
+    assert r.status_code == 409
 
 
 def test_ping_and_app_usage(api):

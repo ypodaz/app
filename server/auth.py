@@ -166,25 +166,29 @@ def ensure_admin(db: DB) -> None:
         admin.password_hash = settings.ADMIN_PASSWORD_HASH
         admin.failed_attempts = 0
         admin.locked_until = None
+        _admin_fails.clear()
     db.commit()
 
 
-def check_admin_password(db: DB, login: str, password: str) -> Optional[Admin]:
+_admin_fails: dict[tuple[str, str], list] = {}  # (login, ip) -> [səhv sayı, kilid vaxtı]
+
+
+def check_admin_password(db: DB, login: str, password: str, ip: str = "") -> Optional[Admin]:
+    """Kilid hesaba yox, (login, ip) cütünə aiddir: kənar adam əsl adminin girişini bağlaya bilməz."""
     admin = db.scalar(select(Admin).where(Admin.login == login))
     if not admin:
         ph.hash(password)  # vaxta görə login-in mövcudluğu bilinməsin
         return None
-    if admin.locked_until and aware(admin.locked_until) > now():
+    key = (login, ip)
+    state = _admin_fails.setdefault(key, [0, None])
+    if state[1] and state[1] > now():
         raise HTTPException(423, "Çox səhv cəhd. 15 dəqiqə sonra yenidən yoxlayın.")
     try:
         ph.verify(admin.password_hash, password)
     except VerificationError:
-        admin.failed_attempts += 1
-        if admin.failed_attempts >= ADMIN_MAX_FAILS:
-            admin.locked_until = now() + ADMIN_LOCK
-            admin.failed_attempts = 0
-        db.commit()
+        state[0] += 1
+        if state[0] >= ADMIN_MAX_FAILS:
+            state[:] = [0, now() + ADMIN_LOCK]
         return None
-    admin.failed_attempts = 0
-    admin.locked_until = None
+    _admin_fails.pop(key, None)
     return admin

@@ -117,7 +117,7 @@ def test_package_rules(db):
         shoot(db, other, package_id=pkg.id)
     with pytest.raises(b.Rejected, match="müddətinə"):
         shoot(db, k, package_id=pkg.id, starts_at=at(2, 12, month=12))
-    with pytest.raises(b.Rejected, match="qalıb"):
+    with pytest.raises(b.Rejected, match="qalmayıb"):
         shoot(db, k, package_id=pkg.id, duration_min=330)
     s = shoot(db, k, package_id=pkg.id, cameras=2, duration_min=90)
     assert s.price_extra_camera == 75 * A
@@ -196,3 +196,37 @@ def test_close_cannot_drop_below_paid(db):
     with pytest.raises(b.Rejected, match="artıq ödəniləndən"):
         b.close_shoot(db, None, s, duration_min=30, paid_method=None)
     assert db.get(Shoot, s.id).status == "confirmed"
+
+
+def test_package_overbooking_rejected_at_create_and_edit(db):
+    c = client(db, "Pkg")
+    pkg = b.create_package(db, None, owner_client_id=c.id, title="5h", hours=5, cameras=1, starts_on=date(2026, 11, 1))
+    shoot(db, c, package_id=pkg.id, duration_min=180, starts_at=at(6, 10))
+    with pytest.raises(b.Rejected, match=r"qalmayıb \(qalan: 2 saat\)"):
+        shoot(db, c, package_id=pkg.id, duration_min=180, starts_at=at(7, 10))
+    s2 = shoot(db, c, package_id=pkg.id, duration_min=120, starts_at=at(7, 10))
+    kw = dict(starts_at=s2.starts_at, kind="shoot", tag="podcast", location="studio", cameras=1, editing=False)
+    with pytest.raises(b.Rejected, match="qalmayıb"):
+        b.edit_shoot(db, None, s2, duration_min=180, **kw)
+    b.edit_shoot(db, None, s2, duration_min=120, **kw)  # özünü ikiqat saymır
+
+
+def test_package_dates_use_baku_day(db):
+    c = client(db, "PkgD")
+    pkg = b.create_package(db, None, owner_client_id=c.id, title="5h", hours=5, cameras=1, starts_on=date(2026, 11, 1))
+    utc = timezone.utc
+    early = datetime(2026, 11, 1, 2, tzinfo=BAKU).astimezone(utc)  # UTC-də 31 oktyabr, Bakıda 1 noyabr
+    assert shoot(db, c, package_id=pkg.id, starts_at=early).package_id == pkg.id
+    late = (datetime(pkg.ends_on.year, pkg.ends_on.month, pkg.ends_on.day, 1, tzinfo=BAKU) + timedelta(days=1))
+    with pytest.raises(b.Rejected, match="müddətinə"):
+        shoot(db, c, package_id=pkg.id, starts_at=late.astimezone(utc))
+
+
+def test_cashback_guard_after_lock_uses_fresh_balance(db):
+    c = client(db, "Dbl")
+    b.manual_cashback(db, None, c.id, 76 * A, "x")
+    done_shoots(db, c, 2)
+    kw = dict(duration_min=120, cameras=1, editing=False, cashback_use=76 * A)
+    shoot(db, c, starts_at=at(8, 12), **kw)
+    with pytest.raises(b.Rejected):
+        shoot(db, c, starts_at=at(7, 12), **kw)

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DB
 
 import money
 from db import aware, now
-from views import short_name
+from views import BAKU, short_name
 from models import (AuditLog, Block, CashbackLedger, Client, Notification, Package, PackageHoursLedger,
                     PackageMember, Shoot)
 
@@ -31,6 +31,21 @@ def cashback_balance(db: DB, client_id: int) -> int:
                      .where(CashbackLedger.client_id == client_id))
 
 
+def _lock_client(db: DB, client_id: int) -> Client | None:
+    """Keşbek oxunub yazılanda müştəri sətrini kilidləyir: eyni müştərinin sorğuları növbə ilə gedir (Postgres)."""
+    return db.scalar(select(Client).where(Client.id == client_id).with_for_update()
+                     .execution_options(populate_existing=True))
+
+
+def _lock_package(db: DB, package_id: int) -> Package | None:
+    return db.scalar(select(Package).where(Package.id == package_id).with_for_update()
+                     .execution_options(populate_existing=True))
+
+
+def _baku_date(dt: datetime) -> date:
+    return aware(dt).astimezone(BAKU).date()
+
+
 def shoots_done(db: DB, client_id: int, exclude_id: int | None = None) -> int:
     """Müştərinin bağlanmış (completed) çəkilişlərinin sayı."""
     q = select(func.count(Shoot.id)).where(Shoot.client_id == client_id, Shoot.status == "completed")
@@ -44,6 +59,21 @@ def package_left(db: DB, pkg: Package) -> int:
     used = db.scalar(select(func.coalesce(func.sum(PackageHoursLedger.delta_minutes), 0))
                      .where(PackageHoursLedger.package_id == pkg.id))
     return pkg.minutes_total + used
+
+
+def package_free(db: DB, pkg: Package, exclude_id: int | None = None) -> int:
+    """Paketdə qalan dəqiqə, paketə bağlı digər təsdiqlənmiş (hələ bağlanmamış) çəkilişlərin müddəti çıxılmaqla."""
+    q = select(func.coalesce(func.sum(Shoot.duration_min), 0)).where(
+        Shoot.package_id == pkg.id, Shoot.status == "confirmed")
+    if exclude_id is not None:
+        q = q.where(Shoot.id != exclude_id)
+    return package_left(db, pkg) - db.scalar(q)
+
+
+def _check_package_free(db: DB, pkg: Package, minutes: int, exclude_id: int | None = None) -> None:
+    free = package_free(db, pkg, exclude_id)
+    if free < minutes:
+        raise Rejected(f"Paketdə kifayət qədər saat qalmayıb (qalan: {money.fmt_hours(max(free, 0))})")
 
 
 def _snapshot(s: Shoot) -> dict:
@@ -83,6 +113,7 @@ def _apply_price(s: Shoot, p: money.Price) -> None:
 def _spend_cashback(db: DB, s: Shoot, amount: int) -> None:
     if not amount:
         return
+    _lock_client(db, s.client_id)
     try:
         paid = s.cashback_used + (s.deposit_amount if s.deposit_received_at else 0)
         money.check_cashback_use(amount, cashback_balance(db, s.client_id), s.total - paid,
@@ -99,7 +130,7 @@ def _return_cashback(db: DB, s: Shoot) -> None:
 
 
 def _usable_package(db: DB, package_id: int, client_id: int, on: date, minutes: int) -> Package:
-    pkg = db.get(Package, package_id)
+    pkg = _lock_package(db, package_id)
     if not pkg:
         raise Rejected("Paket tapılmadı")
     member = pkg.owner_client_id == client_id or db.get(PackageMember, (pkg.id, client_id))
@@ -107,8 +138,7 @@ def _usable_package(db: DB, package_id: int, client_id: int, on: date, minutes: 
         raise Rejected("Müştəri bu paketin üzvü deyil")
     if not pkg.starts_on <= on <= pkg.ends_on:
         raise Rejected("Çəkiliş tarixi paketin müddətinə düşmür")
-    if package_left(db, pkg) < minutes:
-        raise Rejected(f"Paketdə {money.fmt_hours(package_left(db, pkg))} qalıb")
+    _check_package_free(db, pkg, minutes)
     return pkg
 
 
@@ -159,7 +189,7 @@ def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: dat
                  title: str | None = None, note: str | None = None, source_note: str | None = None,
                  discount: int = 0, discount_note: str | None = None, prep_min: int = 15,
                  wrap_min: int = 0, extras: list[dict] = ()) -> Shoot:
-    client = db.get(Client, client_id)
+    client = _lock_client(db, client_id)
     if not client:
         raise Rejected("Müştəri tapılmadı")
     _check_buffer(prep_min, wrap_min)
@@ -167,7 +197,7 @@ def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: dat
         editing, reels_count = False, 0
     if kind == "studio_rent":
         cameras, location, address = 0, "studio", None
-    pkg = _usable_package(db, package_id, client_id, starts_at.date(), duration_min) if package_id else None
+    pkg = _usable_package(db, package_id, client_id, _baku_date(starts_at), duration_min) if package_id else None
     s = Shoot(client_id=client_id, package_id=package_id, kind=kind, tag=tag, location=location, address=address,
               starts_at=starts_at, duration_min=duration_min, cameras=cameras, editing=editing,
               reels_count=reels_count, title=title, note=note, source_note=source_note, created_by=admin_id,
@@ -223,7 +253,8 @@ def close_shoot(db: DB, admin_id: int | None, s: Shoot, *, duration_min: int, pa
     discount və ya extras verilirsə, onlar dəyişdirilir. Yazılan keşbeki qaytarır."""
     _require(s, "confirmed")
     before = _snapshot(s)
-    pkg = db.get(Package, s.package_id) if s.package_id else None
+    client = _lock_client(db, s.client_id)
+    pkg = _lock_package(db, s.package_id) if s.package_id else None
     s.duration_min = duration_min
     if discount is not None:
         s.discount = discount
@@ -242,7 +273,6 @@ def close_shoot(db: DB, admin_id: int | None, s: Shoot, *, duration_min: int, pa
     deposit = s.deposit_amount if s.deposit_received_at else 0
     s.paid_at_studio = money.studio_balance(s.total, s.cashback_used, deposit)
     s.paid_method = paid_method if s.paid_at_studio else None
-    client = db.get(Client, s.client_id)
     kind, earned = money.cashback_earned(p, from_package=pkg is not None, first_shoot=is_first_shoot(db, client, s))
     if earned:
         db.add(CashbackLedger(client_id=s.client_id, shoot_id=s.id, kind=kind, amount=earned))
@@ -272,6 +302,7 @@ def _referral_reward(db: DB, client: Client, s: Shoot) -> None:
 def no_show(db: DB, admin_id: int | None, s: Shoot) -> None:
     _require(s, "confirmed")
     before = _snapshot(s)
+    _lock_client(db, s.client_id)
     c = money.cancellation(window="no_show", deposit_paid=s.deposit_amount if s.deposit_received_at else 0,
                            cashback_used=s.cashback_used)
     _return_cashback(db, s)
@@ -283,6 +314,7 @@ def no_show(db: DB, admin_id: int | None, s: Shoot) -> None:
 def cancel_shoot(db: DB, admin_id: int | None, s: Shoot, requested_at: datetime) -> money.Cancellation:
     _require(s, "confirmed")
     before = _snapshot(s)
+    _lock_client(db, s.client_id)
     window = money.cancel_window(aware(s.starts_at), aware(requested_at))
     c = money.cancellation(window=window, deposit_paid=s.deposit_amount if s.deposit_received_at else 0,
                            cashback_used=s.cashback_used)
@@ -310,8 +342,8 @@ def reschedule(db: DB, admin_id: int | None, s: Shoot, new_start: datetime, requ
     if lt24 and s.rescheduled_lt24:
         raise Rejected("24 saatdan az qalanda vaxt yalnız bir dəfə dəyişdirilir")
     if s.package_id:
-        pkg = db.get(Package, s.package_id)
-        if not pkg.starts_on <= new_start.date() <= pkg.ends_on:
+        pkg = _lock_package(db, s.package_id)
+        if not pkg.starts_on <= _baku_date(new_start) <= pkg.ends_on:
             raise Rejected("Yeni tarix paketin müddətinə düşmür")
     before = _snapshot(s)
     s.starts_at = new_start
@@ -333,13 +365,13 @@ def edit_shoot(db: DB, admin_id: int | None, s: Shoot, *, starts_at: datetime, d
         editing, reels_count = False, 0
     if kind == "studio_rent":
         cameras, location, address = 0, "studio", None
+    _lock_client(db, s.client_id)
     pkg = None
     if s.package_id:
-        pkg = db.get(Package, s.package_id)
-        if not pkg.starts_on <= aware(starts_at).date() <= pkg.ends_on:
+        pkg = _lock_package(db, s.package_id)
+        if not pkg.starts_on <= _baku_date(starts_at) <= pkg.ends_on:
             raise Rejected("Yeni tarix paketin müddətinə düşmür")
-        if package_left(db, pkg) < duration_min:
-            raise Rejected(f"Paketdə {money.fmt_hours(package_left(db, pkg))} qalıb")
+        _check_package_free(db, pkg, duration_min, s.id)
     before = _snapshot(s)
     old_start, old_total, old_duration = aware(s.starts_at), s.total, s.duration_min
     s.starts_at, s.duration_min, s.kind, s.tag, s.location, s.address = starts_at, duration_min, kind, tag, location, address
@@ -401,7 +433,7 @@ def audit_member(db: DB, admin_id: int | None, action: str, package_id: int, cli
 
 def manual_cashback(db: DB, admin_id: int | None, client_id: int, amount: int, note: str) -> None:
     """Köhnə müştərinin başlanğıc keşbeki (B6c) və ya düzəliş. Balans mənfiyə düşə bilməz."""
-    if not db.get(Client, client_id):
+    if not _lock_client(db, client_id):
         raise Rejected("Müştəri tapılmadı")
     if not amount or cashback_balance(db, client_id) + amount < 0:
         raise Rejected("Məbləğ düzgün deyil")
@@ -419,6 +451,7 @@ def edit_manual_cashback(db: DB, admin_id: int | None, row: CashbackLedger, amou
         raise Rejected("Yalnız əl ilə yazılmış keşbek dəyişdirilə bilər")
     if amount == 0:
         raise Rejected("Məbləğ 0 ola bilməz — sətri silin")
+    _lock_client(db, row.client_id)
     if cashback_balance(db, row.client_id) - row.amount + (amount or 0) < 0:
         raise Rejected("Bu dəyişiklikdən sonra balans mənfi olar")
     before = {"amount": row.amount, "note": row.note}

@@ -27,6 +27,7 @@ def api():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     auth._hits.clear()
+    auth._admin_fails.clear()
     with TestClient(app) as c:
         yield c
     engine.dispose()
@@ -141,6 +142,15 @@ def test_admin_lockout_after_five_fails(api):
         assert api.post("/api/admin/login", json={"login": "yashar", "password": "sehv"}).status_code == 400
     r = api.post("/api/admin/login", json={"login": "yashar", "password": "duzgun-parol-123"})
     assert r.status_code == 423
+
+
+def test_admin_lockout_is_per_ip(api):
+    ip_a, ip_b = {"X-Forwarded-For": "1.1.1.1"}, {"X-Forwarded-For": "2.2.2.2"}
+    for _ in range(5):
+        assert api.post("/api/admin/login", json={"login": "yashar", "password": "sehv"}, headers=ip_a).status_code == 400
+    ok = {"login": "yashar", "password": "duzgun-parol-123"}
+    assert api.post("/api/admin/login", json=ok, headers=ip_a).status_code == 423
+    assert api.post("/api/admin/login", json=ok, headers=ip_b).status_code == 200
 
 
 def test_client_token_cannot_use_admin_api(api):

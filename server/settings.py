@@ -42,3 +42,6 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 # xatırlatma/push dövrü (testlərdə söndürülür)
 SCHEDULER = os.environ.get("SCHEDULER", "1") == "1"
 VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "https://ypodaz.github.io")  # py_vapid yolsuz URL istəyir
+# sahibkara Telegram xəbərdarlığı (boşdursa söndürülüb)
+TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")

@@ -214,7 +214,7 @@ def create_shoot(body: ShootIn, db: DB = Depends(get_db), admin: Admin = Depends
 def edit_shoot(shoot_id: int, body: ShootEditIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
     """Təsdiqlənmiş çəkilişin düzəlişi. Qiyməti öncədən görmək üçün /shoots/quote-a çəkilişin client_id və
     package_id-si ilə müraciət olunur."""
-    s = get_shoot(db, shoot_id)
+    s = get_open_shoot(db, shoot_id)
     data = body.model_dump()
     data["starts_at"] = utc(body.starts_at)
     try:
@@ -369,7 +369,7 @@ def refunded(shoot_id: int, db: DB = Depends(get_db), admin: Admin = Depends(cur
 
 @router.post("/shoots/{shoot_id}/reschedule")
 def reschedule(shoot_id: int, body: RescheduleIn, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
-    s = get_shoot(db, shoot_id)
+    s = get_open_shoot(db, shoot_id)
     requested = utc(body.requested_at) if body.requested_at else now()
     try:
         booking.reschedule(db, admin.id, s, utc(body.starts_at), requested)

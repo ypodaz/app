@@ -14,6 +14,7 @@ from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DB
 
+import alerts
 import booking
 import growth
 import money
@@ -139,6 +140,7 @@ async def loop() -> None:
             await asyncio.to_thread(tick)
         except Exception:  # dövr heç vaxt dayanmamalıdır
             log.exception("bildiriş dövrü")
+            alerts.notify("loop", "bildiriş dövründə xəta — Railway loglarına bax")
         await asyncio.sleep(INTERVAL)
 
 

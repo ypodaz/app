@@ -49,7 +49,7 @@ def pair(body: CodeIn, request: Request, db: DB = Depends(get_db)):
 @router.post("/admin/login")
 def admin_login(body: LoginIn, request: Request, db: DB = Depends(get_db)):
     rate_limit("login:" + client_ip(request), 20, 900)
-    admin = check_admin_password(db, body.login, body.password)
+    admin = check_admin_password(db, body.login, body.password, client_ip(request))
     if not admin:
         raise HTTPException(400, "Login və ya parol səhvdir.")
     token = create_session(db, "admin", admin.id, request.headers.get("user-agent", ""))

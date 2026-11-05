@@ -1,11 +1,14 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+import alerts
 import push
 import settings
 from auth import ensure_admin
@@ -17,6 +20,7 @@ from routes import admin, admin_growth, admin_shoots, ai as ai_routes, client, p
 async def lifespan(_app: FastAPI):
     with SessionLocal() as db:
         ensure_admin(db)
+    alerts.notify("start", "server başladı (deploy və ya çökmədən sonra yenidən başlama)")
     task = asyncio.create_task(push.loop()) if settings.SCHEDULER else None
     yield
     if task:
@@ -31,6 +35,16 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
     max_age=86400,
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled(request: Request, exc: Exception):
+    logging.getLogger("app").exception("gözlənilməz xəta: %s %s", request.method, request.url.path)
+    alerts.notify(f"500:{request.url.path}:{type(exc).__name__}",
+                  f"server xətası {request.method} {request.url.path}: {type(exc).__name__}: {str(exc)[:300]}")
+    return JSONResponse({"detail": "Xəta baş verdi."}, status_code=500)
+
+
 app.include_router(public.router)
 app.include_router(client.router)
 app.include_router(admin.router)
@@ -44,6 +58,7 @@ def health():
     try:
         with SessionLocal() as db:
             db.execute(text("SELECT 1"))
-    except Exception:
+    except Exception as e:
+        alerts.notify("db", f"baza əlçatmazdır: {type(e).__name__}")
         return JSONResponse({"ok": False}, status_code=503)
     return {"ok": True}
