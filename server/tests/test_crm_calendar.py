@@ -11,6 +11,7 @@ from db import SessionLocal  # noqa: E402
 from views import BAKU  # noqa: E402
 
 URL = "https://p01-caldav.icloud.com/published/2/GIZLI-TOKEN"
+PERSONAL = "https://p01-caldav.icloud.com/published/2/SEXSI-TOKEN"
 
 
 def ics(*events):
@@ -23,15 +24,18 @@ def ics(*events):
 def net(monkeypatch):
     """Keş sıfırlanır, URL təyin olunur; httpx.get əvəz olunur (real sorğu yoxdur)."""
     monkeypatch.setattr(settings, "APPLE_CAL_ICS_URL", URL)
-    calendar_ics._cache.update(cal=None, at=0.0, fail=-1e9)
+    monkeypatch.setattr(settings, "APPLE_CAL_ICS_URL_PERSONAL", "")
+    for c in calendar_ics._caches.values():
+        c.update(cal=None, at=0.0, fail=-1e9)
     calls = []
-    state = {"body": ics(), "error": None}
+    state = {"body": ics(), "error": None, "personal": ics(), "personal_error": None}
 
     def fake_get(url, **kw):
         calls.append((url, kw))
-        if state["error"]:
-            raise state["error"]
-        return httpx.Response(200, content=state["body"], request=httpx.Request("GET", url))
+        personal = url == PERSONAL
+        if state["personal_error" if personal else "error"]:
+            raise state["personal_error" if personal else "error"]
+        return httpx.Response(200, content=state["personal" if personal else "body"], request=httpx.Request("GET", url))
 
     monkeypatch.setattr(calendar_ics.httpx, "get", fake_get)
     state["calls"] = calls
@@ -99,3 +103,37 @@ def test_network_error_uses_stale_cache_else_empty_and_no_url_in_log(net, caplog
     calendar_ics._cache["at"] -= calendar_ics.STALE_MAX  # 24 saatdan köhnə keş atılır
     calendar_ics._cache["fail"] = -1e9
     assert calendar_ics.busy(W0, W1) == []
+
+
+def test_personal_merges_with_main_and_all_day_blocks_full_baku_days(net, monkeypatch):
+    monkeypatch.setattr(settings, "APPLE_CAL_ICS_URL_PERSONAL", PERSONAL)
+    net["body"] = ics("DTSTART:20261112T100000Z\r\nDTEND:20261112T120000Z",
+                      "DTSTART;VALUE=DATE:20261114\r\nDTEND;VALUE=DATE:20261115")  # Y Pod all-day sayılmır
+    # iki günlük all-day (DTEND eksklüzivdir) + TRANSPARENT olsa da atılmır; CANCELLED atılır
+    net["personal"] = ics("DTSTART;VALUE=DATE:20261116\r\nDTEND;VALUE=DATE:20261118\r\nTRANSP:TRANSPARENT",
+                          "DTSTART;VALUE=DATE:20261120\r\nDTEND;VALUE=DATE:20261121\r\nSTATUS:CANCELLED")
+    got = sorted(calendar_ics.busy(W0, W1))
+    assert got == [(datetime(2026, 11, 12, 10, tzinfo=timezone.utc), datetime(2026, 11, 12, 12, tzinfo=timezone.utc)),
+                   (datetime(2026, 11, 16, tzinfo=BAKU), datetime(2026, 11, 18, tzinfo=BAKU))]
+
+
+def test_personal_all_day_closes_day_in_free_text(net, api, monkeypatch):
+    monkeypatch.setattr(settings, "APPLE_CAL_ICS_URL_PERSONAL", PERSONAL)
+    net["personal"] = ics("DTSTART;VALUE=DATE:20261112\r\nDTEND;VALUE=DATE:20261113")
+    now_dt = datetime(2026, 11, 11, 5, 0, tzinfo=timezone.utc)
+    with SessionLocal() as db:
+        text = slots.free_text(db, now_dt)
+    assert "12.11" not in text
+
+
+def test_one_source_failing_does_not_break_other(net, monkeypatch, caplog):
+    monkeypatch.setattr(settings, "APPLE_CAL_ICS_URL_PERSONAL", PERSONAL)
+    net["error"] = httpx.ConnectError(f"boom {URL}")
+    net["personal"] = ics("DTSTART;VALUE=DATE:20261116\r\nDTEND;VALUE=DATE:20261117")
+    assert calendar_ics.busy(W0, W1) == [(datetime(2026, 11, 16, tzinfo=BAKU), datetime(2026, 11, 17, tzinfo=BAKU))]
+    assert "GIZLI" not in caplog.text and "SEXSI" not in caplog.text
+    # tərsinə: şəxsi düşür, əsas işləyir
+    net["error"], net["personal_error"] = None, httpx.ConnectError("boom")
+    calendar_ics._caches["main"]["fail"] = calendar_ics._caches["personal"]["at"] = -1e9
+    net["body"] = ics("DTSTART:20261112T100000Z\r\nDTEND:20261112T120000Z")
+    assert len(calendar_ics.busy(W0, W1)) == 1

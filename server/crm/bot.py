@@ -140,7 +140,7 @@ def contents_from(history: list[tuple[str, str]]) -> list[dict]:
         if not text.strip():
             continue
         if out and out[-1]["role"] == role:
-            out[-1]["parts"][0]["text"] += "\n" + text
+            out[-1]["parts"][0]["text"] += "\n\n" + text
         elif out or role == "user":
             out.append({"role": role, "parts": [{"text": text}]})
     return out
@@ -355,7 +355,7 @@ def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str |
     `draft_only`: yenidən yazılan cavab avtomatik rejimdə də yalnız qaralama olur."""
     if conf.bot_mode(db) == "auto" and not draft_only:
         try:
-            chat.send_out(db, conv, text, "bot")
+            chat.send_bot_reply(db, conv, text)
             return "sent"
         except kapso.KapsoError as e:
             alerts.notify(f"bot-send:{conv.id}", f"avtomatik göndəriş alınmadı (qaralama yaradıldı): {e.message}")

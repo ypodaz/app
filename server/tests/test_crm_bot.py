@@ -672,6 +672,86 @@ def test_price_followup_conditions(api, crm_env, monkeypatch):
     assert crm_env.gemini_calls == []
 
 
+def test_price_followup_price_in_first_of_two_messages(api, crm_env, monkeypatch):
+    monkeypatch.setattr(worker, "_daytime", lambda t: True)
+    conv_id = _price_setup(hours=5)  # qiymət 1-ci mesajda
+    with SessionLocal() as db:
+        db.add(WaMessage(conversation_id=conv_id, direction="out", source="bot", text="Hansı gün sizə rahatdır?",
+                         created_at=now() - timedelta(hours=4)))
+        db.commit()
+    crm_env.gemini(jreply("Sualınız olsa, yazın."))
+    with SessionLocal() as db:
+        assert worker.run(db) == 1
+
+
+def test_price_before_last_customer_message_does_not_count(api, crm_env, monkeypatch):
+    monkeypatch.setattr(worker, "_daytime", lambda t: True)
+    conv_id = _price_setup(hours=6)
+    with SessionLocal() as db:
+        db.add(WaMessage(conversation_id=conv_id, direction="in", source="customer", text="Yaxşı, düşünüm",
+                         created_at=now() - timedelta(hours=5)))
+        db.add(WaMessage(conversation_id=conv_id, direction="out", source="bot", text="Əlbəttə.",
+                         created_at=now() - timedelta(hours=4)))
+        db.commit()
+    with SessionLocal() as db:
+        assert worker.run(db) == 0
+
+
+def test_contents_from_merges_consecutive_same_role_and_drops_leading_model():
+    got = bot.contents_from([("model", "baş bot"), ("user", "sual"), ("model", "a"), ("model", "b"), ("user", "c")])
+    assert got == [{"role": "user", "parts": [{"text": "sual"}]},
+                   {"role": "model", "parts": [{"text": "a\n\nb"}]},
+                   {"role": "user", "parts": [{"text": "c"}]}]
+
+
+def test_split_reply_rules():
+    from crm import chat
+    assert chat.split_reply("a\n\nb") == ["a", "b"]
+    assert chat.split_reply("a\n\nb\n\nc") == ["a\n\nb", "c"]
+    assert chat.split_reply("tək mesaj\nikinci sətir") == ["tək mesaj\nikinci sətir"]
+    assert chat.split_reply("  a  ") == ["a"]
+
+
+def test_auto_mode_sends_two_messages_for_paragraphs(api, crm_env):
+    _, conv_id = mk_conv()
+    with SessionLocal() as db:
+        conf.put(db, "bot_mode", "auto")
+        db.commit()
+    crm_env.gemini(jreply("Qiymət 70 AZN-dir.\n\nHansı gün sizə uyğundur?"))
+    assert bot.handle(conv_id) == "sent"
+    assert [b["text"]["body"] for _, b in crm_env.kapso()] == ["Qiymət 70 AZN-dir.", "Hansı gün sizə uyğundur?"]
+    assert count(WaMessage, WaMessage.direction == "out") == 2
+
+
+def test_second_message_failure_keeps_first_and_raises(api, crm_env, monkeypatch):
+    from crm import chat
+    _, conv_id = mk_conv()
+    real = chat.send_out
+    n = []
+
+    def flaky(db, conv, text, source):
+        if n:
+            raise kapso.KapsoError(1, "x")
+        n.append(1)
+        return real(db, conv, text, source)
+
+    monkeypatch.setattr(chat, "send_out", flaky)
+    with SessionLocal() as db:
+        with pytest.raises(kapso.KapsoError):
+            chat.send_bot_reply(db, db.get(WaConversation, conv_id), "bir\n\niki")
+        db.commit()
+    assert count(WaMessage, WaMessage.direction == "out") == 1
+
+
+def test_draft_with_blank_line_shows_two_message_note_and_sends_two(api, crm_env):
+    _, conv_id = mk_conv()
+    crm_env.gemini(jreply("Qiymət 70 AZN-dir.\n\nHansı gün uyğundur?"))
+    assert bot.handle(conv_id) == "draft"
+    assert "✂️ 2 mesaj kimi gedəcək" in crm_env.tg("sendMessage")[0]["text"]
+    callback(api, f"d:{one(BotDraft).id}:s")
+    assert len(crm_env.kapso()) == 2
+
+
 def test_daytime_is_baku_9_to_21():
     baku = timezone(timedelta(hours=4))
     assert worker._daytime(datetime(2026, 11, 12, 9, 0, tzinfo=baku))
