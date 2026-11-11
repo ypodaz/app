@@ -12,7 +12,7 @@ import alerts  # noqa: E402
 import settings  # noqa: E402
 from db import SessionLocal  # noqa: E402
 from models import MediaAsset, Setting, SocialPost  # noqa: E402
-from social import buffer, captions, schedule, worker  # noqa: E402
+from social import buffer, captions, facebook, schedule, worker  # noqa: E402
 
 CAPTIONS_FILE = (Path.home() / "Claude Projects/Y Pod Social Media AI/Y Pod Kontent/ssenariler/aciqlamalar.md")
 
@@ -384,3 +384,117 @@ def test_admin_social_status_without_key_has_no_channels(api, monkeypatch):
 def test_admin_sync_without_queued_posts(api, fake_buffer):
     r = api.post("/api/admin/social/sync", headers=bearer(admin_token(api)))
     assert r.status_code == 200 and r.json() == {"published": 0, "error": 0, "late": 0}
+
+
+# --- Facebook ---
+
+@pytest.fixture()
+def fb_cfg(monkeypatch):
+    monkeypatch.setattr(settings, "FB_PAGE_ID", "pg1")
+    monkeypatch.setattr(settings, "FB_PAGE_TOKEN", "tok")
+
+
+class FbHttp:
+    def __init__(self, *responses):
+        self.responses, self.calls = list(responses), []
+
+    def __call__(self, url, **kw):
+        self.calls.append({"url": url, **kw})
+        return self.responses.pop(0)
+
+
+def fb_due(minutes=60):
+    return datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=minutes)
+
+
+def test_fb_schedule_reel_three_calls(api, fb_cfg, monkeypatch):
+    fake = FbHttp(httpx.Response(200, json={"video_id": "v9", "upload_url": "u"}),
+                  httpx.Response(200, json={"success": True}), httpx.Response(200, json={"success": True}))
+    monkeypatch.setattr(facebook.httpx, "post", fake)
+    due = fb_due()
+    assert facebook.schedule_reel("https://cdn.test/v.mp4", "mətn", due) == "v9"
+    a, b, c = fake.calls
+    assert a["url"] == "https://graph.facebook.com/v27.0/pg1/video_reels"
+    assert a["data"] == {"upload_phase": "start", "access_token": "tok"}
+    assert b["url"] == "https://rupload.facebook.com/video-upload/v27.0/v9"
+    assert b["headers"] == {"Authorization": "OAuth tok", "file_url": "https://cdn.test/v.mp4"}
+    assert c["url"] == a["url"]
+    assert c["data"] == {"access_token": "tok", "video_id": "v9", "upload_phase": "finish",
+                         "video_state": "SCHEDULED", "scheduled_publish_time": int(due.timestamp()),
+                         "description": "mətn"}
+    assert isinstance(c["data"]["scheduled_publish_time"], int)
+
+
+def test_fb_schedule_reel_meta_error(api, fb_cfg, monkeypatch):
+    monkeypatch.setattr(facebook.httpx, "post", FbHttp(httpx.Response(400, json={"error": {"message": "Token bitib", "code": 190}})))
+    with pytest.raises(facebook.FacebookError, match="Token bitib"):
+        facebook.schedule_reel("https://x/v.mp4", "t", fb_due())
+
+
+def test_fb_schedule_reel_too_soon_makes_no_call(api, fb_cfg, monkeypatch):
+    fake = FbHttp()
+    monkeypatch.setattr(facebook.httpx, "post", fake)
+    with pytest.raises(facebook.FacebookError, match="vaxt çox yaxındır"):
+        facebook.schedule_reel("https://x/v.mp4", "t", fb_due(5))
+    assert fake.calls == []
+
+
+def test_fb_get_status_mapping(api, fb_cfg, monkeypatch):
+    def status(body):
+        monkeypatch.setattr(facebook.httpx, "get", FbHttp(httpx.Response(200, json={"status": body})))
+        return facebook.get_status("v1")
+
+    assert status({"video_status": "ready", "publishing_phase": {"publish_status": "published"}}) == ("published", None)
+    assert status({"video_status": "upload_complete", "publishing_phase": {"publish_status": "scheduled"}}) == ("pending", None)
+    assert status({"video_status": "error", "processing_phase": {"status": "error", "error": {"message": "Format pis"}}}) \
+        == ("error", "Format pis")
+
+
+def test_fb_fill_queue_without_buffer(api, fb_cfg, fake_buffer, monkeypatch):
+    monkeypatch.setattr(settings, "BUFFER_API_KEY", "")
+    calls = []
+    monkeypatch.setattr(facebook, "schedule_reel", lambda url, text, due: calls.append(url) or "vid1")
+    with SessionLocal() as db:
+        seed(db, 1, platforms=("facebook", "tiktok"))
+        assert worker.fill_queue(db) == 1
+        fbp = db.scalar(select(SocialPost).where(SocialPost.platform == "facebook"))
+        assert fbp.status == "queued" and fbp.external_id == "vid1" and fbp.error is None
+        assert db.scalar(select(SocialPost).where(SocialPost.platform == "tiktok")).status == "planned"
+    assert calls == ["https://cdn.test/v.mp4"] and fake_buffer.created == []
+
+
+def test_fb_disabled_makes_no_fb_calls(api, fake_buffer, monkeypatch):
+    def boom(*a):
+        raise AssertionError("Facebook söndürülüb")
+
+    monkeypatch.setattr(facebook, "schedule_reel", boom)
+    with SessionLocal() as db:
+        seed(db, 1, platforms=("facebook", "tiktok"))
+        assert worker.fill_queue(db) == 1  # yalnız tiktok
+        assert db.scalar(select(SocialPost).where(SocialPost.platform == "facebook")).status == "planned"
+
+
+def test_fb_sync_published_and_error(api, fb_cfg, alerted, monkeypatch):
+    monkeypatch.setattr(buffer, "get_posts", lambda *a: (_ for _ in ()).throw(AssertionError("Buffer çağırılmamalıdır")))
+    states = {"f1": ("published", None), "f2": ("error", "Video rədd edildi")}
+    monkeypatch.setattr(facebook, "get_status", lambda vid: states[vid])
+    with SessionLocal() as db:
+        seed(db, 2, step_h=1, platforms=("facebook",))
+        a, b = db.scalars(select(SocialPost).order_by(SocialPost.id)).all()
+        a.status, a.external_id = "queued", "f1"
+        b.status, b.external_id = "queued", "f2"
+        db.commit()
+        assert worker.sync_status(db) == {"published": 1, "error": 1, "late": 0}
+        db.refresh(a), db.refresh(b)
+        assert a.status == "published" and b.status == "error" and b.error == "Video rədd edildi"
+    assert len(alerted) == 1 and "Video rədd edildi" in alerted[0][1]
+
+
+def test_import_with_facebook_adds_only_missing(api, monkeypatch):
+    with SessionLocal() as db:
+        assert schedule.import_items(db, date(2026, 11, 20), [item(1)]) == {"created": 3, "skipped": 0}
+        monkeypatch.setattr(settings, "FB_PAGE_ID", "pg1")
+        monkeypatch.setattr(settings, "FB_PAGE_TOKEN", "tok")
+        assert schedule.import_items(db, date(2026, 11, 20), [item(1)]) == {"created": 1, "skipped": 3}
+        assert db.scalar(select(SocialPost).where(SocialPost.platform == "facebook")).text == "ig1"
+        assert schedule.import_items(db, date(2026, 11, 20), [item(2)]) == {"created": 4, "skipped": 0}

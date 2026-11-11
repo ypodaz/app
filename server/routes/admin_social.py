@@ -10,7 +10,7 @@ import settings
 from auth import current_admin
 from db import get_db, now
 from models import MediaAsset, SocialPost
-from social import buffer, schedule, worker
+from social import buffer, facebook, schedule, worker
 from views import BAKU, iso, utc
 
 router = APIRouter(prefix="/api/admin/social", dependencies=[Depends(current_admin)])
@@ -116,6 +116,9 @@ def status(db: DB = Depends(get_db)):
                          "queue_paused": c.get("isQueuePaused")} for c in buffer.get_channels(settings.BUFFER_ORG_ID)]
         except buffer.BufferError as e:
             channels = {"error": str(e)}
+    if facebook.enabled() and (channels is None or isinstance(channels, list)):
+        channels = (channels or []) + [{"id": settings.FB_PAGE_ID, "service": "facebook", "name": "Facebook Səhifə",
+                                        "queue_paused": None}]
     nxt = db.execute(select(SocialPost, MediaAsset).join(MediaAsset, MediaAsset.id == SocialPost.media_asset_id)
                      .where(SocialPost.status.in_(("planned", "queued")), SocialPost.scheduled_at > now())
                      .order_by(SocialPost.scheduled_at, SocialPost.platform).limit(5)).all()

@@ -50,6 +50,8 @@ TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
 BUFFER_API_KEY = os.environ.get("BUFFER_API_KEY", "")
 BUFFER_ORG_ID = os.environ.get("BUFFER_ORG_ID", "")
 R2_PUBLIC_BASE_URL = os.environ.get("R2_PUBLIC_BASE_URL", "")
+FB_PAGE_ID = os.environ.get("FB_PAGE_ID", "")
+FB_PAGE_TOKEN = os.environ.get("FB_PAGE_TOKEN", "")
 SOCIAL_DAILY_REQUEST_CAP = int(os.environ.get("SOCIAL_DAILY_REQUEST_CAP", "80"))
 
 # CRM Faza 2: WhatsApp (Kapso) və Telegram düymələri

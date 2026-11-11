@@ -8,11 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 from models import MediaAsset, SocialPost
+from social import facebook
 from views import BAKU
 
 SLOT_TIMES = {"seher": time(9, 0), "axsam": time(20, 0)}
-# Facebook hələ Buffer-də yoxdur: kod hazırdır, siyahıya əlavə etmək kifayətdir.
-ENABLED_PLATFORMS = ("instagram", "tiktok", "youtube")
+ENABLED_PLATFORMS = ("instagram", "tiktok", "youtube")  # Buffer platformaları
+
+
+def active_platforms() -> tuple:
+    """Buffer platformaları + Facebook (açarlar qoyulubsa)."""
+    return ENABLED_PLATFORMS + ("facebook",) if facebook.enabled() else ENABLED_PLATFORMS
 
 
 def slot_utc(start: date, day: int, slot: str) -> datetime:
@@ -30,15 +35,17 @@ def platform_text(item: dict, platform: str) -> tuple[str, str | None]:
     return item["instagram"], None
 
 
-def generate(videos: list[dict], start: date, platforms=ENABLED_PLATFORMS) -> list[dict]:
+def generate(videos: list[dict], start: date, platforms=None) -> list[dict]:
     """videos: [{number, day, slot}] → [{number, platform, scheduled_at}] (vaxta görə sıralı)."""
+    platforms = platforms or active_platforms()
     out = [{"number": v["number"], "platform": p, "scheduled_at": slot_utc(start, v["day"], v["slot"])}
            for v in videos for p in platforms]
     return sorted(out, key=lambda r: (r["scheduled_at"], r["number"], r["platform"]))
 
 
-def import_items(db: DB, start: date, items: list[dict], platforms=ENABLED_PLATFORMS) -> dict:
+def import_items(db: DB, start: date, items: list[dict], platforms=None) -> dict:
     """Manifest elementlərini bazaya yazır. Mövcud post təkrar yaradılmır (media_asset_id + platform)."""
+    platforms = platforms or active_platforms()
     created = skipped = 0
     for it in items:
         asset = db.scalar(select(MediaAsset).where(MediaAsset.number == it["number"]))
