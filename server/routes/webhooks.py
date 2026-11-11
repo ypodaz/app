@@ -258,11 +258,14 @@ async def kapso_webhook(request: Request, background: BackgroundTasks):
 
 
 @router.post("/telegram")
-def telegram_webhook(update: dict, x_telegram_bot_api_secret_token: str | None = Header(default=None),
-                     db: DB = Depends(get_db)):
+def telegram_webhook(update: dict, background: BackgroundTasks,
+                     x_telegram_bot_api_secret_token: str | None = Header(default=None), db: DB = Depends(get_db)):
     if not settings.TG_WEBHOOK_SECRET:
         raise HTTPException(503, "Webhook secret qurulmayıb")
     if not hmac.compare_digest(x_telegram_bot_api_secret_token or "", settings.TG_WEBHOOK_SECRET):
         raise HTTPException(401, "Secret yanlışdır")
     cq = update.get("callback_query")
-    return {"ok": True, "result": tg.handle_callback(db, cq) if cq else "ignored"}
+    result = tg.handle_callback(db, cq) if cq else "ignored"
+    if result == "regenerate":  # Gemini bir neçə saniyə çəkir: Telegram-a dərhal cavab, yeni qaralama fonda
+        background.add_task(bot.regenerate, int(str(cq["data"]).split(":")[1]))
+    return {"ok": True, "result": result}

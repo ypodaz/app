@@ -29,6 +29,7 @@ LANGS = ("az", "ru", "en", "tr")
 SERVICES = ("podkast", "reels", "korporativ", "diger")
 STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
 BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
+MAX_REGENERATE = tg.MAX_REGENERATE
 
 
 class BotFormatError(Exception):
@@ -238,18 +239,32 @@ def _lock_for(cid: int) -> threading.Lock:
         return _locks.setdefault(cid, threading.Lock())
 
 
-def handle(conversation_id: int) -> str:
-    """Söhbət üçün bir cavab dövrü. Nəticə kodunu qaytarır (testlər və log üçün); heç vaxt xəta atmır."""
+def handle(conversation_id: int, *, avoid: str | None = None) -> str:
+    """Söhbət üçün bir cavab dövrü. Nəticə kodunu qaytarır (testlər və log üçün); heç vaxt xəta atmır.
+    `avoid`: sahibkarın bəyənmədiyi qaralama — bot başqa cür yazır və nəticə həmişə qaralama olur."""
     with _lock_for(conversation_id):  # eyni söhbətdə paralel iki işləmə olmasın
         try:
             with SessionLocal() as db:
-                outcome = _handle(db, conversation_id)
-                log.info("bot söhbət %s: %s", conversation_id, outcome)
+                outcome = _handle(db, conversation_id, avoid=avoid)
+                log.info("bot söhbət %s%s: %s", conversation_id, " (yenidən)" if avoid else "", outcome)
                 return outcome
         except Exception as e:
             log.exception("bot xətası (söhbət %s)", conversation_id)
             alerts.notify("bot-crash", f"bot xətası (söhbət {conversation_id}): {type(e).__name__}: {str(e)[:200]}")
             return "error"
+
+
+def regenerate(draft_id: int) -> str:
+    """Telegram «🔄 Yenidən yaz»: rədd edilmiş qaralamanın söhbətinə yeni, fərqli qaralama yazır."""
+    with SessionLocal() as db:
+        old = db.get(BotDraft, draft_id)
+        if not old:
+            return "skip:no_draft"
+        conv_id, text = old.conversation_id, old.text
+    outcome = handle(conv_id, avoid=text)
+    if outcome.startswith("skip:"):  # sahibkar «Yenidən yazılır…» görüb, səbəbsiz susmasın
+        alerts.notify(f"regen:{draft_id}", f"Yenidən yazılmadı ({outcome}). {chat.panel_link(conv_id)}")
+    return outcome
 
 
 def skip_reason(db: DB, conv: WaConversation, contact: WaContact) -> str | None:
@@ -275,7 +290,7 @@ def _history(db: DB, conv: WaConversation) -> list[tuple[str, str]]:
     return [("user" if m.source == "customer" else "model", m.text) for m in reversed(rows)]
 
 
-def _handle(db: DB, conversation_id: int) -> str:
+def _handle(db: DB, conversation_id: int, *, avoid: str | None = None) -> str:
     conv = db.get(WaConversation, conversation_id)
     if not conv:
         return "skip:no_conversation"
@@ -288,6 +303,9 @@ def _handle(db: DB, conversation_id: int) -> str:
     first = chat.last_message(db, conv.id, "bot") is None
     lead = db.get(Lead, conv.lead_id) if conv.lead_id else None
     system = build_system(db, now(), first_message=first, lead=lead)
+    if avoid:
+        system += (f"\n\nSAHİBKAR ƏVVƏLKİ QARALAMANI BƏYƏNMƏDİ: «{avoid[:1500]}». Müştərinin son mesajına başqa cür "
+                   "cavab yaz: fərqli başlanğıc, fərqli yanaşma və ifadələr. Faktlar və qaydalar eyni qalır.")
     try:
         res, usage, problem = converse(system, contents_from(_history(db, conv)))
     except AiError as e:
@@ -305,7 +323,8 @@ def _handle(db: DB, conversation_id: int) -> str:
         db.add(UnansweredQuestion(conversation_id=conv.id, question=str(res["unanswered_question"])[:1000]))
     outcome = "draft"
     if res["reply"]:
-        outcome = deliver(db, conv, res["reply"], res, reason=f"handoff:{res['handoff_reason']}" if res["handoff"] else None)
+        outcome = deliver(db, conv, res["reply"], res, reason=f"handoff:{res['handoff_reason']}" if res["handoff"] else None,
+                          draft_only=bool(avoid))
     if res["handoff"]:
         # Avtomatik rejimdə söhbət insana keçir. Qaralama rejimində sahibkar hər cavabı onsuz da təsdiqləyir:
         # kilid botu sonrakı suallarda susdururdu, ona görə yalnız xəbərdarlıq gedir.
@@ -323,9 +342,11 @@ def _handle(db: DB, conversation_id: int) -> str:
     return outcome
 
 
-def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str | None) -> str:
-    """`auto`: dərhal göndərir; `draft` (susmaya görə): qaralama + Telegram düyməsi. Qaytarır: sent | draft."""
-    if conf.bot_mode(db) == "auto":
+def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str | None,
+            draft_only: bool = False) -> str:
+    """`auto`: dərhal göndərir; `draft` (susmaya görə): qaralama + Telegram düyməsi. Qaytarır: sent | draft.
+    `draft_only`: yenidən yazılan cavab avtomatik rejimdə də yalnız qaralama olur."""
+    if conf.bot_mode(db) == "auto" and not draft_only:
         try:
             chat.send_out(db, conv, text, "bot")
             return "sent"

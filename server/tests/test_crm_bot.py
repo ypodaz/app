@@ -91,8 +91,41 @@ def test_draft_created_and_sent_to_telegram_with_buttons(api, crm_env):
     assert msg["chat_id"] == CHAT and "Aysel" in msg["text"] and "Qiymət nədir?" in msg["text"]
     assert "Podkast 70 AZN" in msg["text"]
     btns = msg["reply_markup"]["inline_keyboard"][0]
-    assert [b["callback_data"] for b in btns] == [f"d:{d.id}:s", f"d:{d.id}:r"]
+    assert [b["callback_data"] for b in btns] == [f"d:{d.id}:s", f"d:{d.id}:g", f"d:{d.id}:r"]
     assert crm_env.kapso() == []  # susmaya görə müştəriyə heç nə getmir
+
+
+def test_regenerate_rejects_old_and_drafts_new_with_note(api, crm_env):
+    _, conv_id = mk_conv(text="Qiymət nədir?")
+    crm_env.gemini(jreply("Köhnə cavab."), jreply("Yeni cavab."))
+    bot.handle(conv_id)
+    d = one(BotDraft)
+    assert callback(api, f"d:{d.id}:g").json()["result"] == "regenerate"
+    old = one(BotDraft, BotDraft.id == d.id)
+    assert old.status == "rejected" and old.reason == "yenidən yaz"
+    new = one(BotDraft)
+    assert new.id != d.id and new.status == "pending" and new.text == "Yeni cavab."
+    system, _ = crm_env.gemini_calls[-1]
+    assert "BƏYƏNMƏDİ" in system and "Köhnə cavab." in system
+    assert any("Yenidən yazılır" in j["text"] for j in crm_env.tg("editMessageText"))
+    assert crm_env.tg("sendMessage")[-1]["text"].count("Yeni cavab.") == 1
+    assert crm_env.kapso() == []
+    # həll olunmuş qaralamada təkrar basmaq heç nə etmir
+    assert callback(api, f"d:{d.id}:g").json()["result"] == "resolved"
+    assert len(crm_env.gemini_calls) == 2
+
+
+def test_regenerate_limit_per_customer_message(api, crm_env):
+    _, conv_id = mk_conv()
+    crm_env.gemini(*[jreply(f"v{i}") for i in range(5)])
+    bot.handle(conv_id)
+    for _ in range(bot.MAX_REGENERATE):
+        assert callback(api, f"d:{one(BotDraft).id}:g").json()["result"] == "regenerate"
+    last = one(BotDraft)
+    assert callback(api, f"d:{last.id}:g").json()["result"] == "limit"
+    assert one(BotDraft, BotDraft.id == last.id).status == "pending"
+    assert len(crm_env.gemini_calls) == 1 + bot.MAX_REGENERATE
+    assert "limit" in crm_env.tg("answerCallbackQuery")[-1]["text"].lower()
 
 
 def test_callback_send_and_reject_and_repeat(api, crm_env):

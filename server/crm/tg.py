@@ -1,14 +1,19 @@
-"""Telegram: qaralama düymələri (✅ Göndər / ✖️ Rədd) və callback emalı. Xəbərdarlıqlar üçün alerts.py var."""
+"""Telegram: qaralama düymələri (✅ Göndər / 🔄 Yenidən yaz / ✖️ Rədd) və callback emalı. Xəbərdarlıqlar üçün alerts.py var."""
 import logging
 
 import httpx
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import settings
 from crm import chat, kapso
+from db import now
 from models import BotDraft, WaContact, WaConversation
 
 log = logging.getLogger("tg")
+
+MAX_REGENERATE = 3  # bir müştəri mesajına ən çoxu neçə dəfə yenidən yazmaq olar (Gemini xərci)
+REGEN_REASON = "yenidən yaz"
 
 
 def _call(method: str, payload: dict) -> dict | None:
@@ -35,6 +40,7 @@ def send_draft(db: DB, draft: BotDraft) -> str | None:
     res = _call("sendMessage", {
         "chat_id": settings.TG_CHAT_ID, "text": text,
         "reply_markup": {"inline_keyboard": [[{"text": "✅ Göndər", "callback_data": f"d:{draft.id}:s"},
+                                              {"text": "🔄 Yenidən yaz", "callback_data": f"d:{draft.id}:g"},
                                               {"text": "✖️ Rədd", "callback_data": f"d:{draft.id}:r"}]]}})
     mid = ((res or {}).get("result") or {}).get("message_id")
     if mid:
@@ -43,18 +49,21 @@ def send_draft(db: DB, draft: BotDraft) -> str | None:
 
 
 def handle_callback(db: DB, cq: dict) -> str:
-    """callback_query-ni icra edir. Qaytarır: ignored | sent | rejected | resolved | error."""
+    """callback_query-ni icra edir. Qaytarır: ignored | sent | rejected | resolved | error | regenerate | limit.
+    `regenerate`-də yeni cavabı çağıran (webhook) fon işi kimi işə salır (`bot.regenerate`)."""
     msg = cq.get("message") or {}
     if str((msg.get("chat") or {}).get("id")) != str(settings.TG_CHAT_ID):
         return "ignored"
     parts = str(cq.get("data", "")).split(":")
-    if len(parts) != 3 or parts[0] != "d" or parts[2] not in ("s", "r") or not parts[1].isdigit():
+    if len(parts) != 3 or parts[0] != "d" or parts[2] not in ("s", "r", "g") or not parts[1].isdigit():
         return "ignored"
     cq_id, chat_id, message_id = cq.get("id"), msg["chat"]["id"], msg.get("message_id")
     draft = db.get(BotDraft, int(parts[1]))
     if not draft:
         _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "Qaralama tapılmadı"})
         return "ignored"
+    if parts[2] == "g":
+        return _regenerate(db, draft, cq_id, chat_id, message_id)
     try:
         chat.decide_draft(db, draft, "send" if parts[2] == "s" else "reject")
     except chat.AlreadyDecided:
@@ -75,3 +84,25 @@ def handle_callback(db: DB, cq: dict) -> str:
     _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": done})
     _call("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": f"{done}\n\n{draft.text[:3000]}"})
     return "sent" if draft.status in ("sent", "edited") else "rejected"
+
+
+def _regenerate(db: DB, draft: BotDraft, cq_id, chat_id, message_id) -> str:
+    if draft.status != "pending":
+        _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "artıq həll olunub"})
+        return "resolved"
+    last = chat.last_message(db, draft.conversation_id, "customer")
+    since = last.created_at if last else draft.created_at
+    used = db.scalar(select(func.count()).select_from(BotDraft).where(
+        BotDraft.conversation_id == draft.conversation_id, BotDraft.reason == REGEN_REASON,
+        BotDraft.created_at >= since))
+    if used >= MAX_REGENERATE:
+        _call("answerCallbackQuery", {"callback_query_id": cq_id, "show_alert": True,
+                                      "text": f"Bu mesaj üçün yenidən yazma limiti ({MAX_REGENERATE}) bitib. "
+                                              "Paneldən özünüz yazın və ya göndərin."})
+        return "limit"
+    draft.status, draft.reason, draft.decided_at = "rejected", REGEN_REASON, now()
+    db.commit()
+    _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "Yenidən yazılır…"})
+    _call("editMessageText", {"chat_id": chat_id, "message_id": message_id,
+                              "text": f"🔄 Yenidən yazılır…\n\n{draft.text[:3000]}"})
+    return "regenerate"
