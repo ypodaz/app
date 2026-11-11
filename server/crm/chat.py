@@ -74,3 +74,7 @@ def last_message(db: DB, conversation_id: int, source: str | None = None) -> WaM
         q = q.where(WaMessage.source == source)
     return db.scalar(q.order_by(WaMessage.created_at.desc(), WaMessage.id.desc()).limit(1))
 
+
+
+def panel_link(conversation_id: int) -> str:
+    return f"{settings.APP_URL}admin/#inbox/{conversation_id}"

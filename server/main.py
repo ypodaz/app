@@ -13,7 +13,8 @@ import push
 import settings
 from auth import ensure_admin
 from db import SessionLocal
-from routes import admin, admin_growth, admin_shoots, admin_social, ai as ai_routes, client, public
+from routes import admin, admin_growth, admin_shoots, admin_social, ai as ai_routes, client, public, webhooks
+from crm import worker as crm_worker
 from social import worker as social_worker
 
 
@@ -22,7 +23,8 @@ async def lifespan(_app: FastAPI):
     with SessionLocal() as db:
         ensure_admin(db)
     alerts.notify("start", "server başladı (deploy və ya çökmədən sonra yenidən başlama)")
-    tasks = [asyncio.create_task(push.loop()), asyncio.create_task(social_worker.loop())] if settings.SCHEDULER else []
+    tasks = [asyncio.create_task(push.loop()), asyncio.create_task(social_worker.loop()),
+             asyncio.create_task(crm_worker.loop())] if settings.SCHEDULER else []
     yield
     for task in tasks:
         task.cancel()
@@ -53,6 +55,7 @@ app.include_router(admin_shoots.router)
 app.include_router(admin_growth.router)
 app.include_router(admin_social.router)
 app.include_router(ai_routes.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/api/health")
