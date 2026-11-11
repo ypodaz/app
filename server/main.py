@@ -14,7 +14,8 @@ import settings
 from auth import ensure_admin
 from db import SessionLocal
 from routes import admin, admin_crm, admin_growth, admin_shoots, admin_social, ai as ai_routes, client, public, webhooks
-from crm import worker as crm_worker
+from routes import social as social_hooks
+from crm import worker as crm_worker, youtube
 from social import worker as social_worker
 
 # Kök WARNING qalır (httpx INFO-da Telegram tokenli URL-i yazır); yalnız botun nəticə sətirləri INFO-da görünür.
@@ -28,7 +29,7 @@ async def lifespan(_app: FastAPI):
         ensure_admin(db)
     alerts.notify("start", "server başladı (deploy və ya çökmədən sonra yenidən başlama)")
     tasks = [asyncio.create_task(push.loop()), asyncio.create_task(social_worker.loop()),
-             asyncio.create_task(crm_worker.loop())] if settings.SCHEDULER else []
+             asyncio.create_task(crm_worker.loop()), asyncio.create_task(youtube.loop())] if settings.SCHEDULER else []
     yield
     for task in tasks:
         task.cancel()
@@ -61,6 +62,7 @@ app.include_router(admin_social.router)
 app.include_router(admin_crm.router)
 app.include_router(ai_routes.router)
 app.include_router(webhooks.router)
+app.include_router(social_hooks.router)
 
 
 @app.get("/api/health")

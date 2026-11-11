@@ -59,3 +59,13 @@ KAPSO_API_KEY = os.environ.get("KAPSO_API_KEY", "")
 KAPSO_WEBHOOK_SECRET = os.environ.get("KAPSO_WEBHOOK_SECRET", "")
 KAPSO_PHONE_NUMBER_ID = os.environ.get("KAPSO_PHONE_NUMBER_ID", "")
 TG_WEBHOOK_SECRET = os.environ.get("TG_WEBHOOK_SECRET", "")
+
+# Sosial cavablar: Instagram DM/komment (Instagram Login) və YouTube kommentləri. Boşdursa söndürülüb.
+IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
+IG_APP_SECRET = os.environ.get("IG_APP_SECRET", "")
+IG_VERIFY_TOKEN = os.environ.get("IG_VERIFY_TOKEN", "")
+IG_USER_ID = os.environ.get("IG_USER_ID", "")
+YT_CLIENT_ID = os.environ.get("YT_CLIENT_ID", "")
+YT_CLIENT_SECRET = os.environ.get("YT_CLIENT_SECRET", "")
+YT_REFRESH_TOKEN = os.environ.get("YT_REFRESH_TOKEN", "")
+YT_CHANNEL_ID = os.environ.get("YT_CHANNEL_ID", "")
