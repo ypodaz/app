@@ -1,0 +1,65 @@
+"""Təqvim generatoru: gün sırası ilə hər gün səhər 09:00 və axşam 20:00 (Bakı vaxtı).
+
+Videosu olmayan slot boş qalır, növbəti videolar sürüşmür (hər video öz gününə düşür).
+"""
+from datetime import date, datetime, time, timedelta, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DB
+
+from models import MediaAsset, SocialPost
+from views import BAKU
+
+SLOT_TIMES = {"seher": time(9, 0), "axsam": time(20, 0)}
+# Facebook hələ Buffer-də yoxdur: kod hazırdır, siyahıya əlavə etmək kifayətdir.
+ENABLED_PLATFORMS = ("instagram", "tiktok", "youtube")
+
+
+def slot_utc(start: date, day: int, slot: str) -> datetime:
+    """`day` 1-dən başlayır: gün 1 = start tarixi."""
+    local = datetime.combine(start + timedelta(days=day - 1), SLOT_TIMES[slot], tzinfo=BAKU)
+    return local.astimezone(timezone.utc)
+
+
+def platform_text(item: dict, platform: str) -> tuple[str, str | None]:
+    """(mətn, başlıq). Facebook mətni Instagram ilə eynidir."""
+    if platform == "youtube":
+        return item["youtube_description"], item["youtube_title"]
+    if platform == "tiktok":
+        return item["tiktok"], None
+    return item["instagram"], None
+
+
+def generate(videos: list[dict], start: date, platforms=ENABLED_PLATFORMS) -> list[dict]:
+    """videos: [{number, day, slot}] → [{number, platform, scheduled_at}] (vaxta görə sıralı)."""
+    out = [{"number": v["number"], "platform": p, "scheduled_at": slot_utc(start, v["day"], v["slot"])}
+           for v in videos for p in platforms]
+    return sorted(out, key=lambda r: (r["scheduled_at"], r["number"], r["platform"]))
+
+
+def import_items(db: DB, start: date, items: list[dict], platforms=ENABLED_PLATFORMS) -> dict:
+    """Manifest elementlərini bazaya yazır. Mövcud post təkrar yaradılmır (media_asset_id + platform)."""
+    created = skipped = 0
+    for it in items:
+        asset = db.scalar(select(MediaAsset).where(MediaAsset.number == it["number"]))
+        if not asset:
+            asset = MediaAsset(number=it["number"], day=it["day"], slot=it["slot"], title=it["title"],
+                               file_name=it["file_name"])
+            db.add(asset)
+        # URL və müddət sonradan da gələ bilər; paneldən əl ilə qoyulmuş URL boşla əzilmir
+        if it.get("public_url"):
+            asset.public_url = it["public_url"]
+        if it.get("duration_s") is not None:
+            asset.duration_s = it["duration_s"]
+        db.flush()
+        for row in generate([it], start, platforms):
+            if db.scalar(select(SocialPost.id).where(SocialPost.media_asset_id == asset.id,
+                                                     SocialPost.platform == row["platform"])):
+                skipped += 1
+                continue
+            text, title = platform_text(it, row["platform"])
+            db.add(SocialPost(media_asset_id=asset.id, platform=row["platform"], scheduled_at=row["scheduled_at"],
+                              text=text, title=title, status="planned"))
+            created += 1
+    db.commit()
+    return {"created": created, "skipped": skipped}

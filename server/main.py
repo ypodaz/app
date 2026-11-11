@@ -13,7 +13,8 @@ import push
 import settings
 from auth import ensure_admin
 from db import SessionLocal
-from routes import admin, admin_growth, admin_shoots, ai as ai_routes, client, public
+from routes import admin, admin_growth, admin_shoots, admin_social, ai as ai_routes, client, public
+from social import worker as social_worker
 
 
 @asynccontextmanager
@@ -21,9 +22,9 @@ async def lifespan(_app: FastAPI):
     with SessionLocal() as db:
         ensure_admin(db)
     alerts.notify("start", "server başladı (deploy və ya çökmədən sonra yenidən başlama)")
-    task = asyncio.create_task(push.loop()) if settings.SCHEDULER else None
+    tasks = [asyncio.create_task(push.loop()), asyncio.create_task(social_worker.loop())] if settings.SCHEDULER else []
     yield
-    if task:
+    for task in tasks:
         task.cancel()
 
 
@@ -50,6 +51,7 @@ app.include_router(client.router)
 app.include_router(admin.router)
 app.include_router(admin_shoots.router)
 app.include_router(admin_growth.router)
+app.include_router(admin_social.router)
 app.include_router(ai_routes.router)
 
 
