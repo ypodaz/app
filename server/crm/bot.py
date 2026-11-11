@@ -360,6 +360,7 @@ def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str |
         except kapso.KapsoError as e:
             alerts.notify(f"bot-send:{conv.id}", f"avtomatik göndəriş alınmadı (qaralama yaradıldı): {e.message}")
             reason = f"göndərilmədi: {e.message}"[:200]
+            text = getattr(e, "remaining", text)  # birinci hissə gedibsə, qaralamada yalnız qalan
     draft = BotDraft(conversation_id=conv.id, text=text, reason=reason, model_output=res)
     db.add(draft)
     db.commit()

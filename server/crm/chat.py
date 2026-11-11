@@ -58,10 +58,17 @@ def send_bot_reply(db: DB, conv: WaConversation, text: str, source: str = "bot")
     """Bot cavabını ən çoxu 2 WhatsApp mesajı kimi göndərir. İkincidə KapsoError olsa istisna qalxır,
     birinci mesaj sessiyada qalır (commit çağıran tərəfindədir)."""
     out = []
-    for i, part in enumerate(split_reply(text)):
+    parts = split_reply(text)
+    for i, part in enumerate(parts):
         if i:
             _sleep()
-        out.append(send_out(db, conv, part, source))
+        try:
+            out.append(send_out(db, conv, part, source))
+        except kapso.KapsoError as e:
+            if out:  # birinci hissə artıq müştəridədir: qeydini saxla, təkrar getməsin
+                db.commit()
+            e.remaining = "\n\n".join(parts[i:])
+            raise
     return out
 
 
@@ -79,7 +86,13 @@ def decide_draft(db: DB, draft: BotDraft, action: str, text: str | None = None) 
         return draft
     final = (text if text is not None else draft.text).strip()
     conv = db.get(WaConversation, draft.conversation_id)
-    send_bot_reply(db, conv, final)
+    try:
+        send_bot_reply(db, conv, final)
+    except kapso.KapsoError as e:
+        if e.remaining != final:  # yarısı getdi: qaralamada yalnız qalan hissə qalsın
+            draft.text = e.remaining
+            db.commit()
+        raise
     draft.status = "edited" if final != draft.text.strip() else "sent"
     if draft.status == "edited":
         draft.text = final  # orijinal `model_output["reply"]`-da qalır

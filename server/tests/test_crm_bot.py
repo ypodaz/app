@@ -737,9 +737,31 @@ def test_second_message_failure_keeps_first_and_raises(api, crm_env, monkeypatch
 
     monkeypatch.setattr(chat, "send_out", flaky)
     with SessionLocal() as db:
-        with pytest.raises(kapso.KapsoError):
+        with pytest.raises(kapso.KapsoError) as ei:
             chat.send_bot_reply(db, db.get(WaConversation, conv_id), "bir\n\niki")
-        db.commit()
+        db.rollback()  # çağıranlar xətada rollback edir
+    assert ei.value.remaining == "iki"
+    assert count(WaMessage, WaMessage.direction == "out") == 1
+
+
+def test_draft_partial_send_keeps_only_remaining_text(api, crm_env, monkeypatch):
+    from crm import chat
+    _, conv_id = mk_conv()
+    crm_env.gemini(jreply("Qiymət 70 AZN-dir.\n\nHansı gün uyğundur?"))
+    assert bot.handle(conv_id) == "draft"
+    real = chat.send_out
+    n = []
+
+    def flaky(db, conv, text, source):
+        if n:
+            raise kapso.KapsoError(1, "x")
+        n.append(1)
+        return real(db, conv, text, source)
+
+    monkeypatch.setattr(chat, "send_out", flaky)
+    callback(api, f"d:{one(BotDraft).id}:s")
+    d = one(BotDraft)
+    assert d.status == "pending" and d.text == "Hansı gün uyğundur?"
     assert count(WaMessage, WaMessage.direction == "out") == 1
 
 
