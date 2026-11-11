@@ -13,7 +13,7 @@ import push
 import settings
 from auth import ensure_admin
 from db import SessionLocal
-from routes import admin, admin_growth, admin_shoots, admin_social, ai as ai_routes, client, public, webhooks
+from routes import admin, admin_crm, admin_growth, admin_shoots, admin_social, ai as ai_routes, client, public, webhooks
 from crm import worker as crm_worker
 from social import worker as social_worker
 
@@ -54,6 +54,7 @@ app.include_router(admin.router)
 app.include_router(admin_shoots.router)
 app.include_router(admin_growth.router)
 app.include_router(admin_social.router)
+app.include_router(admin_crm.router)
 app.include_router(ai_routes.router)
 app.include_router(webhooks.router)
 
