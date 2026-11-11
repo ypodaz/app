@@ -2,16 +2,19 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AIcon, type AIconName } from '../../admin/components/AIcon';
 import { useAuth } from '../../admin/ctx';
 
-export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'campaigns' | 'report';
+export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'campaigns' | 'report' | 'inbox' | 'leads' | 'social';
 
 // Neon: kompüterdə yan panel, planşetdə ikon relsi, telefonda 4 bənd + «Daha çox» vərəqi.
 const ITEMS: { key: AdminTab; label: string; icon: AIconName; bar: boolean }[] = [
   { key: 'panel', label: 'Panel', icon: 'dash', bar: true },
   { key: 'calendar', label: 'Təqvim', icon: 'cal', bar: true },
   { key: 'clients', label: 'Müştərilər', icon: 'users', bar: true },
+  { key: 'inbox', label: 'Yazışmalar', icon: 'msg', bar: false },
+  { key: 'leads', label: 'Leadlər', icon: 'userplus', bar: false },
   { key: 'packages', label: 'Paketlər', icon: 'pkg', bar: false },
   { key: 'materials', label: 'Materiallar', icon: 'folder', bar: false },
   { key: 'campaigns', label: 'Kampaniyalar', icon: 'mega', bar: true },
+  { key: 'social', label: 'Paylaşım', icon: 'send', bar: false },
   { key: 'report', label: 'Hesabat', icon: 'chart', bar: false },
 ];
 const MORE = ITEMS.filter((i) => !i.bar);
@@ -36,7 +39,17 @@ type Props = {
 };
 
 export function AdminShell({ active, title, sub, actions, detail, detailClose, hrefFor = (t) => `#${t}`, bare, full, children }: Props) {
-  const { signOut } = useAuth();
+  const { signOut, call } = useAuth();
+  // «Yazışmalar» nişanı: qaralaması gözləyən söhbətlərin sayı (60 saniyədə bir yenilənir).
+  const [pending, setPending] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const load = () => { call<{ pending_drafts: number }[]>('/inbox').then((r) => live && setPending(r.filter((c) => c.pending_drafts > 0).length)).catch(() => {}); };
+    load();
+    const t = window.setInterval(() => { if (!document.hidden) load(); }, 60000);
+    return () => { live = false; window.clearInterval(t); };
+  }, [call]);
+  const badge = (k: AdminTab) => (k === 'inbox' && pending > 0 ? <em className="c-badge" aria-label={`${pending} qaralama gözləyir`}>{pending}</em> : null);
   const [more, setMore] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -57,7 +70,7 @@ export function AdminShell({ active, title, sub, actions, detail, detailClose, h
         <nav aria-label="Admin menyu">
           {ITEMS.map((it) => (
             <a key={it.key} href={hrefFor(it.key)} className={`a-nav${it.key === active ? ' on' : ''}`} aria-current={it.key === active ? 'page' : undefined} aria-label={it.label} title={it.label}>
-              <AIcon name={it.icon} size={20} /><span>{it.label}</span>
+              <AIcon name={it.icon} size={20} /><span>{it.label}</span>{badge(it.key)}
             </a>
           ))}
         </nav>
@@ -98,7 +111,7 @@ export function AdminShell({ active, title, sub, actions, detail, detailClose, h
           </a>
         ))}
         <button type="button" className={`a-tab${moreOn || more ? ' on' : ''}`} aria-haspopup="dialog" aria-expanded={more} onClick={() => setMore(true)}>
-          <AIcon name="more" size={20} /><span>Daha çox</span><i aria-hidden="true" />
+          <AIcon name="more" size={20} /><span>Daha çox</span>{pending > 0 && <em className="c-dot" aria-label="Gözləyən qaralama var" />}<i aria-hidden="true" />
         </button>
       </nav>
       {more && (
@@ -110,7 +123,7 @@ export function AdminShell({ active, title, sub, actions, detail, detailClose, h
             <nav aria-label="Daha çox">
               {MORE.map((it) => (
                 <a key={it.key} className="a-mr" href={hrefFor(it.key)} onClick={() => setMore(false)}>
-                  <span className="a-ic"><AIcon name={it.icon} size={16} /></span><span>{it.label}</span><AIcon name="chev" size={20} />
+                  <span className="a-ic"><AIcon name={it.icon} size={16} /></span><span>{it.label}</span>{badge(it.key)}<AIcon name="chev" size={20} />
                 </a>
               ))}
               <div className="a-sep" role="separator" />

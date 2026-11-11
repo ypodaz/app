@@ -1,7 +1,7 @@
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api';
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public data?: unknown) { super(message); }
 }
 
 export function storedToken(key: string): string | null {
@@ -19,6 +19,8 @@ const NET_MSG = 'İnternet bağlantısını yoxlayın.';
 function detailOf(data: unknown): string {
   const d = (data as { detail?: unknown } | null)?.detail;
   if (typeof d === 'string') return d;
+  const dm = (d as { message?: unknown } | null)?.message;
+  if (dm && typeof dm === 'string') return dm; // {message, ...} (məs. 409 toqquşma)
   if (Array.isArray(d)) {
     const m = (d[0] as { msg?: unknown } | undefined)?.msg;
     if (typeof m === 'string' && m) return m;
@@ -48,6 +50,6 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   try { data = await res.json(); } catch { data = {}; }
   clearTimeout(timer);
   if (ctl.signal.aborted) throw new ApiError(0, NET_MSG); // gövdə oxunarkən vaxt aşımı
-  if (!res.ok) throw new ApiError(res.status, detailOf(data));
+  if (!res.ok) throw new ApiError(res.status, detailOf(data), (data as { detail?: unknown } | null)?.detail);
   return data as T;
 }

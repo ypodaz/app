@@ -7,6 +7,7 @@ import '../shared/responsive.css';
 import './admin.css';
 import './neon-admin.css';
 import './neon-admin-b3.css';
+import './crm.css';
 import { AdminShell } from '../shared/ui';
 import { AssistantButton } from './components/Assistant';
 import { PageHead } from './components/neon';
@@ -18,12 +19,16 @@ import { Campaigns } from './pages/Campaigns';
 import { CancelShoot } from './pages/CancelShoot';
 import { Clients } from './pages/Clients';
 import { CloseShoot } from './pages/CloseShoot';
+import { BotSettings } from './pages/BotSettings';
+import { Inbox } from './pages/Inbox';
+import { Leads } from './pages/Leads';
 import { Login } from './pages/Login';
 import { Materials } from './pages/Materials';
 import { PackageForm, Packages } from './pages/Packages';
 import { Panel } from './pages/Panel';
 import { Report } from './pages/Report';
 import { ShootForm } from './pages/ShootForm';
+import { Social } from './pages/Social';
 import { useRoute, useWide } from './router';
 import type { Shoot } from './types';
 
@@ -60,6 +65,10 @@ function Routes() {
     case 'campaigns': return <Campaigns />;
     case 'automations': return <Campaigns tab="auto" />;
     case 'report': return <Report />;
+    case 'inbox': return <Inbox id={num || undefined} />;
+    case 'leads': return <Leads />;
+    case 'social': return <Social />;
+    case 'bot': return <BotSettings />;
   }
   return <Panel />;
 }
