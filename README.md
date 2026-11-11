@@ -30,6 +30,8 @@ cd web && npm install && npm run dev   # http://localhost:5173/app/
 | `SOCIAL_DAILY_REQUEST_CAP` | Buffer sorğu limiti gündə (standart 80) |
 | `KAPSO_API_KEY`, `KAPSO_WEBHOOK_SECRET`, `KAPSO_PHONE_NUMBER_ID` | WhatsApp vasitəçisi Kapso |
 | `TG_WEBHOOK_SECRET` | Telegram düymə webhook-u üçün sirr |
+| `IG_ACCESS_TOKEN`, `IG_APP_SECRET`, `IG_VERIFY_TOKEN`, `IG_USER_ID` | Instagram DM/komment cavabları (boşdursa söndürülüb); webhook `POST /api/webhooks/instagram` |
+| `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`, `YT_CHANNEL_ID` | YouTube komment cavabları, 15 dəqiqədən bir yoxlanır (boşdursa söndürülüb) |
 
 ## WhatsApp botu (Kapso) və Telegram düymələri
 

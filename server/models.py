@@ -472,3 +472,22 @@ class WebhookEvent(Base):
     provider: Mapped[str] = mapped_column(String(16))
     idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class SocialItem(Base):
+    """Instagram DM/komment və YouTube kommenti: AI qaralaması Telegram-da təsdiqlənəndən sonra göndərilir."""
+    __tablename__ = "social_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel: Mapped[str] = mapped_column(String(12))  # instagram | youtube
+    kind: Mapped[str] = mapped_column(String(10))  # dm | comment
+    external_id: Mapped[str] = mapped_column(String(128), unique=True)  # IG mid / IG comment id / YT comment id
+    thread_id: Mapped[str] = mapped_column(String(128), index=True)  # IG: göndərənin IGSID və ya media id; YT: video id
+    parent_id: Mapped[Optional[str]] = mapped_column(String(128))  # cavabın yazılacağı (üst) komment
+    author: Mapped[str] = mapped_column(String(120), default="")
+    text: Mapped[str] = mapped_column(Text)
+    draft_text: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | sent | rejected | ignored
+    tg_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+    model_output: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(TS)
