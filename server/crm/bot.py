@@ -22,7 +22,9 @@ log = logging.getLogger("bot")
 
 HISTORY = 20
 MAX_REPLY = 900
-FORBIDDEN = ("icarə", "kirayə", "ekip", "kesin", " için", "ən yaxşı")
+FORBIDDEN = ("icarə", "kirayə", "ən yaxşı")
+# Türk sözləri azərbaycanca cavabda qadağandır; müştəri türkcə yazıbsa (language=tr) yoxlanmır.
+FORBIDDEN_NON_TR = ("ekip", "kesin", " için")
 LANGS = ("az", "ru", "en", "tr")
 SERVICES = ("podkast", "reels", "korporativ", "diger")
 STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
@@ -86,12 +88,13 @@ def parse_reply(text: str) -> dict:
     }
 
 
-def check_filter(reply: str) -> str | None:
+def check_filter(reply: str, language: str | None = None) -> str | None:
     """Müştəriyə getməzdən əvvəl: kart nömrəsi ehtimalı, qadağan söz, uzunluq. Pozuntunun səbəbini qaytarır."""
     if re.search(r"\d{12,}", re.sub(r"[\s\-]", "", reply)):
         return "12 və daha çox ardıcıl rəqəm (kart nömrəsi ehtimalı)"
     low = reply.lower()
-    for w in FORBIDDEN:
+    words = FORBIDDEN if language == "tr" else FORBIDDEN + FORBIDDEN_NON_TR
+    for w in words:
         if w in low:
             return f"qadağan söz «{w.strip()}»"
     if len(reply) > MAX_REPLY:
@@ -156,7 +159,7 @@ def converse(system: str, contents: list[dict]) -> tuple[dict, tuple[int, int], 
         except BotFormatError as e:
             res, problem = None, f"cavab JSON deyil ({e})"
         else:
-            problem = check_filter(res["reply"])
+            problem = check_filter(res["reply"], res.get("language"))
             if not problem:
                 break
         note = (f"\n\nƏVVƏLKİ CAVAB QƏBUL EDİLMƏDİ: {problem}. Eyni qaydalarla yenidən yaz: yalnız JSON, reply ən çoxu "

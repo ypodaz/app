@@ -71,7 +71,8 @@ def check(res: dict, expect: dict, global_bad: list[str]) -> list[str]:
             bad.append(f"dil={lang} (gözlənən {expect['language']})")
     if expect.get("must_contain_any") and not any(w.lower() in low for w in expect["must_contain_any"]):
         bad.append("heç biri yoxdur: " + ", ".join(expect["must_contain_any"]))
-    for w in [*expect.get("must_not_contain", []), *global_bad]:
+    gb = [w for w in global_bad if not (expect.get("language") == "tr" and w in ("ekip", "kesin", " için"))]
+    for w in [*expect.get("must_not_contain", []), *gb]:
         if w.lower() in low:
             bad.append(f"qadağan: «{w.strip()}»")
     if "max_sentences" in expect and sentences(reply) > expect["max_sentences"]:

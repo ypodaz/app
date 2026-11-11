@@ -216,6 +216,7 @@ def test_check_filter_unit():
     assert bot.check_filter("Telefon 055 530 35 32") is None
     assert bot.check_filter("4169-7388-1234-5678")
     assert bot.check_filter("saat 12:00") is None
+    assert bot.check_filter("Sizin için uygun saat") and bot.check_filter("Sizin için uygun saat", "tr") is None
 
 
 # --- Gemini xətası ---
