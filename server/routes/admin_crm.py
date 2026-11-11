@@ -56,6 +56,13 @@ def send_error(e: kapso.KapsoError):
 
 # --- gələn qutusu ---
 
+@router.get("/inbox/badge")
+def inbox_badge(db: DB = Depends(get_db)):
+    """Menyu nişanı üçün yüngül say: gözləyən qaralaması olan söhbətlər."""
+    n = db.scalar(select(func.count(func.distinct(BotDraft.conversation_id))).where(BotDraft.status == "pending"))
+    return {"pending": n or 0}
+
+
 @router.get("/inbox")
 def inbox(mode: Literal["bot", "human"] | None = None, q: str | None = None, db: DB = Depends(get_db)):
     stmt = select(WaConversation, WaContact).join(WaContact, WaContact.id == WaConversation.contact_id)

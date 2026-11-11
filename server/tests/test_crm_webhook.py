@@ -190,17 +190,33 @@ def test_other_events_only_logged(api, handled):
     assert rows(WaMessage) == [] and handled == []
 
 
-def test_processing_error_returns_500_and_key_not_saved(api, handled, monkeypatch):
+def test_event_error_logged_alerted_and_not_retried(api, handled, monkeypatch, crm_env):
+    """Bir hadisədə proqram xətası: 200 qaytarılır (Kapso sonsuz təkrar edib webhook-u dayandırmasın), alert gedir."""
     from routes import webhooks
+    sent = []
+    monkeypatch.setattr(webhooks.alerts, "notify", lambda key, text: sent.append(key))
 
     def boom(*a, **k):
         raise RuntimeError("x")
 
     monkeypatch.setattr(webhooks, "on_received", boom)
+    assert post_kapso(api, received("w1"), key="k1").status_code == 200
+    assert len(rows(WebhookEvent)) == 1 and rows(WaMessage) == []
+    assert "kapso-event-error" in sent
+
+
+def test_commit_error_returns_500_and_key_not_saved(api, handled, monkeypatch):
+    from sqlalchemy.orm import Session
     from fastapi.testclient import TestClient
     from main import app
+
+    def bad_commit(self):
+        raise RuntimeError("baza yoxdur")
+
     with TestClient(app, raise_server_exceptions=False) as quiet:
+        monkeypatch.setattr(Session, "commit", bad_commit)
         assert post_kapso(quiet, received("w1"), key="k1").status_code == 500
+        monkeypatch.undo()
     assert rows(WebhookEvent) == []
 
 
@@ -210,3 +226,23 @@ def test_webhook_returns_200_even_if_gemini_fails(api, crm_env):
     assert post_kapso(api, received("w1")).status_code == 200  # bot fonda işləyir və xətanı özü tutur
     assert rows(WaConversation)[0].mode == "human"
     assert any(k == "bot-ai-down" for k, _ in crm_env.alerts)
+
+
+def test_bad_batch_item_does_not_fail_whole_batch(api, handled, monkeypatch):
+    import routes.webhooks as wh
+    orig = wh.on_received
+
+    def boom(db, ev, bot_convs):
+        if ev["message"]["id"] == "bad":
+            raise RuntimeError("xarab")
+        return orig(db, ev, bot_convs)
+    monkeypatch.setattr(wh, "on_received", boom)
+    body = {"type": "whatsapp.message.received", "batch": True,
+            "data": [received("w1"), "zibil", received("bad"), received("w2")]}
+    r = post_kapso(api, body, batch=True, key="b1")
+    assert r.status_code == 200
+    assert sorted(m.wamid for m in rows(WaMessage)) == ["w1", "w2"]
+    assert len(handled) == 1
+    # eyni açar təkrar gəlsə, heç nə dəyişmir
+    assert post_kapso(api, body, batch=True, key="b1").status_code == 200
+    assert len(rows(WaMessage)) == 2

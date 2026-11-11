@@ -574,3 +574,16 @@ def test_eval_mock_writes_report(api, tmp_path):
     assert "| 1 | salam | ✅ keçdi" in text and "| 2 | ünvan | ❌ düşdü" in text and "Ümumi: 1/2 keçdi (50%)" in text
     assert bot_eval.detect_lang("Здравствуйте") == "ru" and bot_eval.detect_lang("Salam, əla") == "az"
     assert bot_eval.detect_lang("Hello, our studio is in Baku") == "en"
+
+
+def test_inbox_badge_counts_conversations_with_pending(api, crm_env):
+    from models import BotDraft
+    _, c1 = mk_conv(phone="994500000001")
+    _, c2 = mk_conv(phone="994500000002")
+    with SessionLocal() as db:
+        db.add_all([BotDraft(conversation_id=c1, text="a", status="pending"),
+                    BotDraft(conversation_id=c1, text="b", status="pending"),
+                    BotDraft(conversation_id=c2, text="c", status="sent")])
+        db.commit()
+    r = api.get("/api/admin/inbox/badge", headers=bearer(admin_token(api)))
+    assert r.status_code == 200 and r.json() == {"pending": 1}

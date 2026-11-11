@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
 import alerts
@@ -207,7 +208,8 @@ def process(raw: bytes, headers) -> list[int]:
         header_name = headers.get("x-webhook-event") or ""
         batch = str(headers.get("x-webhook-batch", "")).lower() == "true" or body.get("batch") is True
         if batch:
-            items = [(i.get("event") or i.get("type") or header_name, i) for i in (body.get("data") or [])]
+            items = [(i.get("event") or i.get("type") or header_name, i) for i in (body.get("data") or [])
+                     if isinstance(i, dict)]
         else:
             items = [(header_name or body.get("type") or body.get("event") or "", body)]
         pid = next((i.get("phone_number_id") for _, i in items if i.get("phone_number_id")), None)
@@ -215,19 +217,32 @@ def process(raw: bytes, headers) -> list[int]:
             conf.put(db, "kapso_phone_number_id", str(pid))
         bot_convs: list[int] = []
         for name, ev in items:
-            if name == "whatsapp.message.received":
-                on_received(db, ev, bot_convs)
-            elif name == "whatsapp.message.sent":
-                on_sent(db, ev)
-            elif name in ("whatsapp.message.delivered", "whatsapp.message.read", "whatsapp.message.failed"):
-                on_status(db, name, ev)
-            elif name == "whatsapp.contact.identity_changed":
-                on_identity_changed(db, ev)
-            else:
-                log.info("kapso hadisəsi (yalnız log): %s", name)
+            try:
+                with db.begin_nested():
+                    _dispatch(db, name, ev, bot_convs)
+            except Exception:  # noqa: BLE001 — bir xarab hadisə bütün batch-ı 500-ə salmasın
+                log.exception("kapso hadisəsi emal olunmadı: %s", name)
+                alerts.notify("kapso-event-error", f"WhatsApp hadisəsi emal olunmadı ({name}), loglara baxın")
         db.add(WebhookEvent(provider="kapso", idempotency_key=key[:128]))  # yalnız uğurlu emaldan sonra
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:  # eyni hadisə paralel ikinci dəfə gəldi: artıq yazılıb
+            db.rollback()
+            return []
         return bot_convs
+
+
+def _dispatch(db: DB, name: str, ev: dict, bot_convs: list[int]) -> None:
+    if name == "whatsapp.message.received":
+        on_received(db, ev, bot_convs)
+    elif name == "whatsapp.message.sent":
+        on_sent(db, ev)
+    elif name in ("whatsapp.message.delivered", "whatsapp.message.read", "whatsapp.message.failed"):
+        on_status(db, name, ev)
+    elif name == "whatsapp.contact.identity_changed":
+        on_identity_changed(db, ev)
+    else:
+        log.info("kapso hadisəsi (yalnız log): %s", name)
 
 
 @router.post("/kapso")

@@ -44,7 +44,7 @@ export function AdminShell({ active, title, sub, actions, detail, detailClose, h
   const [pending, setPending] = useState(0);
   useEffect(() => {
     let live = true;
-    const load = () => { call<{ pending_drafts: number }[]>('/inbox').then((r) => live && setPending(r.filter((c) => c.pending_drafts > 0).length)).catch(() => {}); };
+    const load = () => { call<{ pending: number }>('/inbox/badge').then((r) => live && setPending(r.pending)).catch(() => {}); };
     load();
     const t = window.setInterval(() => { if (!document.hidden) load(); }, 60000);
     return () => { live = false; window.clearInterval(t); };
