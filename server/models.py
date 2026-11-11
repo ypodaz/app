@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, false as sa_false, true as sa_true
+from sqlalchemy import (JSON, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint,
+                        false as sa_false, true as sa_true)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db import Base, now
@@ -294,3 +295,168 @@ class CampaignRecipient(Base):
     campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), primary_key=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True, index=True)
     opened_at: Mapped[Optional[datetime]] = mapped_column(TS)
+
+
+# --- CRM: paylaşım (Faza 1) və WhatsApp/leadlər (Faza 2). business_id sonrakı bizneslər üçündür. ---
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    number: Mapped[int] = mapped_column(Integer)  # video nömrəsi
+    day: Mapped[int] = mapped_column(Integer)
+    slot: Mapped[str] = mapped_column(String(8))  # seher | axsam
+    title: Mapped[str] = mapped_column(String(200))
+    file_name: Mapped[str] = mapped_column(String(200))
+    public_url: Mapped[Optional[str]] = mapped_column(String(500))
+    cover_offset_ms: Mapped[int] = mapped_column(Integer, default=1000, server_default="1000")
+    duration_s: Mapped[Optional[float]] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class SocialPost(Base):
+    __tablename__ = "social_posts"
+    __table_args__ = (UniqueConstraint("media_asset_id", "platform", name="uq_social_posts_media_platform"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    media_asset_id: Mapped[int] = mapped_column(ForeignKey("media_assets.id", ondelete="CASCADE"), index=True)
+    platform: Mapped[str] = mapped_column(String(12))  # instagram | tiktok | youtube | facebook
+    scheduled_at: Mapped[datetime] = mapped_column(TS)  # UTC
+    text: Mapped[str] = mapped_column(Text)
+    title: Mapped[Optional[str]] = mapped_column(String(200))  # YouTube üçün
+    status: Mapped[str] = mapped_column(String(12), default="planned")  # planned | queued | published | error | cancelled
+    external_id: Mapped[Optional[str]] = mapped_column(String(100))  # Buffer post id
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
+
+
+class WaContact(Base):
+    __tablename__ = "wa_contacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(32), unique=True)
+    bsuid: Mapped[Optional[str]] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    language: Mapped[Optional[str]] = mapped_column(String(8))
+    excluded: Mapped[bool] = mapped_column(default=False, server_default=sa_false())  # bot yazmır
+    bot_muted_until: Mapped[Optional[datetime]] = mapped_column(TS)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class WaConversation(Base):
+    __tablename__ = "wa_conversations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("wa_contacts.id", ondelete="CASCADE"), index=True)
+    kapso_conversation_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True)
+    mode: Mapped[str] = mapped_column(String(8), default="bot", server_default="bot")  # bot | human
+    last_message_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    last_inbound_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    window_expires_at: Mapped[Optional[datetime]] = mapped_column(TS)  # 24 saat pəncərəsi
+    unread: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    lead_id: Mapped[Optional[int]] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class WaMessage(Base):
+    __tablename__ = "wa_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("wa_conversations.id", ondelete="CASCADE"), index=True)
+    wamid: Mapped[Optional[str]] = mapped_column(String(128), unique=True)
+    direction: Mapped[str] = mapped_column(String(3))  # in | out
+    source: Mapped[str] = mapped_column(String(8))  # customer | bot | phone | panel | history
+    type: Mapped[str] = mapped_column(String(16), default="text")
+    text: Mapped[str] = mapped_column(Text, default="")
+    media_url: Mapped[Optional[str]] = mapped_column(String(500))
+    transcript: Mapped[Optional[str]] = mapped_column(Text)
+    status: Mapped[Optional[str]] = mapped_column(String(16))
+    raw: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class BotDraft(Base):
+    __tablename__ = "bot_drafts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("wa_conversations.id", ondelete="CASCADE"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | sent | rejected | edited
+    reason: Mapped[Optional[str]] = mapped_column(String(200))
+    model_output: Mapped[Optional[dict]] = mapped_column(JSON)
+    telegram_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+    decided_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class Lead(Base):
+    __tablename__ = "leads"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("wa_contacts.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    phone: Mapped[str] = mapped_column(String(32), default="")
+    service: Mapped[Optional[str]] = mapped_column(String(12))  # podkast | reels | icare | korporativ | diger
+    preferred_date: Mapped[Optional[str]] = mapped_column(String(64))
+    people: Mapped[Optional[int]] = mapped_column(Integer)
+    cameras: Mapped[Optional[int]] = mapped_column(Integer)
+    editing: Mapped[Optional[bool]] = mapped_column()
+    source: Mapped[str] = mapped_column(String(12), default="whatsapp")  # whatsapp | instagram | reklam | diger
+    # yeni | maraqlanir | tarix | beh | tesdiq | geldi | itirildi
+    stage: Mapped[str] = mapped_column(String(12), default="yeni")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    shoot_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shoots.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
+
+
+class LeadEvent(Base):
+    __tablename__ = "lead_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(24))
+    data: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class Faq(Base):
+    __tablename__ = "faqs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(default=True, server_default=sa_true())
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class QuickReply(Base):
+    __tablename__ = "quick_replies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    title: Mapped[str] = mapped_column(String(80))
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class UnansweredQuestion(Base):
+    __tablename__ = "unanswered_questions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    conversation_id: Mapped[Optional[int]] = mapped_column(ForeignKey("wa_conversations.id", ondelete="SET NULL"),
+                                                           index=True)
+    question: Mapped[str] = mapped_column(Text)
+    resolved: Mapped[bool] = mapped_column(default=False, server_default=sa_false())
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class WebhookEvent(Base):
+    """Təkrar gələn webhook-ları atmaq üçün."""
+    __tablename__ = "webhook_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    provider: Mapped[str] = mapped_column(String(16))
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
