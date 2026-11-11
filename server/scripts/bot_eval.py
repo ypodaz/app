@@ -110,7 +110,7 @@ def _track_status(real_post):
 
 
 def esc(v: str, n: int = 300) -> str:
-    v = " ".join(str(v).split())
+    v = " ⏎⏎ ".join(" ".join(p.split()) for p in str(v).split("\n\n"))  # ⏎⏎ = iki ayrı mesaj
     return (v[:n] + "…" if len(v) > n else v).replace("|", "\\|")
 
 
