@@ -110,10 +110,10 @@ def patch_media(media_id: int, body: MediaPatch, db: DB = Depends(get_db)):
 @router.get("/status")
 def status(db: DB = Depends(get_db)):
     channels = None
-    if settings.BUFFER_API_KEY and settings.BUFFER_ORG_ID:
+    if settings.BUFFER_API_KEY:
         try:
             channels = [{"id": c["id"], "service": c["service"], "name": c["name"],
-                         "queue_paused": c.get("isQueuePaused")} for c in buffer.get_channels(settings.BUFFER_ORG_ID)]
+                         "queue_paused": c.get("isQueuePaused")} for c in buffer.get_channels(buffer.org_id())]
         except buffer.BufferError as e:
             channels = {"error": str(e)}
     if facebook.enabled() and (channels is None or isinstance(channels, list)):

@@ -160,6 +160,20 @@ def test_429_backs_off_without_more_requests(api, monkeypatch):
     assert len(fake.calls) == 1
 
 
+def test_org_id_auto_when_single_org(api, monkeypatch):
+    monkeypatch.setattr(settings, "BUFFER_ORG_ID", "")
+    monkeypatch.setattr(buffer, "_org", {"id": ""})
+    calls = []
+    monkeypatch.setattr(buffer, "get_organizations", lambda: calls.append(1) or [{"id": "o9", "name": "Y Pod"}])
+    assert buffer.org_id() == "o9" and buffer.org_id() == "o9" and len(calls) == 1  # keşlənir
+    monkeypatch.setattr(buffer, "_org", {"id": ""})
+    monkeypatch.setattr(buffer, "get_organizations", lambda: [{"id": "a"}, {"id": "b"}])
+    with pytest.raises(buffer.BufferError):
+        buffer.org_id()
+    monkeypatch.setattr(settings, "BUFFER_ORG_ID", "org1")
+    assert buffer.org_id() == "org1"
+
+
 def test_daily_cap_blocks_requests(api, monkeypatch):
     monkeypatch.setattr(settings, "SOCIAL_DAILY_REQUEST_CAP", 2)
     fake = FakeHttp(ok({"account": {"organizations": []}}), ok({"account": {"organizations": []}}))

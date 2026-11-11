@@ -90,6 +90,21 @@ def get_organizations() -> list[dict]:
     return data["account"]["organizations"]
 
 
+_org = {"id": ""}
+
+
+def org_id() -> str:
+    """BUFFER_ORG_ID; boşdursa və hesabda tək təşkilat varsa, onu tapıb yadda saxlayır."""
+    if settings.BUFFER_ORG_ID:
+        return settings.BUFFER_ORG_ID
+    if not _org["id"]:
+        orgs = get_organizations()
+        if len(orgs) != 1:
+            raise BufferError("Buffer-də bir neçə təşkilat var: BUFFER_ORG_ID lazımdır")
+        _org["id"] = orgs[0]["id"]
+    return _org["id"]
+
+
 def get_channels(org_id: str) -> list[dict]:
     data = _gql("query Channels($input: ChannelsInput!) { channels(input: $input) { id service name isQueuePaused } }",
                 {"input": {"organizationId": org_id}})

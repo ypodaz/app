@@ -48,7 +48,7 @@ def set_queue_enabled(db: DB, enabled: bool) -> None:
 def channel_map(force: bool = False) -> dict[str, str]:
     """service → Buffer kanal id; 24 saat keşlənir."""
     if force or not _channels["map"] or time.monotonic() - _channels["at"] > CHANNEL_TTL:
-        chans = buffer.get_channels(settings.BUFFER_ORG_ID)
+        chans = buffer.get_channels(buffer.org_id())
         _channels["map"] = {c["service"]: c["id"] for c in chans}
         _channels["at"] = time.monotonic()
     return _channels["map"]
@@ -171,7 +171,7 @@ def sync_status(db: DB) -> dict:
             late(post)
     rest = [p for p in queued if p.platform != "facebook"]
     if rest:
-        remote = {p["id"]: p for p in buffer.get_posts(settings.BUFFER_ORG_ID, list(channel_map().values()),
+        remote = {p["id"]: p for p in buffer.get_posts(buffer.org_id(), list(channel_map().values()),
                                                        t - timedelta(days=7))}
         for post in rest:
             info = remote.get(post.external_id)
