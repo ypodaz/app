@@ -115,7 +115,10 @@ def on_received(db: DB, ev: dict, bot_convs: list[int]) -> None:
     text, transcript = extract_text(msg)
     t = _msg_time(msg)
     history = _origin(ev, msg) == "history_sync"
-    db.add(WaMessage(conversation_id=conv.id, wamid=wamid, direction="in", source="history" if history else "customer",
+    # history_sync idxalında bizim köhnə mesajlarımız da gəlir: istiqamət kapso.direction-dan götürülür
+    outbound = history and (msg.get("kapso") or {}).get("direction") == "outbound"
+    db.add(WaMessage(conversation_id=conv.id, wamid=wamid, direction="out" if outbound else "in",
+                     source="history" if history else "customer",
                      type=str(msg.get("type") or "text")[:16], text=text, transcript=transcript,
                      media_url=((msg.get("kapso") or {}).get("media_url") or None), raw=ev, created_at=t))
     _touch(conv, t)

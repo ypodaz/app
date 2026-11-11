@@ -75,6 +75,12 @@ def test_history_sync_no_bot_no_counter_no_window(api, handled):
         assert kapso.month_count(db) == 0
 
 
+def test_history_sync_outbound_kept_as_ours(api, handled):
+    post_kapso(api, received("w1", origin="history_sync", extra={"kapso": {"origin": "history_sync", "direction": "outbound"}}))
+    m = rows(WaMessage)[0]
+    assert m.direction == "out" and m.source == "history" and handled == []
+
+
 def test_customer_message_sets_window_unread_and_counter(api, handled):
     t = int(time.time())
     post_kapso(api, received("w1", ts=t))
