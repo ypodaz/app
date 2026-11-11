@@ -243,7 +243,9 @@ def handle(conversation_id: int) -> str:
     with _lock_for(conversation_id):  # eyni söhbətdə paralel iki işləmə olmasın
         try:
             with SessionLocal() as db:
-                return _handle(db, conversation_id)
+                outcome = _handle(db, conversation_id)
+                log.info("bot söhbət %s: %s", conversation_id, outcome)
+                return outcome
         except Exception as e:
             log.exception("bot xətası (söhbət %s)", conversation_id)
             alerts.notify("bot-crash", f"bot xətası (söhbət {conversation_id}): {type(e).__name__}: {str(e)[:200]}")
@@ -305,10 +307,15 @@ def _handle(db: DB, conversation_id: int) -> str:
     if res["reply"]:
         outcome = deliver(db, conv, res["reply"], res, reason=f"handoff:{res['handoff_reason']}" if res["handoff"] else None)
     if res["handoff"]:
-        conv.mode = "human"
+        # Avtomatik rejimdə söhbət insana keçir. Qaralama rejimində sahibkar hər cavabı onsuz da təsdiqləyir:
+        # kilid botu sonrakı suallarda susdururdu, ona görə yalnız xəbərdarlıq gedir.
+        auto = conf.bot_mode(db) == "auto"
+        if auto:
+            conv.mode = "human"
         outcome = f"handoff:{res['handoff_reason']}"
         alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}",
-                      f"söhbət sizə keçdi\nAd: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
+                      f"{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
+                      f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
                       f"Səbəb: {res['handoff_reason'] or '-'}\nMüştəri: {(last_in.text if last_in else '')[:500]}\n"
                       f"Botun cavabı: {res['reply'][:500] or '(göndərilmədi: ' + (problem or '') + ')'}\n"
                       f"{chat.panel_link(conv.id)}")

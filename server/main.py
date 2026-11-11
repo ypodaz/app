@@ -17,6 +17,10 @@ from routes import admin, admin_crm, admin_growth, admin_shoots, admin_social, a
 from crm import worker as crm_worker
 from social import worker as social_worker
 
+# Kök WARNING qalır (httpx INFO-da Telegram tokenli URL-i yazır); yalnız botun nəticə sətirləri INFO-da görünür.
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+logging.getLogger("bot").setLevel(logging.INFO)
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):

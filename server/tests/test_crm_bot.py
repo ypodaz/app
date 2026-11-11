@@ -201,7 +201,7 @@ def test_filter_blocks_after_one_retry_and_hands_off(api, crm_env, bad):
     assert bot.handle(conv_id) == "handoff:filtr"
     assert len(crm_env.gemini_calls) == 2 and "QƏBUL EDİLMƏDİ" in crm_env.gemini_calls[1][0]
     assert crm_env.kapso() == [] and count(BotDraft) == 0
-    assert one(WaConversation).mode == "human"
+    assert one(WaConversation).mode == "bot"  # qaralama rejimi: kilid yoxdur, xəbərdarlıq var
     assert any(k.startswith("handoff:") for k, _ in crm_env.alerts)
 
 
@@ -279,16 +279,35 @@ def _more(conv_id):
         db.commit()
 
 
-def test_handoff_sets_human_alerts_and_still_drafts_handoff_sentence(api, crm_env):
+def test_handoff_in_draft_mode_alerts_drafts_and_keeps_bot(api, crm_env):
+    # qaralama rejimində sahibkar hər cavabı onsuz da təsdiqləyir: ötürmə söhbəti kilidləmir
     _, conv_id = mk_conv(text="Qiymətdə endirim olar?")
     crm_env.gemini(jreply("Bunu komandamıza ötürürəm.", handoff=True, handoff_reason="endirim"))
     assert bot.handle(conv_id) == "handoff:endirim"
-    assert one(WaConversation).mode == "human"
+    assert one(WaConversation).mode == "bot"
     d = one(BotDraft)
     assert d.text == "Bunu komandamıza ötürürəm." and d.reason == "handoff:endirim"
     (key, text), = crm_env.alerts
-    for part in ("Aysel", "994501112233", "endirim", "Qiymətdə endirim olar?", "Bunu komandamıza", "#inbox/"):
+    for part in ("əməkdaş lazımdır", "Aysel", "994501112233", "endirim", "Qiymətdə endirim olar?",
+                 "Bunu komandamıza", "#inbox/"):
         assert part in text
+    # növbəti mesaja yenə qaralama gəlir
+    _more(conv_id)
+    crm_env.gemini(jreply("Saat 15:00 boşdur."))
+    assert bot.handle(conv_id) == "draft"
+    assert count(BotDraft) == 2
+
+
+def test_handoff_in_auto_mode_sets_human(api, crm_env):
+    _, conv_id = mk_conv(text="Qiymətdə endirim olar?")
+    with SessionLocal() as db:
+        conf.put(db, "bot_mode", "auto")
+        db.commit()
+    crm_env.gemini(jreply("Bunu komandamıza ötürürəm.", handoff=True, handoff_reason="endirim"))
+    assert bot.handle(conv_id) == "handoff:endirim"
+    assert one(WaConversation).mode == "human"
+    (key, text), = crm_env.alerts
+    assert "söhbət sizə keçdi" in text
 
 
 def test_history_roles_and_prompt_inputs(api, crm_env):
