@@ -30,6 +30,8 @@ SERVICES = ("podkast", "reels", "korporativ", "diger")
 STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
 BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
 MAX_REGENERATE = tg.MAX_REGENERATE
+# Telegram xəbərində 🔴 ilə başda çıxan səbəblər: sahibkar dərhal geri zəng etsin
+URGENT_REASONS = {"insan_istedi": "müştəri canlı adamla danışmaq istəyir", "sikayet": "şikayət var"}
 
 
 class BotFormatError(Exception):
@@ -335,8 +337,10 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         if auto:
             conv.mode = "human"
         outcome = f"handoff:{res['handoff_reason']}"
+        why = URGENT_REASONS.get(res["handoff_reason"] or "")
+        urgent = f"🔴 TƏCİLİ: {why}, zəng edin: {contact.phone or '-'}\n" if why else ""
         alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}",
-                      f"{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
+                      f"{urgent}{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
                       f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
                       f"Səbəb: {res['handoff_reason'] or '-'}\nMüştəri: {(last_in.text if last_in else '')[:500]}\n"
                       f"Botun cavabı: {res['reply'][:500] or '(göndərilmədi: ' + (problem or '') + ')'}\n"

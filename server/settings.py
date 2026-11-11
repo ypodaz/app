@@ -59,3 +59,6 @@ KAPSO_API_KEY = os.environ.get("KAPSO_API_KEY", "")
 KAPSO_WEBHOOK_SECRET = os.environ.get("KAPSO_WEBHOOK_SECRET", "")
 KAPSO_PHONE_NUMBER_ID = os.environ.get("KAPSO_PHONE_NUMBER_ID", "")
 TG_WEBHOOK_SECRET = os.environ.get("TG_WEBHOOK_SECRET", "")
+
+# Apple Calendar «Public Calendar» linki (webcal:// və ya https://…ics): link gizlidir, yalnız Railway-də.
+APPLE_CAL_ICS_URL = os.environ.get("APPLE_CAL_ICS_URL", "")

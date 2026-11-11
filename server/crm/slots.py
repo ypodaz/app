@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session as DB
 
 import booking
 from ai import WD
+from crm import calendar_ics
 from db import aware
 from models import Block, Shoot
 from views import BAKU
@@ -33,6 +34,7 @@ def free_text(db: DB, now: datetime, days: int = 7) -> str:
         busy.append(booking.busy_span(s))
     for b in db.scalars(select(Block).where(Block.starts_at < horizon, Block.ends_at > first)):
         busy.append((aware(b.starts_at), aware(b.ends_at)))
+    busy += calendar_ics.busy(first, horizon)  # Apple Calendar (ICS)
     cutoff = _round_up(now_b + LEAD)
     lines = []
     for i in range(days):

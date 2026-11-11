@@ -16,6 +16,11 @@ from models import (BotDraft, Block, Client, Faq, Lead, LeadEvent, Shoot, Unansw
                     WaConversation, WaMessage)
 
 
+@pytest.fixture(autouse=True)
+def no_digest(monkeypatch):
+    monkeypatch.setattr(worker.digest, "due", lambda db, t: False)  # gündəlik hesabat real saatdan asılı olmasın
+
+
 def one(model, *where):
     with SessionLocal() as db:
         return db.scalar(select(model).where(*where).order_by(model.id.desc()))
@@ -329,6 +334,24 @@ def test_handoff_in_draft_mode_alerts_drafts_and_keeps_bot(api, crm_env):
     crm_env.gemini(jreply("Saat 15:00 boşdur."))
     assert bot.handle(conv_id) == "draft"
     assert count(BotDraft) == 2
+
+
+def test_handoff_human_request_alert_is_urgent(api, crm_env):
+    # müştəri canlı adam istəyəndə xəbər təcili işarələnir və geri zəng üçün nömrə başda olur
+    _, conv_id = mk_conv(text="Canlı adamla danışmaq istəyirəm")
+    crm_env.gemini(jreply("Komandamıza ötürürəm.", handoff=True, handoff_reason="insan_istedi"))
+    assert bot.handle(conv_id) == "handoff:insan_istedi"
+    (key, text), = crm_env.alerts
+    first = text.splitlines()[0]
+    assert first.startswith("🔴 TƏCİLİ") and "994501112233" in first
+
+
+def test_handoff_other_reason_alert_not_urgent(api, crm_env):
+    _, conv_id = mk_conv(text="Qiymətdə endirim olar?")
+    crm_env.gemini(jreply("Bunu komandamıza ötürürəm.", handoff=True, handoff_reason="endirim"))
+    bot.handle(conv_id)
+    (key, text), = crm_env.alerts
+    assert "TƏCİLİ" not in text
 
 
 def test_handoff_in_auto_mode_sets_human(api, crm_env):
