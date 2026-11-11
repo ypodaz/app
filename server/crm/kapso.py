@@ -37,9 +37,9 @@ def window_closed_text() -> str:
 def send_text(phone_number_id: str, *, to: str | None = None, recipient: str | None = None, text: str) -> str:
     """Mətn mesajı göndərir, wamid qaytarır. Telefon yoxdursa (yalnız BSUID) `to` əvəzinə `recipient` gedir."""
     if not settings.KAPSO_API_KEY:
-        raise KapsoError(None, "KAPSO_API_KEY yoxdur")
+        raise KapsoError(None, "WhatsApp hələ qoşulmayıb (Kapso açarı yoxdur)")
     if not phone_number_id:
-        raise KapsoError(None, "Kapso phone_number_id yoxdur")
+        raise KapsoError(None, "WhatsApp nömrəsi Kapso-da tapılmadı")
     body = {"messaging_product": "whatsapp", "type": "text", "text": {"body": text}}
     if to:
         body["to"] = to

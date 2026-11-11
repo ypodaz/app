@@ -350,9 +350,11 @@ def test_admin_social_api(api, monkeypatch):
     assert len(api.get("/api/admin/social/posts?from=2026-11-21", headers=h).json()) == 0
 
     pid = posts[0]["id"]
-    r = api.patch(f"/api/admin/social/posts/{pid}", json={"text": "yeni", "scheduled_at": "2026-11-22T06:00:00Z"},
+    # Panel Bakı vaxtını +04:00 ilə göndərir: SQLite qurşağı atır, ona görə UTC-yə çevrilib saxlanmalıdır.
+    r = api.patch(f"/api/admin/social/posts/{pid}", json={"text": "yeni", "scheduled_at": "2026-11-22T09:30:00+04:00"},
                   headers=h)
     assert r.status_code == 200 and r.json()["text"] == "yeni"
+    assert r.json()["scheduled_at"].startswith("2026-11-22T05:30")
     assert api.patch(f"/api/admin/social/posts/{pid}", json={"status": "cancelled"}, headers=h).json()["status"] == "cancelled"
     assert api.patch(f"/api/admin/social/posts/{pid}", json={"text": "x"}, headers=h).status_code == 409
     with SessionLocal() as db:

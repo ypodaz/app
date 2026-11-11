@@ -11,7 +11,7 @@ from auth import current_admin
 from db import get_db, now
 from models import MediaAsset, SocialPost
 from social import buffer, schedule, worker
-from views import BAKU, iso
+from views import BAKU, iso, utc
 
 router = APIRouter(prefix="/api/admin/social", dependencies=[Depends(current_admin)])
 
@@ -78,7 +78,7 @@ def patch_post(post_id: int, body: PostPatch, db: DB = Depends(get_db)):
     if p.status != "planned":  # queued Buffer-dədir: burada dəyişmək onunla ayrılığa salar
         raise HTTPException(409, "Yalnız planlanmış post dəyişdirilə bilər")
     if body.scheduled_at:
-        p.scheduled_at = body.scheduled_at if body.scheduled_at.tzinfo else body.scheduled_at.replace(tzinfo=timezone.utc)
+        p.scheduled_at = utc(body.scheduled_at)
     if body.text is not None:
         p.text = body.text
     if body.title is not None:

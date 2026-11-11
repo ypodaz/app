@@ -12,7 +12,7 @@ import { useAction, useAuth, useLoad } from '../ctx';
 import { go, useDesktop } from '../router';
 
 type Filter = 'all' | 'draft' | 'reply';
-const FILTERS: { value: Filter; label: string }[] = [{ value: 'all', label: 'Hamısı' }, { value: 'draft', label: 'Qaralama gözləyir' }, { value: 'reply', label: 'Siz cavab verməlisiniz' }];
+const FILTERS: { value: Filter; label: string }[] = [{ value: 'all', label: 'Hamısı' }, { value: 'draft', label: 'Qaralama' }, { value: 'reply', label: 'Cavab gözləyir' }];
 const SRC: Record<string, string> = { bot: 'bot', panel: 'panel', phone: 'telefon', history: 'telefon' };
 
 export function Inbox({ id }: { id?: number }) {
@@ -96,6 +96,9 @@ function Chat({ id, onChanged }: { id: number; onChanged: () => void }) {
   const n = data?.messages.length ?? 0;
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [n, data?.drafts.length]);
   const refresh = () => { conv.reload(); onChanged(); };
+  // Söhbət açılanda server oxunmamışı sıfırlayır: siyahı 15 saniyə gözləməsin.
+  const loaded = conv.data?.id === id;
+  useEffect(() => { if (loaded) onChanged(); }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function send() {
     const t = text.trim();
@@ -130,7 +133,7 @@ function Chat({ id, onChanged }: { id: number; onChanged: () => void }) {
           <a className="a-bg a-bg-i" href="#/bot" aria-label="Bot ayarları"><span aria-hidden="true">⚙︎</span></a>
         </header>
         <div className="c-mode">
-          <ASeg<'bot' | 'human'> pill label="Rejim" options={[{ value: 'bot', label: 'Bot cavab versin' }, { value: 'human', label: 'Mən cavab verirəm' }]} value={data.mode} onChange={setMode} disabled={act.busy} />
+          <ASeg<'bot' | 'human'> pill label="Rejim" options={[{ value: 'bot', label: 'Bot yazır' }, { value: 'human', label: 'Mən yazıram' }]} value={data.mode} onChange={setMode} disabled={act.busy} />
         </div>
         {!data.window_open && <div className="c-warn" role="status">24 saat keçib, müştəri yazmayınca mesaj getməyəcək.</div>}
         <div className="c-msgs">

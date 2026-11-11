@@ -97,7 +97,7 @@ export function Social() {
       <div className="c-sh"><h2 className="c-h3">Təqvim</h2><button type="button" className="a-bg" onClick={() => setPast((v) => !v)}>{past ? 'Keçmişi gizlət' : 'Keçmiş günlər'}</button></div>
       <Err msg={posts.err} />
       {!posts.data && !posts.err && <div className="a-sk" style={{ height: 160, borderRadius: 22 }} aria-busy="true" />}
-      {posts.data && !days.length && <AEmpty icon="cal" title="Planlanmış post yoxdur" text="Videolar skriptlə (social_prep --push-import) yüklənəndə burada görünəcək." />}
+      {posts.data && !days.length && <AEmpty icon="cal" title="Planlanmış post yoxdur" text="Videolar yüklənəndə burada görünəcək." />}
       {days.map(([d, slots]) => (
         <section key={d} className="c-day" aria-label={dateWd(d)}>
           <h3>{dateWd(d)}</h3>
