@@ -1,6 +1,6 @@
-"""Səsli mesaj → mətn. Kapso transkript göndərməyibsə səs faylı yüklənir və Gemini ilə mətnə çevrilir.
-
-Alınmasa mesaj «[audio]» olaraq qalır və bot müştəridən qısa yazmağı xahiş edir (prompt). Heç vaxt xəta atmır.
+"""Səsli mesaj → mətn. Əsas yol Gemini-dir (azərbaycancanı yaxşı tanıyır, sahibkarın qərarı 2026-11-12):
+səs faylı yüklənir və Gemini ilə mətnə çevrilir. Alınmasa Kapso-nun transkripti (varsa) qalır, o da yoxdursa
+mesaj «[audio]» olur və bot müştəridən qısa yazmağı xahiş edir (prompt). Heç vaxt xəta atmır.
 """
 import base64
 import logging
@@ -61,18 +61,20 @@ def transcribe(db: DB, m: WaMessage) -> bool:
     return True
 
 
+TRIED = "voice_tried"  # raw-da işarə: bu mesaj Gemini-yə bir dəfə göndərilib (təkrar xərc olmur)
+
+
 def fill_missing(db: DB, conversation_id: int, limit: int = 3) -> int:
-    """Söhbətin transkriptsiz son səsli mesajlarını mətnə çevirir. Hər mesaj bir dəfə sınanır (alınmasa
-    transcript = "" qalır, təkrar xərc olmur). Qaytarır: neçəsi alındı."""
+    """Müştərinin son səsli mesajlarını (Kapso transkripti olsa da) Gemini ilə mətnə çevirir.
+    Hər mesaj bir dəfə sınanır. Qaytarır: neçəsi alındı."""
     rows = db.scalars(select(WaMessage).where(
-        WaMessage.conversation_id == conversation_id, WaMessage.direction == "in", WaMessage.type == "audio",
-        WaMessage.text == PLACEHOLDER, WaMessage.transcript.is_(None)).order_by(WaMessage.id.desc()).limit(limit)).all()
+        WaMessage.conversation_id == conversation_id, WaMessage.source == "customer", WaMessage.type == "audio")
+        .order_by(WaMessage.id.desc()).limit(limit)).all()
+    rows = [m for m in rows if not (m.raw or {}).get(TRIED)]
     done = 0
     for m in rows:
-        if transcribe(db, m):
-            done += 1
-        else:
-            m.transcript = ""
+        done += transcribe(db, m)
+        m.raw = {**(m.raw or {}), TRIED: True}
     if rows:
         db.commit()
     return done

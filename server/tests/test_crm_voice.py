@@ -8,6 +8,7 @@ import pytest  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 import settings  # noqa: E402
+from ai import AiError  # noqa: E402
 from crm import bot, voice  # noqa: E402
 from db import SessionLocal  # noqa: E402
 from models import Lead, LeadEvent, WaMessage  # noqa: E402
@@ -35,11 +36,11 @@ def downloads(monkeypatch):
     return d
 
 
-def _audio_conv(url="https://api.kapso.ai/media/abc"):
-    cid, conv_id = mk_conv(text=voice.PLACEHOLDER)
+def _audio_conv(url="https://api.kapso.ai/media/abc", kapso_text=None):
+    cid, conv_id = mk_conv(text=kapso_text or voice.PLACEHOLDER)
     with SessionLocal() as db:
         m = db.scalar(select(WaMessage).where(WaMessage.conversation_id == conv_id))
-        m.type, m.media_url = "audio", url
+        m.type, m.media_url, m.transcript = "audio", url, kapso_text
         db.commit()
     return conv_id
 
@@ -76,8 +77,25 @@ def test_failed_transcription_is_tried_once(api, crm_env, downloads):
     with SessionLocal() as db:
         assert voice.fill_missing(db, conv_id) == 0
         m = _audio_msg(db, conv_id)
-        assert m.text == voice.PLACEHOLDER and m.transcript == ""
+        assert m.text == voice.PLACEHOLDER and m.raw[voice.TRIED] is True
     assert len(downloads.calls) == 1 and len(crm_env.gemini_calls) == 1  # səs yenidən sınanmadı
+
+
+def test_gemini_preferred_over_kapso_transcript(api, crm_env, downloads):
+    conv_id = _audio_conv(kapso_text="salam sabah iki kamera ola")  # Kapso-nun zəif transkripti
+    crm_env.gemini("Salam, sabah iki kameralı çəkiliş olar?", jreply("Bəli."))
+    bot.handle(conv_id)
+    with SessionLocal() as db:
+        assert _audio_msg(db, conv_id).text == "Salam, sabah iki kameralı çəkiliş olar?"
+
+
+def test_kapso_transcript_kept_when_gemini_fails(api, crm_env, downloads):
+    conv_id = _audio_conv(kapso_text="salam qiymət nədir")
+    crm_env.gemini(AiError("down"), jreply("Salam!"))
+    bot.handle(conv_id)
+    with SessionLocal() as db:
+        m = _audio_msg(db, conv_id)
+        assert m.text == m.transcript == "salam qiymət nədir"
 
 
 def test_instagram_and_found_via_saved_to_notes(api, crm_env):
