@@ -1,5 +1,7 @@
 """Söhbət əməliyyatları: göndəriş (bot, panel, Telegram düyməsi), qaralama qərarı. Commit çağıran tərəfindədir."""
+import random
 import re
+import time
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
@@ -38,6 +40,38 @@ def send_out(db: DB, conv: WaConversation, text: str, source: str) -> WaMessage:
     return msg
 
 
+PAUSE = (1.5, 2.5)  # iki mesaj arasında gözləmə (san.); testdə (0, 0)
+
+
+def _sleep():
+    time.sleep(random.uniform(*PAUSE))
+
+
+def split_reply(text: str) -> list[str]:
+    """Son boş sətirdən əvvəlki hər şey 1-ci mesaj, son abzas 2-ci; boş hissə olsa tək mesaj."""
+    head, sep, tail = text.strip().rpartition("\n\n")
+    head, tail = head.strip(), tail.strip()
+    return [head, tail] if sep and head and tail else [text.strip()]
+
+
+def send_bot_reply(db: DB, conv: WaConversation, text: str, source: str = "bot") -> list[WaMessage]:
+    """Bot cavabını ən çoxu 2 WhatsApp mesajı kimi göndərir. İkincidə KapsoError olsa istisna qalxır,
+    birinci mesaj sessiyada qalır (commit çağıran tərəfindədir)."""
+    out = []
+    parts = split_reply(text)
+    for i, part in enumerate(parts):
+        if i:
+            _sleep()
+        try:
+            out.append(send_out(db, conv, part, source))
+        except kapso.KapsoError as e:
+            if out:  # birinci hissə artıq müştəridədir: qeydini saxla, təkrar getməsin
+                db.commit()
+            e.remaining = "\n\n".join(parts[i:])
+            raise
+    return out
+
+
 class AlreadyDecided(Exception):
     pass
 
@@ -52,7 +86,13 @@ def decide_draft(db: DB, draft: BotDraft, action: str, text: str | None = None) 
         return draft
     final = (text if text is not None else draft.text).strip()
     conv = db.get(WaConversation, draft.conversation_id)
-    send_out(db, conv, final, "bot")
+    try:
+        send_bot_reply(db, conv, final)
+    except kapso.KapsoError as e:
+        if e.remaining != final:  # yarısı getdi: qaralamada yalnız qalan hissə qalsın
+            draft.text = e.remaining
+            db.commit()
+        raise
     draft.status = "edited" if final != draft.text.strip() else "sent"
     if draft.status == "edited":
         draft.text = final  # orijinal `model_output["reply"]`-da qalır

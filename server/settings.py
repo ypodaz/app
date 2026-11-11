@@ -69,3 +69,8 @@ YT_CLIENT_ID = os.environ.get("YT_CLIENT_ID", "")
 YT_CLIENT_SECRET = os.environ.get("YT_CLIENT_SECRET", "")
 YT_REFRESH_TOKEN = os.environ.get("YT_REFRESH_TOKEN", "")
 YT_CHANNEL_ID = os.environ.get("YT_CHANNEL_ID", "")
+
+# Apple Calendar «Public Calendar» linki (webcal:// və ya https://…ics): link gizlidir, yalnız Railway-də.
+APPLE_CAL_ICS_URL = os.environ.get("APPLE_CAL_ICS_URL", "")
+# Şəxsi təqvim (ayrı link): bütün günlük hadisələr həmin günü tam məşğul edir.
+APPLE_CAL_ICS_URL_PERSONAL = os.environ.get("APPLE_CAL_ICS_URL_PERSONAL", "")

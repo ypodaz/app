@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DB
 
 import ai
 from ai import AiError
-from crm import bot, chat, conf, tg
+from crm import bot, chat, conf, digest, tg
 from db import SessionLocal, aware, now
 from models import BotDraft, Lead, LeadEvent, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -101,8 +101,14 @@ def price_due(db: DB) -> list[WaConversation]:
         if contact.bot_muted_until and aware(contact.bot_muted_until) > t:
             continue
         last = chat.last_message(db, c.id)
-        if (not last or last.direction != "out" or aware(last.created_at) > t - PRICE_AFTER
-                or not PRICE_RE.search(last.text or "")):
+        if not last or last.direction != "out" or aware(last.created_at) > t - PRICE_AFTER:
+            continue
+        # qiymət son müştəri mesajından sonrakı istənilən mesajımızda ola bilər (cavab iki mesaja bölünə bilər)
+        cust = chat.last_message(db, c.id, "customer")
+        q = select(WaMessage.text).where(WaMessage.conversation_id == c.id, WaMessage.direction == "out")
+        if cust:
+            q = q.where(WaMessage.id > cust.id)
+        if not any(PRICE_RE.search(x or "") for x in db.scalars(q)):
             continue
         since = c.last_inbound_at or last.created_at
         if db.scalar(select(BotDraft.id).where(BotDraft.conversation_id == c.id, BotDraft.reason == REMIND,
@@ -142,6 +148,12 @@ def run(db: DB) -> int:
     for conv in price_due(db):
         if make_price_followup(db, conv):
             n += 1
+    try:
+        if digest.due(db, now()):
+            digest.send(db, now())
+    except Exception:  # hesabat xətası dövrü dayandırmasın
+        db.rollback()
+        log.exception("gündəlik hesabat")
     return n
 
 

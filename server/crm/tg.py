@@ -37,6 +37,8 @@ def send_draft(db: DB, draft: BotDraft) -> str | None:
     if draft.reason:
         head += f"\n[{draft.reason}]"
     text = f"💬 {head}\n\nMüştəri: {(last.text if last else '-')[:700]}\n\nQaralama:\n{draft.text[:2000]}"
+    if len(chat.split_reply(draft.text)) > 1:
+        text += "\n\n✂️ 2 mesaj kimi gedəcək"  # müştəriyə getmir
     res = _call("sendMessage", {
         "chat_id": settings.TG_CHAT_ID, "text": text,
         "reply_markup": {"inline_keyboard": [[{"text": "✅ Göndər", "callback_data": f"d:{draft.id}:s"},

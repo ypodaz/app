@@ -30,6 +30,8 @@ SERVICES = ("podkast", "reels", "korporativ", "diger")
 STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
 BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
 MAX_REGENERATE = tg.MAX_REGENERATE
+# Telegram xəbərində 🔴 ilə başda çıxan səbəblər: sahibkar dərhal geri zəng etsin
+URGENT_REASONS = {"insan_istedi": "müştəri canlı adamla danışmaq istəyir", "sikayet": "şikayət var"}
 
 
 class BotFormatError(Exception):
@@ -138,7 +140,7 @@ def contents_from(history: list[tuple[str, str]]) -> list[dict]:
         if not text.strip():
             continue
         if out and out[-1]["role"] == role:
-            out[-1]["parts"][0]["text"] += "\n" + text
+            out[-1]["parts"][0]["text"] += "\n\n" + text
         elif out or role == "user":
             out.append({"role": role, "parts": [{"text": text}]})
     return out
@@ -335,8 +337,10 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         if auto:
             conv.mode = "human"
         outcome = f"handoff:{res['handoff_reason']}"
+        why = URGENT_REASONS.get(res["handoff_reason"] or "")
+        urgent = f"🔴 TƏCİLİ: {why}, zəng edin: {contact.phone or '-'}\n" if why else ""
         alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}",
-                      f"{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
+                      f"{urgent}{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
                       f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
                       f"Səbəb: {res['handoff_reason'] or '-'}\nMüştəri: {(last_in.text if last_in else '')[:500]}\n"
                       f"Botun cavabı: {res['reply'][:500] or '(göndərilmədi: ' + (problem or '') + ')'}\n"
@@ -351,11 +355,12 @@ def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str |
     `draft_only`: yenidən yazılan cavab avtomatik rejimdə də yalnız qaralama olur."""
     if conf.bot_mode(db) == "auto" and not draft_only:
         try:
-            chat.send_out(db, conv, text, "bot")
+            chat.send_bot_reply(db, conv, text)
             return "sent"
         except kapso.KapsoError as e:
             alerts.notify(f"bot-send:{conv.id}", f"avtomatik göndəriş alınmadı (qaralama yaradıldı): {e.message}")
             reason = f"göndərilmədi: {e.message}"[:200]
+            text = getattr(e, "remaining", text)  # birinci hissə gedibsə, qaralamada yalnız qalan
     draft = BotDraft(conversation_id=conv.id, text=text, reason=reason, model_output=res)
     db.add(draft)
     db.commit()

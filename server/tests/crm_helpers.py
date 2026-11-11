@@ -11,6 +11,7 @@ import pytest
 import test_auth  # noqa: F401  (settings/db-dən əvvəl: test bazasını və env-i qurur, əks halda dev.db silinər)
 import ai
 import alerts
+from crm import chat
 import settings
 from db import SessionLocal, now
 from models import WaContact, WaConversation, WaMessage
@@ -77,6 +78,7 @@ def crm_env(monkeypatch):
         return {"content": {"parts": [{"text": text}]}, "usage": (10, 5)}
 
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(chat, "PAUSE", (0, 0))  # iki mesaj arasında real gözləmə yoxdur
     monkeypatch.setattr(ai, "generate", fake_generate)
     monkeypatch.setattr(alerts, "notify",
                         lambda key, text: (key != "start" and env.alerts.append((key, text))) or True)  # «server başladı» sayılmır
