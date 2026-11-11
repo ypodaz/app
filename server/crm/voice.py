@@ -1,0 +1,78 @@
+"""Səsli mesaj → mətn. Kapso transkript göndərməyibsə səs faylı yüklənir və Gemini ilə mətnə çevrilir.
+
+Alınmasa mesaj «[audio]» olaraq qalır və bot müştəridən qısa yazmağı xahiş edir (prompt). Heç vaxt xəta atmır.
+"""
+import base64
+import logging
+from urllib.parse import urlparse
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DB
+
+import ai
+import settings
+from models import WaMessage
+
+log = logging.getLogger("voice")
+
+PLACEHOLDER = "[audio]"
+MAX_BYTES = 8_000_000  # ~8 dəqiqəlik səsli mesaj
+KAPSO_HOST = "api.kapso.ai"  # Kapso açarı yalnız bu ünvana göndərilir
+SYSTEM = ("Bu WhatsApp səsli mesajını danışıldığı dildə (çox vaxt azərbaycanca, bəzən rusca, türkcə və ya ingiliscə) "
+          "olduğu kimi mətnə çevir. Yalnız mətni qaytar: izah, tərcümə, dırnaq yoxdur. Danışıq yoxdursa boş qaytar.")
+
+
+def _download(url: str) -> tuple[bytes, str] | None:
+    headers = {}
+    if urlparse(url).hostname == KAPSO_HOST and settings.KAPSO_API_KEY:
+        headers["X-API-Key"] = settings.KAPSO_API_KEY
+    try:
+        r = httpx.get(url, headers=headers, timeout=30, follow_redirects=True)
+    except httpx.HTTPError:
+        log.warning("səs faylı yüklənmədi (şəbəkə)")
+        return None
+    if r.status_code != 200 or not r.content or len(r.content) > MAX_BYTES:
+        log.warning("səs faylı yüklənmədi: HTTP %s, %s bayt", r.status_code, len(r.content or b""))
+        return None
+    mime = (r.headers.get("content-type") or "audio/ogg").split(";")[0].strip()
+    return r.content, (mime if mime.startswith("audio/") else "audio/ogg")
+
+
+def transcribe(db: DB, m: WaMessage) -> bool:
+    """Mesajı yerində yeniləyir (text, transcript). Qaytarır: alındımı. Commit çağıran tərəfindədir."""
+    if not (m.media_url and settings.GEMINI_API_KEY):
+        return False
+    got = _download(m.media_url)
+    if not got:
+        return False
+    data, mime = got
+    try:
+        out = ai.generate(SYSTEM, [{"role": "user", "parts": [
+            {"inlineData": {"mimeType": mime, "data": base64.b64encode(data).decode()}}]}], max_tokens=1500)
+    except ai.AiError:
+        log.warning("səs mətnə çevrilmədi (Gemini)")
+        return False
+    ai.count_usage(db, "voice", *out["usage"])
+    text = ai.text_of(out["content"]).strip()
+    if not text:
+        return False
+    m.text = m.transcript = text[:4000]
+    return True
+
+
+def fill_missing(db: DB, conversation_id: int, limit: int = 3) -> int:
+    """Söhbətin transkriptsiz son səsli mesajlarını mətnə çevirir. Hər mesaj bir dəfə sınanır (alınmasa
+    transcript = "" qalır, təkrar xərc olmur). Qaytarır: neçəsi alındı."""
+    rows = db.scalars(select(WaMessage).where(
+        WaMessage.conversation_id == conversation_id, WaMessage.direction == "in", WaMessage.type == "audio",
+        WaMessage.text == PLACEHOLDER, WaMessage.transcript.is_(None)).order_by(WaMessage.id.desc()).limit(limit)).all()
+    done = 0
+    for m in rows:
+        if transcribe(db, m):
+            done += 1
+        else:
+            m.transcript = ""
+    if rows:
+        db.commit()
+    return done

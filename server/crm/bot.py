@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import WD, AiError
-from crm import bot_prompt, chat, conf, contacts, customer_card, kapso, slots, tg
+from crm import bot_prompt, chat, conf, contacts, customer_card, kapso, slots, tg, voice
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -30,6 +30,9 @@ LANGS = ("az", "ru", "en", "tr")
 SERVICES = ("podkast", "reels", "korporativ", "diger")
 STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
 BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
+FOUND_VIA = ("instagram", "tiktok", "youtube", "reklam", "tanis", "google", "diger")
+# Lead cədvəlində sütunu olmayan sahələr qeydlərə (notes) «Etiket: dəyər» sətri kimi yazılır
+NOTE_FIELDS = {"instagram": "Instagram", "found_via": "Haradan tapıb"}
 MAX_REGENERATE = tg.MAX_REGENERATE
 # Telegram xəbərində 🔴 ilə başda çıxan səbəblər: sahibkar dərhal geri zəng etsin
 URGENT_REASONS = {"insan_istedi": "müştəri canlı adamla danışmaq istəyir", "sikayet": "şikayət var"}
@@ -56,6 +59,16 @@ def _bool(v):
     if isinstance(v, bool):
         return v
     return {"true": True, "false": False}.get(str(v).strip().lower())
+
+
+def _str(v, n: int):
+    v = _null(v)
+    return str(v).strip()[:n] or None if v is not None else None
+
+
+def _found_via(v):
+    v = str(_null(v) or "").strip().lower()
+    return v if v in FOUND_VIA else None  # model şablonu («instagram|tiktok|…») qaytarsa da yazılmır
 
 
 def parse_reply(text: str) -> dict:
@@ -86,7 +99,8 @@ def parse_reply(text: str) -> dict:
         "intent": _null(data.get("intent")),
         "lead": {"name": _null(lead.get("name")), "service": _null(lead.get("service")),
                  "preferred_date": _null(lead.get("preferred_date")), "people": _int(lead.get("people")),
-                 "cameras": _int(lead.get("cameras")), "editing": _bool(lead.get("editing"))},
+                 "cameras": _int(lead.get("cameras")), "editing": _bool(lead.get("editing")),
+                 "instagram": _str(lead.get("instagram"), 64), "found_via": _found_via(lead.get("found_via"))},
         "stage": _null(data.get("stage")),
         "unanswered_question": _null(data.get("unanswered_question")),
     }
@@ -112,7 +126,9 @@ def _lead_text(lead: Lead | None) -> str:
     if not lead:
         return "hələ heç nə məlum deyil"
     parts = [("ad", lead.name), ("xidmət", lead.service), ("tarix", lead.preferred_date), ("nəfər", lead.people),
-             ("kamera", lead.cameras), ("montaj", None if lead.editing is None else ("bəli" if lead.editing else "xeyr"))]
+             ("kamera", lead.cameras), ("montaj", None if lead.editing is None else ("bəli" if lead.editing else "xeyr")),
+             ("instagram", _note_value(lead, NOTE_FIELDS["instagram"])),
+             ("haradan tapıb", _note_value(lead, NOTE_FIELDS["found_via"]))]
     known = [f"{k}: {v}" for k, v in parts if v not in (None, "")]
     return "; ".join(known + [f"mərhələ: {lead.stage}"]) if known else "hələ heç nə məlum deyil"
 
@@ -200,6 +216,20 @@ def _event(db: DB, lead: Lead, kind: str, data: dict) -> None:
     db.add(LeadEvent(lead_id=lead.id, kind=kind, data=data))
 
 
+def _note_value(lead: Lead | None, label: str) -> str | None:
+    m = re.search(rf"^{re.escape(label)}: (.+)$", (lead.notes if lead else "") or "", re.M)
+    return m.group(1).strip() if m else None
+
+
+def _set_note(lead: Lead, label: str, value: str) -> None:
+    line = f"{label}: {value}"
+    notes = lead.notes or ""
+    if _note_value(lead, label) is not None:
+        lead.notes = re.sub(rf"^{re.escape(label)}: .+$", lambda _: line, notes, count=1, flags=re.M)
+    else:
+        lead.notes = (notes.rstrip() + "\n" if notes.strip() else "") + line
+
+
 def apply_result(db: DB, conv: WaConversation, contact: WaContact, res: dict) -> Lead:
     """Lead yoxdursa yaradır; boş olmayan sahələri yeniləyir; mərhələ yalnız irəli (ən çoxu `beh`)."""
     lead = db.get(Lead, conv.lead_id) if conv.lead_id else None
@@ -210,6 +240,11 @@ def apply_result(db: DB, conv: WaConversation, contact: WaContact, res: dict) ->
         conv.lead_id = lead.id
         _event(db, lead, "created", {"source": "whatsapp"})
     new = {k: v for k, v in res["lead"].items() if v not in (None, "")}
+    for k, label in NOTE_FIELDS.items():
+        v = new.pop(k, None)
+        if v and _note_value(lead, label) != v:
+            _event(db, lead, "update", {k: [_note_value(lead, label), v]})
+            _set_note(lead, label, v)
     if new.get("service") not in (None, *SERVICES):
         del new["service"]
     if "preferred_date" in new:
@@ -331,7 +366,8 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         return f"route:{routed}"
     if chat.reject_pending(db, conv.id, "yeni mesaj gəldi"):
         db.commit()
-    first = chat.last_message(db, conv.id, "bot") is None
+    voice.fill_missing(db, conv.id)  # Kapso transkript verməyibsə səsli mesaj burada mətnə çevrilir
+    first =chat.last_message(db, conv.id, "bot") is None
     lead = db.get(Lead, conv.lead_id) if conv.lead_id else None
     system = build_system(db, now(), first_message=first, lead=lead, customer=customer_card.build(db, contact))
     if avoid:
