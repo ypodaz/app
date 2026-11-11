@@ -264,8 +264,15 @@ def telegram_webhook(update: dict, background: BackgroundTasks,
         raise HTTPException(503, "Webhook secret qurulmayıb")
     if not hmac.compare_digest(x_telegram_bot_api_secret_token or "", settings.TG_WEBHOOK_SECRET):
         raise HTTPException(401, "Secret yanlışdır")
-    cq = update.get("callback_query")
-    result = tg.handle_callback(db, cq) if cq else "ignored"
-    if result == "regenerate":  # Gemini bir neçə saniyə çəkir: Telegram-a dərhal cavab, yeni qaralama fonda
-        background.add_task(bot.regenerate, int(str(cq["data"]).split(":")[1]))
+    cq, msg = update.get("callback_query"), update.get("message")
+    if cq:
+        result = tg.handle_callback(db, cq)
+        if result == "regenerate":  # Gemini bir neçə saniyə çəkir: Telegram-a dərhal cavab, yeni qaralama fonda
+            background.add_task(bot.regenerate, int(str(cq["data"]).split(":")[1]))
+    elif msg:
+        result, draft_id = tg.handle_reply(db, msg)
+        if result == "regenerate":
+            background.add_task(bot.regenerate, draft_id, (msg.get("text") or "").strip()[:500])
+    else:
+        result = "ignored"
     return {"ok": True, "result": result}

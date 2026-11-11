@@ -239,13 +239,13 @@ def _lock_for(cid: int) -> threading.Lock:
         return _locks.setdefault(cid, threading.Lock())
 
 
-def handle(conversation_id: int, *, avoid: str | None = None) -> str:
+def handle(conversation_id: int, *, avoid: str | None = None, instruction: str | None = None) -> str:
     """Söhbət üçün bir cavab dövrü. Nəticə kodunu qaytarır (testlər və log üçün); heç vaxt xəta atmır.
     `avoid`: sahibkarın bəyənmədiyi qaralama — bot başqa cür yazır və nəticə həmişə qaralama olur."""
     with _lock_for(conversation_id):  # eyni söhbətdə paralel iki işləmə olmasın
         try:
             with SessionLocal() as db:
-                outcome = _handle(db, conversation_id, avoid=avoid)
+                outcome = _handle(db, conversation_id, avoid=avoid, instruction=instruction)
                 log.info("bot söhbət %s%s: %s", conversation_id, " (yenidən)" if avoid else "", outcome)
                 return outcome
         except Exception as e:
@@ -254,14 +254,14 @@ def handle(conversation_id: int, *, avoid: str | None = None) -> str:
             return "error"
 
 
-def regenerate(draft_id: int) -> str:
-    """Telegram «🔄 Yenidən yaz»: rədd edilmiş qaralamanın söhbətinə yeni, fərqli qaralama yazır."""
+def regenerate(draft_id: int, instruction: str | None = None) -> str:
+    """Telegram «🔄 Yenidən yaz» və ya qaralamaya cavabla göstəriş: rədd edilmiş qaralamanın söhbətinə yeni qaralama."""
     with SessionLocal() as db:
         old = db.get(BotDraft, draft_id)
         if not old:
             return "skip:no_draft"
         conv_id, text = old.conversation_id, old.text
-    outcome = handle(conv_id, avoid=text)
+    outcome = handle(conv_id, avoid=text, instruction=instruction)
     if outcome.startswith("skip:"):  # sahibkar «Yenidən yazılır…» görüb, səbəbsiz susmasın
         alerts.notify(f"regen:{draft_id}", f"Yenidən yazılmadı ({outcome}). {chat.panel_link(conv_id)}")
     return outcome
@@ -290,7 +290,7 @@ def _history(db: DB, conv: WaConversation) -> list[tuple[str, str]]:
     return [("user" if m.source == "customer" else "model", m.text) for m in reversed(rows)]
 
 
-def _handle(db: DB, conversation_id: int, *, avoid: str | None = None) -> str:
+def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instruction: str | None = None) -> str:
     conv = db.get(WaConversation, conversation_id)
     if not conv:
         return "skip:no_conversation"
@@ -306,6 +306,9 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None) -> str:
     if avoid:
         system += (f"\n\nSAHİBKAR ƏVVƏLKİ QARALAMANI BƏYƏNMƏDİ: «{avoid[:1500]}». Müştərinin son mesajına başqa cür "
                    "cavab yaz: fərqli başlanğıc, fərqli yanaşma və ifadələr. Faktlar və qaydalar eyni qalır.")
+        if instruction:
+            system += (f"\nSAHİBKARIN GÖSTƏRİŞİ: «{instruction[:500]}». Yeni cavabda buna əməl et; faktlar, qiymətlər "
+                       "və yuxarıdakı qaydalar yenə keçərlidir.")
     try:
         res, usage, problem = converse(system, contents_from(_history(db, conv)))
     except AiError as e:

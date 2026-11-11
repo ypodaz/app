@@ -86,9 +86,12 @@ def handle_callback(db: DB, cq: dict) -> str:
     return "sent" if draft.status in ("sent", "edited") else "rejected"
 
 
-def _regenerate(db: DB, draft: BotDraft, cq_id, chat_id, message_id) -> str:
+LIMIT_TEXT = f"Bu mesaj üçün yenidən yazma limiti ({MAX_REGENERATE}) bitib. Paneldən özünüz yazın və ya göndərin."
+
+
+def _start_regenerate(db: DB, draft: BotDraft) -> str:
+    """Qaralamanı «yenidən yaz» səbəbi ilə rədd edir. Qaytarır: resolved | limit | regenerate."""
     if draft.status != "pending":
-        _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "artıq həll olunub"})
         return "resolved"
     last = chat.last_message(db, draft.conversation_id, "customer")
     since = last.created_at if last else draft.created_at
@@ -96,13 +99,44 @@ def _regenerate(db: DB, draft: BotDraft, cq_id, chat_id, message_id) -> str:
         BotDraft.conversation_id == draft.conversation_id, BotDraft.reason == REGEN_REASON,
         BotDraft.created_at >= since))
     if used >= MAX_REGENERATE:
-        _call("answerCallbackQuery", {"callback_query_id": cq_id, "show_alert": True,
-                                      "text": f"Bu mesaj üçün yenidən yazma limiti ({MAX_REGENERATE}) bitib. "
-                                              "Paneldən özünüz yazın və ya göndərin."})
         return "limit"
     draft.status, draft.reason, draft.decided_at = "rejected", REGEN_REASON, now()
     db.commit()
-    _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "Yenidən yazılır…"})
-    _call("editMessageText", {"chat_id": chat_id, "message_id": message_id,
-                              "text": f"🔄 Yenidən yazılır…\n\n{draft.text[:3000]}"})
     return "regenerate"
+
+
+def _regenerate(db: DB, draft: BotDraft, cq_id, chat_id, message_id) -> str:
+    result = _start_regenerate(db, draft)
+    if result == "resolved":
+        _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "artıq həll olunub"})
+    elif result == "limit":
+        _call("answerCallbackQuery", {"callback_query_id": cq_id, "show_alert": True, "text": LIMIT_TEXT})
+    else:
+        _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "Yenidən yazılır…"})
+        _call("editMessageText", {"chat_id": chat_id, "message_id": message_id,
+                                  "text": f"🔄 Yenidən yazılır…\n\n{draft.text[:3000]}"})
+    return result
+
+
+def handle_reply(db: DB, msg: dict) -> tuple[str, int | None]:
+    """Sahibkar qaralama mesajına cavab olaraq göstəriş yazır («qısa yaz»). Qaytarır: (nəticə, draft_id).
+    Nəticə: ignored | resolved | limit | regenerate. `regenerate`-də yeni qaralamanı çağıran fonda yazdırır."""
+    chat_id = (msg.get("chat") or {}).get("id")
+    if str(chat_id) != str(settings.TG_CHAT_ID):
+        return "ignored", None
+    text = (msg.get("text") or "").strip()
+    reply_to = (msg.get("reply_to_message") or {}).get("message_id")
+    if not text or not reply_to:
+        return "ignored", None
+    draft = db.scalar(select(BotDraft).where(BotDraft.telegram_message_id == str(reply_to))
+                      .order_by(BotDraft.id.desc()))
+    if not draft:
+        return "ignored", None
+    result = _start_regenerate(db, draft)
+    if result == "regenerate":
+        _call("editMessageText", {"chat_id": chat_id, "message_id": reply_to,
+                                  "text": f"🔄 Göstərişlə yenidən yazılır: «{text[:300]}»\n\n{draft.text[:3000]}"})
+    else:
+        _call("sendMessage", {"chat_id": chat_id, "reply_to_message_id": msg.get("message_id"),
+                              "text": "Bu qaralama artıq həll olunub." if result == "resolved" else LIMIT_TEXT})
+    return result, draft.id

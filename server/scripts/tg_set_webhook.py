@@ -22,7 +22,7 @@ def main() -> int:
         return 2
     r = httpx.post(f"https://api.telegram.org/bot{settings.TG_BOT_TOKEN}/setWebhook", timeout=15,
                    json={"url": sys.argv[1], "secret_token": settings.TG_WEBHOOK_SECRET,
-                         "allowed_updates": ["callback_query"]})
+                         "allowed_updates": ["callback_query", "message"]})
     print(r.status_code, r.text)
     return 0 if r.status_code == 200 else 1
 

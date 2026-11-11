@@ -605,6 +605,96 @@ def test_followup_in_auto_mode_is_still_a_draft(api, crm_env):
     assert crm_env.kapso() == [] and one(BotDraft).status == "pending"
 
 
+def _price_setup(hours=4, text="Studiyada 1 saat 1 kamera ilə 70 AZN-dir.", stage="maraqlanir", source="bot"):
+    """Müştəri yazıb, biz qiymət demişik, müştəri `hours` saatdır susur."""
+    conv_id = _followup_setup(hours=hours + 1, stage=stage)
+    with SessionLocal() as db:
+        db.add(WaMessage(conversation_id=conv_id, direction="out", source=source, text=text,
+                         created_at=now() - timedelta(hours=hours)))
+        db.commit()
+    return conv_id
+
+
+def test_price_followup_creates_one_draft(api, crm_env, monkeypatch):
+    monkeypatch.setattr(worker, "_daytime", lambda t: True)
+    _price_setup()
+    crm_env.gemini(jreply("Sualınız olsa, yazın. Uyğun gün olsa, saatı saxlaya bilərəm."))
+    with SessionLocal() as db:
+        assert worker.run(db) == 1
+        assert worker.run(db) == 0  # bir susmaya bir dəfə
+    d = one(BotDraft)
+    assert d.reason == "xatırlatma" and d.status == "pending" and crm_env.kapso() == []
+    system, contents = crm_env.gemini_calls[0]
+    assert "qiymət" in system.lower() and "xatırlatma" in system.lower() and contents[-1]["role"] == "user"
+    assert len(crm_env.tg("sendMessage")) == 1
+
+
+def test_price_followup_conditions(api, crm_env, monkeypatch):
+    monkeypatch.setattr(worker, "_daytime", lambda t: True)
+    _price_setup(hours=1)  # hələ tezdir
+    _price_setup(text="Hansı gün sizə rahatdır?")  # qiymət yoxdur
+    _price_setup(stage="tarix")  # artıq rezerv danışığı
+    muted = _price_setup()
+    closing = _price_setup()
+    with SessionLocal() as db:
+        db.get(WaContact, db.get(WaConversation, muted).contact_id).bot_muted_until = now() + timedelta(hours=1)
+        db.get(WaConversation, closing).window_expires_at = now() + timedelta(minutes=30)
+        db.commit()
+    with SessionLocal() as db:
+        assert worker.run(db) == 0
+    monkeypatch.setattr(worker, "_daytime", lambda t: False)
+    _price_setup()
+    with SessionLocal() as db:
+        assert worker.run(db) == 0  # gecə yazılmır
+    assert crm_env.gemini_calls == []
+
+
+def test_daytime_is_baku_9_to_21():
+    baku = timezone(timedelta(hours=4))
+    assert worker._daytime(datetime(2026, 11, 12, 9, 0, tzinfo=baku))
+    assert not worker._daytime(datetime(2026, 11, 12, 21, 0, tzinfo=baku))
+    assert not worker._daytime(datetime(2026, 11, 12, 4, 30, tzinfo=timezone.utc))  # Bakı 08:30
+
+
+# --- Telegram: qaralamaya cavabla göstəriş ---
+
+def tg_reply(api, reply_to, text="qısa yaz", chat=CHAT):
+    body = {"message": {"message_id": 1000, "chat": {"id": int(chat)}, "text": text,
+                        "reply_to_message": {"message_id": int(reply_to)}}}
+    return api.post("/api/webhooks/telegram", json=body, headers={"X-Telegram-Bot-Api-Secret-Token": TG_SECRET})
+
+
+def test_reply_instruction_regenerates_with_instruction(api, crm_env):
+    _, conv_id = mk_conv(text="Qiymət nədir?")
+    crm_env.gemini(jreply("Uzun köhnə cavab."), jreply("Qısa."))
+    bot.handle(conv_id)
+    d = one(BotDraft)
+    assert tg_reply(api, d.telegram_message_id).json()["result"] == "regenerate"
+    old = one(BotDraft, BotDraft.id == d.id)
+    assert old.status == "rejected" and old.reason == "yenidən yaz"
+    assert one(BotDraft).text == "Qısa." and one(BotDraft).status == "pending"
+    system, _ = crm_env.gemini_calls[-1]
+    assert "GÖSTƏRİŞ" in system and "qısa yaz" in system and "Uzun köhnə cavab." in system
+    assert any("göstəriş" in j["text"].lower() for j in crm_env.tg("editMessageText"))
+    # həll olunmuş qaralamaya təkrar cavab
+    assert tg_reply(api, d.telegram_message_id).json()["result"] == "resolved"
+    assert len(crm_env.gemini_calls) == 2
+
+
+def test_reply_instruction_ignored_cases(api, crm_env):
+    _, conv_id = mk_conv()
+    crm_env.gemini(jreply("Cavab."))
+    bot.handle(conv_id)
+    d = one(BotDraft)
+    assert tg_reply(api, d.telegram_message_id, chat="999").json()["result"] == "ignored"
+    assert tg_reply(api, 777777).json()["result"] == "ignored"
+    assert tg_reply(api, d.telegram_message_id, text="  ").json()["result"] == "ignored"
+    body = {"message": {"message_id": 5, "chat": {"id": int(CHAT)}, "text": "salam"}}
+    assert api.post("/api/webhooks/telegram", json=body,
+                    headers={"X-Telegram-Bot-Api-Secret-Token": TG_SECRET}).json()["result"] == "ignored"
+    assert one(BotDraft).status == "pending" and len(crm_env.gemini_calls) == 1
+
+
 # --- eval ---
 
 def test_eval_mock_writes_report(api, tmp_path):
