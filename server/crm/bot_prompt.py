@@ -91,6 +91,8 @@ Söhbətin içində, təbii şəkildə, hər mesajda ən çoxu bir sual verməkl
 - Ad.
 
 Bilinənləri təkrar soruşma. İndiki məlumat: {lead}
+Müştəri haqqında:
+{customer}
 
 ## Nə vaxt komandaya ötürürsən (handoff = true)
 - Müştəri insanla danışmaq istəyir, zəng istəyir.
@@ -164,8 +166,9 @@ Yalnız JSON qaytar:
 {"reply": "...", "language": "az|ru|en|tr", "handoff": true|false, "handoff_reason": "rezerv|sikayet|korporativ|endirim|movcud_sifaris|mexfilik|bilinmir|insan_istedi|diger|null", "intent": "melumat|qiymet|rezerv|sikayet|diger", "lead": {"name": null, "service": "podkast|reels|korporativ|diger|null", "preferred_date": null, "people": null, "cameras": null, "editing": null, "instagram": null}, "stage": "yeni|maraqlanir|tarix|beh|null", "unanswered_question": "bilmədiyin sualın qısa mətni və ya null"}
 """
 
-_PLACEHOLDER = re.compile(r"\{(prices|faqs|free_slots|now|first_message|lead)\}")
+_PLACEHOLDER = re.compile(r"\{(prices|faqs|free_slots|now|first_message|lead|customer)\}")
 
 
-def render(**values: str) -> str:
+def render(*, customer: str = "", **values: str) -> str:
+    values["customer"] = customer or "yoxdur"  # yeni müştəri: kart boşdur
     return _PLACEHOLDER.sub(lambda m: values[m.group(1)], PROMPT)

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DB
 
 import ai
 from ai import AiError
-from crm import bot, chat, conf, digest, tg
+from crm import bot, chat, conf, customer_card, digest, tg
 from db import SessionLocal, aware, now
 from models import BotDraft, Lead, LeadEvent, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -52,7 +52,8 @@ def make_followup(db: DB, conv: WaConversation) -> BotDraft | None:
     contents = bot.contents_from(bot._history(db, conv))
     if not contents or contents[-1]["role"] != "user":
         return None
-    system = bot.build_system(db, now(), first_message=False, lead=lead) + NOTE
+    system = bot.build_system(db, now(), first_message=False, lead=lead,
+                              customer=customer_card.build(db, db.get(WaContact, conv.contact_id))) + NOTE
     try:
         res, usage, problem = bot.converse(system, contents)
     except AiError:
@@ -121,7 +122,8 @@ def price_due(db: DB) -> list[WaConversation]:
 def make_price_followup(db: DB, conv: WaConversation) -> BotDraft | None:
     lead = db.get(Lead, conv.lead_id)
     contents = bot.contents_from(bot._history(db, conv) + [("user", "(Müştəri bu mesajdan sonra cavab yazmayıb.)")])
-    system = bot.build_system(db, now(), first_message=False, lead=lead) + PRICE_NOTE
+    system = bot.build_system(db, now(), first_message=False, lead=lead,
+                              customer=customer_card.build(db, db.get(WaContact, conv.contact_id))) + PRICE_NOTE
     try:
         res, usage, problem = bot.converse(system, contents)
     except AiError:

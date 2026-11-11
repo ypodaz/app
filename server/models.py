@@ -357,7 +357,19 @@ class WaConversation(Base):
     window_expires_at: Mapped[Optional[datetime]] = mapped_column(TS)  # 24 saat pəncərəsi
     unread: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     lead_id: Mapped[Optional[int]] = mapped_column(Integer)
+    # foreign | personal: bot söhbəti bir dəfə sahibkara ötürüb; sahibkar sonra `bot`-a qaytarsa təkrar ötürülmür
+    route: Mapped[Optional[str]] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class KnownContact(Base):
+    """Sahibkarın telefon kontaktları (scripts/import_contacts.py): customer = adında «Y Pod», personal = qalanı.
+    Şəxsi kontaktların adı saxlanmır."""
+    __tablename__ = "known_contacts"
+    phone: Mapped[str] = mapped_column(String(32), primary_key=True)  # crm.contacts.normalize formatı: 994501112233
+    kind: Mapped[str] = mapped_column(String(16))  # customer | personal
+    first_name: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
 
 
 class WaMessage(Base):

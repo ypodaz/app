@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import WD, AiError
-from crm import bot_prompt, chat, conf, kapso, slots, tg
+from crm import bot_prompt, chat, conf, contacts, customer_card, kapso, slots, tg
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -21,6 +21,7 @@ from views import BAKU
 log = logging.getLogger("bot")
 
 HISTORY = 20
+OLD_HISTORY = 10  # Kapso history_sync ilə gələn köhnə yazışmadan neçə mesaj
 MAX_REPLY = 900
 FORBIDDEN = ("icarə", "kirayə", "ən yaxşı")
 # Türk sözləri azərbaycanca cavabda qadağandır; müştəri türkcə yazıbsa (language=tr) yoxlanmır.
@@ -122,7 +123,7 @@ def now_text(dt: datetime) -> str:
 
 
 def build_system(db: DB, now_dt: datetime, *, first_message: bool, lead: Lead | None = None,
-                 slots_text: str | None = None) -> str:
+                 slots_text: str | None = None, customer: str = "") -> str:
     faqs = db.scalars(select(Faq).where(Faq.active.is_(True)).order_by(Faq.id)).all()
     if slots_text is None:
         slots_text = slots.free_text(db, now_dt) or "Növbəti 7 gündə boş vaxt yoxdur."
@@ -130,7 +131,7 @@ def build_system(db: DB, now_dt: datetime, *, first_message: bool, lead: Lead | 
         prices=ai._price_lines(),
         faqs="\n".join(f"S: {f.question}\nC: {f.answer}" for f in faqs) or "(hələ yoxdur)",
         free_slots=slots_text, now=now_text(now_dt), first_message="bəli" if first_message else "xeyr",
-        lead=_lead_text(lead))
+        lead=_lead_text(lead), customer=customer)
 
 
 def contents_from(history: list[tuple[str, str]]) -> list[dict]:
@@ -287,9 +288,34 @@ def skip_reason(db: DB, conv: WaConversation, contact: WaContact) -> str | None:
 
 
 def _history(db: DB, conv: WaConversation) -> list[tuple[str, str]]:
+    """Kontaktın son köhnə (history) mesajları, sonra bu söhbətin son mesajları; xronoloji."""
+    old = db.scalars(select(WaMessage).join(WaConversation, WaConversation.id == WaMessage.conversation_id)
+                     .where(WaConversation.contact_id == conv.contact_id, WaMessage.source == "history")
+                     .order_by(WaMessage.created_at.desc(), WaMessage.id.desc()).limit(OLD_HISTORY)).all()
     rows = db.scalars(select(WaMessage).where(WaMessage.conversation_id == conv.id, WaMessage.source != "history")
                       .order_by(WaMessage.created_at.desc(), WaMessage.id.desc()).limit(HISTORY)).all()
-    return [("user" if m.source == "customer" else "model", m.text) for m in reversed(rows)]
+    return ([("user" if m.direction == "in" else "model", m.text) for m in reversed(old)]
+            + [("user" if m.source == "customer" else "model", m.text) for m in reversed(rows)])
+
+
+ROUTE_HEAD = {"foreign": "🌍 Xarici nömrə", "personal": "👤 Şəxsi kontakt (Y Pod deyil)"}
+
+
+def route_away(db: DB, conv: WaConversation, contact: WaContact) -> str | None:
+    """Xarici və ya şəxsi nömrə: söhbət bir dəfəlik sahibkara keçir (qiymət fərqli deyilir), Telegram-a xəbər gedir.
+    Qaytarır: foreign | personal | None (bot normal işləyir)."""
+    if conv.route:  # artıq ötürülüb; sahibkar `bot`-a qaytarıbsa, onun qərarıdır
+        return None
+    kind = contacts.route(contact, contacts.lookup(db, contact.phone))
+    if not kind:
+        return None
+    conv.mode, conv.route = "human", kind
+    db.commit()
+    last_in = chat.last_message(db, conv.id, "customer")
+    alerts.notify(f"route:{conv.id}", f"{ROUTE_HEAD[kind]}: {contact.name or '-'}, +{contacts.normalize(contact.phone)}, "
+                                      f"söhbət sizdədir. Mesaj: «{(last_in.text if last_in else '')[:200]}»\n"
+                                      f"{chat.panel_link(conv.id)}")
+    return kind
 
 
 def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instruction: str | None = None) -> str:
@@ -300,11 +326,14 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     why = skip_reason(db, conv, contact)
     if why:
         return f"skip:{why}"
+    routed = route_away(db, conv, contact)
+    if routed:
+        return f"route:{routed}"
     if chat.reject_pending(db, conv.id, "yeni mesaj gəldi"):
         db.commit()
     first = chat.last_message(db, conv.id, "bot") is None
     lead = db.get(Lead, conv.lead_id) if conv.lead_id else None
-    system = build_system(db, now(), first_message=first, lead=lead)
+    system = build_system(db, now(), first_message=first, lead=lead, customer=customer_card.build(db, contact))
     if avoid:
         system += (f"\n\nSAHİBKAR ƏVVƏLKİ QARALAMANI BƏYƏNMƏDİ: «{avoid[:1500]}». Müştərinin son mesajına başqa cür "
                    "cavab yaz: fərqli başlanğıc, fərqli yanaşma və ifadələr. Faktlar və qaydalar eyni qalır.")
@@ -321,6 +350,7 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         return "ai_error"
     ai.count_usage(db, "bot", *usage)
     last_in = chat.last_message(db, conv.id, "customer")
+    res = {**res, "customer_short": customer_card.short(db, contact)}  # Telegram qaralama başlığı üçün (model_output)
     if problem:  # iki dəfə filtrə düşdü: cavab getmir, söhbət insana keçir
         res = {**res, "handoff": True, "handoff_reason": "filtr", "reply": ""}
     apply_result(db, conv, contact, res)

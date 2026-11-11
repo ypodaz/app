@@ -383,7 +383,9 @@ def test_history_roles_and_prompt_inputs(api, crm_env):
     assert "Studiyada çəkiliş, 1 saat" in system  # ai._price_lines
     assert "Bakı vaxtı" in system and "- bəli" not in system
     roles = [c["role"] for c in contents]
-    assert roles == ["user", "model", "user"] and "history-mətn" not in str(contents)  # bot+phone birləşir
+    assert roles == ["user", "model", "user"]  # bot+phone birləşir
+    first = contents[0]["parts"][0]["text"]
+    assert first.startswith("history-mətn") and first.endswith("customer-mətn")  # köhnə yazışma əvvəldə
     assert "bot-mətn" in str(contents) and "phone-mətn" in str(contents)
 
 
