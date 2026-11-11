@@ -34,6 +34,9 @@ def send_draft(db: DB, draft: BotDraft) -> str | None:
     contact = db.get(WaContact, conv.contact_id)
     last = chat.last_message(db, conv.id, "customer")
     head = f"{contact.name or 'Naməlum'} ({contact.phone or 'telefonsuz'})"
+    card = (draft.model_output or {}).get("customer_short")
+    if card:
+        head += f"\n👤 {card}"
     if draft.reason:
         head += f"\n[{draft.reason}]"
     text = f"💬 {head}\n\nMüştəri: {(last.text if last else '-')[:700]}\n\nQaralama:\n{draft.text[:2000]}"
