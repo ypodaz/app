@@ -45,3 +45,15 @@ VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "https://ypodaz.github.io")  # p
 # sahibkara Telegram xəbərdarlığı (boşdursa söndürülüb)
 TG_BOT_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
 TG_CHAT_ID = os.environ.get("TG_CHAT_ID", "")
+
+# CRM Faza 1: avtomatik paylaşım (Buffer + Cloudflare R2)
+BUFFER_API_KEY = os.environ.get("BUFFER_API_KEY", "")
+BUFFER_ORG_ID = os.environ.get("BUFFER_ORG_ID", "")
+R2_PUBLIC_BASE_URL = os.environ.get("R2_PUBLIC_BASE_URL", "")
+SOCIAL_DAILY_REQUEST_CAP = int(os.environ.get("SOCIAL_DAILY_REQUEST_CAP", "80"))
+
+# CRM Faza 2: WhatsApp (Kapso) və Telegram düymələri
+KAPSO_API_KEY = os.environ.get("KAPSO_API_KEY", "")
+KAPSO_WEBHOOK_SECRET = os.environ.get("KAPSO_WEBHOOK_SECRET", "")
+KAPSO_PHONE_NUMBER_ID = os.environ.get("KAPSO_PHONE_NUMBER_ID", "")
+TG_WEBHOOK_SECRET = os.environ.get("TG_WEBHOOK_SECRET", "")

@@ -25,6 +25,11 @@ cd web && npm install && npm run dev   # http://localhost:5173/app/
 | `APP_URL` | `https://ypodaz.github.io/app/` |
 | `ADMIN_LOGIN` | admin login-i |
 | `ADMIN_PASSWORD_HASH` | `python hash_password.py` nəticəsi; parolu dəyişmək üçün yenisini yaz |
+| `BUFFER_API_KEY`, `BUFFER_ORG_ID` | Buffer API açarı və təşkilat id-si (paylaşım) |
+| `R2_PUBLIC_BASE_URL` | Cloudflare R2 ictimai bucket ünvanı (videoların URL əsası) |
+| `SOCIAL_DAILY_REQUEST_CAP` | Buffer sorğu limiti gündə (standart 80) |
+| `KAPSO_API_KEY`, `KAPSO_WEBHOOK_SECRET`, `KAPSO_PHONE_NUMBER_ID` | WhatsApp vasitəçisi Kapso |
+| `TG_WEBHOOK_SECRET` | Telegram düymə webhook-u üçün sirr |
 
 Railway servisi: Root Directory `server`, start command
 `alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT`.
