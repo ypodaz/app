@@ -383,7 +383,7 @@ def test_ig_voice_transcribed_before_reply(api, net, crm_env, monkeypatch):
 def test_ig_voice_failed_stays_placeholder(api, net, crm_env, monkeypatch):
     from crm import voice
     monkeypatch.setattr(voice, "text_from_url", lambda db, url: "")
-    crm_env.gemini(jreply("Səsli mesajı aça bilmədim, qısa yazsanız, dərhal cavab verərəm 🙏"))
+    crm_env.gemini(jreply("Səs aydın deyil, mesaj kimi yaza bilərsiniz? 🙏"))
     post_ig(api, voice_dm())
     [it] = items()
     assert it.text == "[audio]" and "audio_url" not in (it.model_output or {})

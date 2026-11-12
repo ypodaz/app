@@ -20,7 +20,7 @@ PLACEHOLDER = "[audio]"
 MAX_BYTES = 8_000_000  # ~8 dəqiqəlik səsli mesaj
 KAPSO_HOST = "api.kapso.ai"  # Kapso açarı yalnız bu ünvana göndərilir
 SYSTEM = ("Bu səsli mesajı danışıldığı dildə (çox vaxt azərbaycanca, bəzən rusca, türkcə və ya ingiliscə) "
-          "olduğu kimi mətnə çevir. Yalnız mətni qaytar: izah, tərcümə, dırnaq yoxdur. Danışıq yoxdursa boş qaytar.")
+          "olduğu kimi mətnə çevir. Yalnız mətni qaytar: izah, tərcümə, dırnaq yoxdur. Danışıq yoxdursa və ya sözlər aydın eşidilmirsə, təxmin etmə, boş qaytar.")
 
 
 def _download(url: str) -> tuple[bytes, str] | None:

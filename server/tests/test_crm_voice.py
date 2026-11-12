@@ -72,7 +72,7 @@ def test_kapso_key_not_sent_to_other_hosts(api, crm_env, downloads):
 def test_failed_transcription_is_tried_once(api, crm_env, downloads):
     downloads.resp = _Audio(status=403)
     conv_id = _audio_conv()
-    crm_env.gemini(jreply("Səsli mesajı aça bilmədim, qısa yazsanız, dərhal cavab verərəm 🙏"))
+    crm_env.gemini(jreply("Səs aydın deyil, mesaj kimi yaza bilərsiniz? 🙏"))
     bot.handle(conv_id)
     with SessionLocal() as db:
         assert voice.fill_missing(db, conv_id) == 0
