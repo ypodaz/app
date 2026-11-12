@@ -86,3 +86,12 @@ export type Automations = {
   birthday: { enabled: boolean; gift: number; title: string; body: string };
   review: { enabled: boolean; url: string; title: string; body: string };
 };
+
+export type Person = {
+  id: number; display_name: string; phone: string | null; ig_username: string | null; client_id: number | null;
+  profession: string; workplace: string; reason: string; service: string; need: string; phones_found: string[];
+  summary: string; outcome: 'client' | 'lead' | 'lost' | 'unknown'; sources: string[]; msg_count: number;
+  first_contact_at: string | null; last_contact_at: string | null; card_at: string | null;
+  wa_link: string | null; ig_link: string | null;
+};
+export type PeopleList = { items: Person[]; total: number };

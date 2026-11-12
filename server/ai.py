@@ -72,11 +72,14 @@ def remaining(db: DB, subject: str, daily: int) -> int:
 
 # --- Gemini ---
 
-def generate(system: str, contents: list[dict], tools: list[dict] | None = None, max_tokens: int = 900) -> dict:
-    """Bir generateContent çağırışı. Cavab: {"content": ..., "usage": (in, out)}."""
+def generate(system: str, contents: list[dict], tools: list[dict] | None = None, max_tokens: int = 900,
+             json_mode: bool = False) -> dict:
+    """Bir generateContent çağırışı. Cavab: {"content": ..., "usage": (in, out)}. json_mode: cavab JSON olsun."""
     body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": contents,
             "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.4,
                                  "thinkingConfig": {"thinkingLevel": "low"}}}  # sürət: 4–5 san
+    if json_mode:
+        body["generationConfig"]["responseMimeType"] = "application/json"
     if tools:
         body["tools"] = [{"functionDeclarations": tools}]
     try:

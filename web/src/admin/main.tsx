@@ -25,6 +25,7 @@ import { Leads } from './pages/Leads';
 import { Login } from './pages/Login';
 import { Materials } from './pages/Materials';
 import { PackageForm, Packages } from './pages/Packages';
+import { People } from './pages/People';
 import { Panel } from './pages/Panel';
 import { Report } from './pages/Report';
 import { ShootForm } from './pages/ShootForm';
@@ -67,6 +68,7 @@ function Routes() {
     case 'report': return <Report />;
     case 'inbox': return <Inbox id={num || undefined} />;
     case 'leads': return <Leads />;
+    case 'people': return <People />;
     case 'social': return <Social />;
     case 'bot': return <BotSettings />;
   }

@@ -67,7 +67,7 @@ def crm_env(monkeypatch):
             return Resp(200, {"ok": True, "result": {"message_id": 900 + env.n}})
         raise AssertionError(f"testdə real HTTP sorğusu göndərilməməlidir: {url}")
 
-    def fake_generate(system, contents, tools=None, max_tokens=900):
+    def fake_generate(system, contents, tools=None, max_tokens=900, json_mode=False):
         env.gemini_calls.append((system, contents))
         if not env.gemini_queue:
             raise AssertionError("gözlənilməyən Gemini sorğusu")

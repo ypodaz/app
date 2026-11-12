@@ -493,3 +493,32 @@ class SocialItem(Base):
     model_output: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     decided_at: Mapped[Optional[datetime]] = mapped_column(TS)
+
+
+class Person(Base):
+    """Müştəri bazası (scripts/build_people.py): IG, WhatsApp, app və kontaktlardan birləşdirilmiş şəxs + AI kartı.
+    Deterministik məlumat (Client, çəkiliş) AI-dan üstündür."""
+    __tablename__ = "people"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    display_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    phone: Mapped[Optional[str]] = mapped_column(String(32), index=True)  # crm.contacts.normalize formatı
+    ig_username: Mapped[Optional[str]] = mapped_column(String(80), index=True)
+    igsid: Mapped[Optional[str]] = mapped_column(String(64), index=True)
+    client_id: Mapped[Optional[int]] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), index=True)
+    profession: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    workplace: Mapped[str] = mapped_column(String(160), default="", server_default="")
+    reason: Mapped[str] = mapped_column(Text, default="", server_default="")  # niyə çəkiliş istəyib
+    service: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    need: Mapped[str] = mapped_column(Text, default="", server_default="")
+    phones_found: Mapped[str] = mapped_column(Text, default="", server_default="")  # vergüllə, mesajlardan
+    summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    outcome: Mapped[str] = mapped_column(String(8), default="unknown", server_default="unknown")  # client | lead | lost | unknown
+    sources: Mapped[str] = mapped_column(String(40), default="", server_default="")  # vergüllə: ig,wa,app,contacts
+    msg_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    first_contact_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    last_contact_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    card_model: Mapped[Optional[str]] = mapped_column(String(60))
+    card_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)

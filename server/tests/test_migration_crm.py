@@ -24,3 +24,12 @@ def test_upgrade_and_downgrade(tmp_path):
     tables = set(inspect(create_engine(url)).get_table_names())
     assert not CRM_TABLES & tables and "clients" in tables
     alembic(url, "upgrade", "head")  # təkrar yuxarı da işləyir
+
+
+def test_people_table_migration(tmp_path):
+    url = f"sqlite:///{tmp_path / 'p.db'}"
+    alembic(url, "upgrade", "head")
+    assert "people" in set(inspect(create_engine(url)).get_table_names())
+    alembic(url, "downgrade", "0012")
+    assert "people" not in set(inspect(create_engine(url)).get_table_names())
+    alembic(url, "upgrade", "head")

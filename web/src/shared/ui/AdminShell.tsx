@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AIcon, type AIconName } from '../../admin/components/AIcon';
 import { useAuth } from '../../admin/ctx';
 
-export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'campaigns' | 'report' | 'inbox' | 'leads' | 'social';
+export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'campaigns' | 'report' | 'inbox' | 'leads' | 'people' | 'social';
 
 // Neon: kompüterdə yan panel, planşetdə ikon relsi, telefonda 4 bənd + «Daha çox» vərəqi.
 const ITEMS: { key: AdminTab; label: string; icon: AIconName; bar: boolean }[] = [
@@ -11,6 +11,7 @@ const ITEMS: { key: AdminTab; label: string; icon: AIconName; bar: boolean }[] =
   { key: 'clients', label: 'Müştərilər', icon: 'users', bar: true },
   { key: 'inbox', label: 'Yazışmalar', icon: 'msg', bar: false },
   { key: 'leads', label: 'Leadlər', icon: 'userplus', bar: false },
+  { key: 'people', label: 'Müştəri bazası', icon: 'folder', bar: false },
   { key: 'packages', label: 'Paketlər', icon: 'pkg', bar: false },
   { key: 'materials', label: 'Materiallar', icon: 'folder', bar: false },
   { key: 'campaigns', label: 'Kampaniyalar', icon: 'mega', bar: true },
