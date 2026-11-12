@@ -1,5 +1,5 @@
 """WhatsApp botu: söhbəti oxuyur, Gemini-dən JSON cavab alır, təhlükəsizlik filtrindən keçirir, lead-i yeniləyir,
-qaralama yaradır (susmaya görə) və ya göndərir (`bot_mode = auto`). Rezervi bot heç vaxt təsdiqləmir.
+qaralama yaradır (susmaya görə) və ya göndərir (`bot_mode = auto`; `new_auto` — yalnız ilk dəfə yazana). Rezervi bot heç vaxt təsdiqləmir.
 """
 import json
 import logging
@@ -412,7 +412,7 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     if res["handoff"]:
         # Avtomatik rejimdə söhbət insana keçir. Qaralama rejimində sahibkar hər cavabı onsuz da təsdiqləyir:
         # kilid botu sonrakı suallarda susdururdu, ona görə yalnız xəbərdarlıq gedir.
-        auto = conf.bot_mode(db) == "auto"
+        auto = auto_reply(db, conv, contact)
         if auto:
             conv.mode = "human"
         outcome = f"handoff:{res['handoff_reason']}"
@@ -428,11 +428,36 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     return outcome
 
 
+def is_new_customer(db: DB, conv: WaConversation, contact: WaContact) -> bool:
+    """İlk dəfə yazan: telefon kitabçasında yoxdur, bağlanmış çəkilişi yoxdur, köhnə (history) və ya başqa söhbətdə
+    yazışması yoxdur. Qərar kontakt üçün yadda saxlanır (`wa_new:<id>`): bot ilə başlayan yeni müştəri sonrakı
+    söhbətlərdə də yeni sayılır; bağlanmış çəkilişdən sonra isə köhnə müştəridir."""
+    known, shoots, last_history = customer_card._facts(db, contact)
+    if known or shoots or last_history:
+        return False
+    key = f"wa_new:{contact.id}"
+    cached = conf.get(db, key)
+    if cached is not None:
+        return cached == "1"
+    earlier = db.scalar(select(WaMessage.id).join(WaConversation, WaConversation.id == WaMessage.conversation_id)
+                        .where(WaConversation.contact_id == contact.id, WaMessage.conversation_id != conv.id).limit(1))
+    conf.put(db, key, "0" if earlier else "1")
+    return not earlier
+
+
+def auto_reply(db: DB, conv: WaConversation, contact: WaContact | None = None) -> bool:
+    """Bot cavabı təsdiqsiz gedirmi: `auto` — hamıya, `new_auto` — yalnız ilk dəfə yazana, `draft` — heç kimə."""
+    mode = conf.bot_mode(db)
+    if mode == "new_auto":
+        return is_new_customer(db, conv, contact or db.get(WaContact, conv.contact_id))
+    return mode == "auto"
+
+
 def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str | None,
             draft_only: bool = False) -> str:
     """`auto`: dərhal göndərir; `draft` (susmaya görə): qaralama + Telegram düyməsi. Qaytarır: sent | draft.
     `draft_only`: yenidən yazılan cavab avtomatik rejimdə də yalnız qaralama olur."""
-    if conf.bot_mode(db) == "auto" and not draft_only:
+    if auto_reply(db, conv) and not draft_only:
         try:
             chat.send_bot_reply(db, conv, text)
             return "sent"

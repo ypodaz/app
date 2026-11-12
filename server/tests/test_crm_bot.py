@@ -537,6 +537,7 @@ def test_leads_faqs_quick_replies_unanswered_settings(api, crm_env):
     assert s["bot_enabled"] is True and s["bot_mode"] == "draft" and s["kapso_month_limit"] == 2000
     s = api.post("/api/admin/bot/settings", json={"bot_mode": "auto", "bot_enabled": False}, headers=adm).json()
     assert s["bot_mode"] == "auto" and s["bot_enabled"] is False
+    assert api.post("/api/admin/bot/settings", json={"bot_mode": "new_auto"}, headers=adm).json()["bot_mode"] == "new_auto"
     assert api.post("/api/admin/bot/settings", json={"bot_mode": "x"}, headers=adm).status_code == 422
 
 
@@ -856,3 +857,62 @@ def test_inbox_badge_counts_conversations_with_pending(api, crm_env):
         db.commit()
     r = api.get("/api/admin/inbox/badge", headers=bearer(admin_token(api)))
     assert r.status_code == 200 and r.json() == {"pending": 1}
+
+
+# --- new_auto: ilk dəfə yazana avtomatik, köhnə müştəriyə qaralama ---
+
+def _new_auto():
+    with SessionLocal() as db:
+        conf.put(db, "bot_mode", "new_auto")
+        db.commit()
+
+
+def test_new_auto_sends_to_first_timer(api, crm_env):
+    _, conv_id = mk_conv()
+    _new_auto()
+    crm_env.gemini(jreply("Salam, buyurun"))
+    assert bot.handle(conv_id) == "sent" and count(BotDraft) == 0
+
+
+def test_new_auto_drafts_for_known_contact(api, crm_env):
+    from models import KnownContact
+    _, conv_id = mk_conv()
+    with SessionLocal() as db:
+        db.add(KnownContact(phone="994501112233", kind="customer", first_name="Aysel"))
+        db.commit()
+    _new_auto()
+    crm_env.gemini(jreply("Salam, Aysel xanım"))
+    assert bot.handle(conv_id) == "draft" and count(BotDraft) == 1 and not crm_env.kapso()
+
+
+def test_new_auto_drafts_when_contact_wrote_before(api, crm_env):
+    cid, old_conv = mk_conv()
+    with SessionLocal() as db:
+        conv = WaConversation(contact_id=cid, kapso_conversation_id="k-new", mode="bot", last_message_at=now(),
+                              last_inbound_at=now(), window_expires_at=now() + timedelta(hours=2))
+        db.add(conv)
+        db.flush()
+        db.add(WaMessage(conversation_id=conv.id, wamid="w-new", direction="in", source="customer", text="Yenə salam",
+                         created_at=now()))
+        db.commit()
+        new_conv = conv.id
+    _new_auto()
+    crm_env.gemini(jreply("Salam"))
+    assert bot.handle(new_conv) == "draft"
+
+
+def test_new_auto_first_timer_stays_auto_in_next_conversation(api, crm_env):
+    cid, conv_id = mk_conv()
+    _new_auto()
+    crm_env.gemini(jreply("Salam, buyurun"), jreply("Bəli, olar"))
+    assert bot.handle(conv_id) == "sent"
+    with SessionLocal() as db:
+        conv = WaConversation(contact_id=cid, kapso_conversation_id="k-2", mode="bot", last_message_at=now(),
+                              last_inbound_at=now(), window_expires_at=now() + timedelta(hours=2))
+        db.add(conv)
+        db.flush()
+        db.add(WaMessage(conversation_id=conv.id, wamid="w-2", direction="in", source="customer", text="Sabah olar?",
+                         created_at=now()))
+        db.commit()
+        conv2 = conv.id
+    assert bot.handle(conv2) == "sent"

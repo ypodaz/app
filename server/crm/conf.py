@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session as DB
 
 from models import Setting
 
-BOT_MODES = ("draft", "auto")
+BOT_MODES = ("draft", "auto", "new_auto")  # new_auto: ilk dəfə yazana avtomatik, köhnə müştəriyə qaralama
 
 
 def get(db: DB, key: str, default: str | None = None) -> str | None:

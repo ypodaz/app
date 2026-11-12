@@ -5,7 +5,8 @@ import { ASeg, ConfirmDialog, PageHead } from '../components/neon';
 import { whenFull } from '../components/crm';
 import { useAction, useAuth, useLoad } from '../ctx';
 
-type Settings = { bot_enabled: boolean; bot_mode: 'draft' | 'auto'; kapso_month_count: number; kapso_month_limit: number };
+type Mode = 'draft' | 'auto' | 'new_auto';
+type Settings = { bot_enabled: boolean; bot_mode: Mode; kapso_month_count: number; kapso_month_limit: number };
 type Faq = { id: number; question: string; answer: string; active: boolean };
 type Quick = { id: number; title: string; text: string };
 type Unanswered = { id: number; conversation_id: number | null; question: string; created_at: string };
@@ -37,9 +38,9 @@ function Switches() {
   const { call } = useAuth();
   const s = useLoad<Settings>('/bot/settings');
   const act = useAction();
-  const [ask, setAsk] = useState(false);
+  const [ask, setAsk] = useState<Mode | null>(null);
   async function save(body: Partial<Settings>) {
-    setAsk(false);
+    setAsk(null);
     const r = await act.run(() => call('/bot/settings', { method: 'POST', body }));
     if (r) s.reload();
   }
@@ -49,12 +50,15 @@ function Switches() {
     <Card title="Bot">
       <Err msg={s.err || act.err} />
       <div className="c-row"><span>Bot {d?.bot_enabled ? 'açıqdır' : 'bağlıdır'}</span><Toggle on={!!d?.bot_enabled} disabled={!d || act.busy} label="Bot açıq" onChange={(v) => save({ bot_enabled: v })} /></div>
-      <ASeg<'draft' | 'auto'> pill label="Rejim" disabled={!d || act.busy} value={d?.bot_mode ?? 'draft'}
-        options={[{ value: 'draft', label: 'Qaralama (mən təsdiqləyirəm)' }, { value: 'auto', label: 'Avtomatik' }]}
-        onChange={(v) => (v === 'auto' ? setAsk(true) : save({ bot_mode: 'draft' }))} />
+      <ASeg<Mode> pill label="Rejim" disabled={!d || act.busy} value={d?.bot_mode ?? 'draft'}
+        options={[{ value: 'draft', label: 'Qaralama (mən təsdiqləyirəm)' }, { value: 'new_auto', label: 'Yenilərə avtomatik' },
+          { value: 'auto', label: 'Avtomatik' }]}
+        onChange={(v) => (v === 'draft' ? save({ bot_mode: 'draft' }) : setAsk(v))} />
       <div className="c-kv"><span>Bu ay Kapso mesajı</span><span>{d ? `${d.kapso_month_count} / ${d.kapso_month_limit}` : '…'}</span></div>
       <div className="a3-prog" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
-      <ConfirmDialog open={ask} title="Avtomatik rejim?" text="Bot cavabları təsdiqsiz birbaşa müştəriyə göndərəcək." confirmLabel="Avtomatikə keç" onCancel={() => setAsk(false)} onConfirm={() => save({ bot_mode: 'auto' })} />
+      <ConfirmDialog open={ask !== null} title="Avtomatik rejim?"
+        text={ask === 'new_auto' ? 'İlk dəfə yazanlara bot təsdiqsiz cavab verəcək; köhnə müştərilərin qaralaması Telegram-a gələcək.' : 'Bot cavabları təsdiqsiz birbaşa müştəriyə göndərəcək.'}
+        confirmLabel="Avtomatikə keç" onCancel={() => setAsk(null)} onConfirm={() => ask && save({ bot_mode: ask })} />
     </Card>
   );
 }

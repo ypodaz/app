@@ -431,3 +431,24 @@ def test_ig_echo_after_restart_recognized_from_db(api, net, crm_env, monkeypatch
 def test_prompt_keeps_internal_data_private():
     from crm import bot_prompt
     assert "Bu məlumatı sizinlə bölüşə bilmərik" in bot_prompt.PROMPT
+
+
+def new_auto_mode():
+    with SessionLocal() as db:
+        conf.put(db, "ig_dm_mode", "new_auto")
+        db.commit()
+
+
+@pytest.mark.parametrize("history,expected", [(False, "sent"), (True, "pending"), (None, "pending")])
+def test_ig_new_auto_by_history(api, net, crm_env, monkeypatch, history, expected):
+    from crm import instagram
+    calls = []
+    monkeypatch.setattr(instagram, "has_history", lambda igsid, before: calls.append(igsid) or history)
+    new_auto_mode()
+    crm_env.gemini(jreply("Salam!"))
+    post_ig(api, dm(mid="m1", text="Salam"))
+    [it] = items()
+    assert it.status == expected and calls == ["555"]
+    with SessionLocal() as db:
+        cached = conf.get(db, "ig_new:555")
+    assert cached == {False: "1", True: "0", None: None}[history]

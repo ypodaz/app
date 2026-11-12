@@ -401,7 +401,7 @@ def bot_settings(db: DB = Depends(get_db)):
 
 class BotSettingsIn(BaseModel):
     bot_enabled: bool | None = None
-    bot_mode: Literal["draft", "auto"] | None = None
+    bot_mode: Literal["draft", "auto", "new_auto"] | None = None
 
 
 @router.post("/bot/settings")

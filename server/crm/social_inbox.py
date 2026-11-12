@@ -1,7 +1,8 @@
 """Instagram DM/komment və YouTube kommenti: AI qaralaması (WhatsApp botunun təlimatı + kanal qeydi) və göndəriş.
 
 Komment və YouTube: qaralama Telegram-a düymələrlə gedir (social_tg), göndəriş sahibkar təsdiqindən sonradır.
-Instagram DM: `ig_dm_mode = auto` olanda bot özü cavab verir (sahibkar hər cavabı Telegram-da görür). Handoff olanda
+Instagram DM: `ig_dm_mode = auto` olanda bot özü cavab verir (sahibkar hər cavabı Telegram-da görür); `new_auto` —
+yalnız əvvəl bizimlə yazışmayana, köhnə yazışanlara qaralama. Handoff olanda
 və ya sahibkar Instagram app-dan özü yazanda o müştəriyə 7 gün avtomatik cavab getmir, yenə qaralama olur.
 Müştəri DM-də nömrə yazanda kontakt + lead yaranır və Telegram-a «WhatsApp-dan yaz» linkli kart gedir.
 """
@@ -55,8 +56,30 @@ class WindowClosed(Exception):
 SEND_ERRORS = (instagram.IgError, youtube.YtError, WindowClosed)
 
 
-def ig_auto(db: DB) -> bool:
-    return (conf.get(db, "ig_dm_mode", "draft") or "").strip().lower() == "auto"
+NEW_BUFFER = timedelta(hours=1)  # yeni adamın ilk mesajlarından bir az əvvəlki yazışma «köhnə» sayılır
+
+
+def ig_auto(db: DB, item: SocialItem) -> bool:
+    """DM-ə təsdiqsiz cavab: `auto` — hamıya, `new_auto` — yalnız əvvəl bizimlə yazışmayana, `draft` — heç kimə."""
+    mode = (conf.get(db, "ig_dm_mode", "draft") or "").strip().lower()
+    if mode == "new_auto":
+        return is_new_ig(db, item)
+    return mode == "auto"
+
+
+def is_new_ig(db: DB, item: SocialItem) -> bool:
+    """İlk dəfə yazan (Instagram-da əvvəlki yazışma yoxdur). Qərar `ig_new:<igsid>`-də saxlanır; API xətasında
+    qaralama (ehtiyat) və yadda saxlanmır."""
+    key = f"ig_new:{item.thread_id}"
+    cached = conf.get(db, key)
+    if cached is not None:
+        return cached == "1"
+    old = instagram.has_history(item.thread_id, aware(item.created_at) - NEW_BUFFER)
+    if old is None:
+        return False
+    conf.put(db, key, "0" if old else "1")
+    db.commit()
+    return not old
 
 
 def _human_key(thread: str) -> str:
@@ -291,7 +314,7 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         except Exception:  # lead xətası cavabı saxlamasın
             db.rollback()
             log.exception("Instagram lead (item %s)", item.id)
-        if ig_auto(db) and not avoid and not is_human(db, item.thread_id):  # «Yenidən yaz» həmişə qaralamadır
+        if not avoid and not is_human(db, item.thread_id) and ig_auto(db, item):  # «Yenidən yaz» həmişə qaralamadır
             try:
                 send(db, item)
                 db.commit()

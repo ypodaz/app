@@ -160,6 +160,20 @@ def username(igsid: str) -> str:
         return ""
 
 
+def has_history(igsid: str, before: datetime) -> bool | None:
+    """Bu adamla `before`-dan əvvəl yazışma olubmu (köhnə müştəri)? Xətada None: çağıran ehtiyatlı davranır."""
+    try:
+        r = httpx.get(f"{GRAPH}/me/conversations", timeout=15, headers={"Authorization": f"Bearer {token()}"},
+                      params={"platform": "instagram", "user_id": igsid, "fields": "messages.limit(25){created_time}"})
+        if r.status_code >= 400:
+            return None
+        convs = r.json().get("data") or []
+        times = [m.get("created_time") for c in convs for m in ((c.get("messages") or {}).get("data") or [])]
+        return any(datetime.fromisoformat(str(t).replace("+0000", "+00:00")) < aware(before) for t in times if t)
+    except Exception:
+        return None
+
+
 def _post(path: str, **kw) -> dict:
     if not enabled():
         raise IgError("Instagram qoşulmayıb")
