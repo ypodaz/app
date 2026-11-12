@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DB
 
 import ai
 from ai import AiError
-from crm import aftercare, bot, chat, conf, customer_card, digest, instagram, tg
+from crm import aftercare, bot, chat, conf, customer_card, digest, ig_stats, instagram, tg
 from db import SessionLocal, aware, now
 from models import BotDraft, Lead, LeadEvent, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -162,6 +162,12 @@ def run(db: DB) -> int:
     except Exception:  # montaj növbəsi xətası dövrü dayandırmasın
         db.rollback()
         log.exception("montaj növbəsi / rəy sorğusu")
+    try:
+        if ig_stats.due(db, now()):
+            ig_stats.send(db, now())
+    except Exception:  # statistika xətası dövrü dayandırmasın
+        db.rollback()
+        log.exception("həftəlik Instagram statistikası")
     try:
         instagram.refresh(db)
     except Exception:  # token xətası dövrü dayandırmasın
