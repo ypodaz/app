@@ -46,3 +46,12 @@ def test_tasks_and_draft_chat_migration(tmp_path):
     assert "tasks" not in insp.get_table_names()
     assert "telegram_chat_id" not in {c["name"] for c in insp.get_columns("bot_drafts")}
     alembic(url, "upgrade", "head")
+
+
+def test_social_ad_id_migration(tmp_path):
+    url = f"sqlite:///{tmp_path / 'a.db'}"
+    alembic(url, "upgrade", "head")
+    assert "ad_id" in {c["name"] for c in inspect(create_engine(url)).get_columns("social_items")}
+    alembic(url, "downgrade", "0014")
+    assert "ad_id" not in {c["name"] for c in inspect(create_engine(url)).get_columns("social_items")}
+    alembic(url, "upgrade", "head")

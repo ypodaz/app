@@ -120,6 +120,9 @@ def parse(body: dict) -> list[dict]:
                     "created_at": _time(m.get("timestamp"))}
             if not text and (audio or image):  # qaralamadan əvvəl social_inbox Gemini ilə mətnə çevirir
                 item["model_output"] = {"audio_url": audio} if audio else {"image_url": image}
+            ref = msg.get("referral") or m.get("referral") or {}  # reklamdan açılan yazışma (Meta: source=ADS, ad_id)
+            if isinstance(ref, dict) and ref.get("ad_id"):
+                item["ad_id"] = str(ref["ad_id"])[:32]
             out.append(item)
         # sənəddə komment həm `changes[]` içində, həm də birbaşa entry-də (field/value) göstərilir
         changes = entry.get("changes") or ([entry] if entry.get("field") else [])

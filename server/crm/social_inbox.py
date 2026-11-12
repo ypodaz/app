@@ -177,8 +177,15 @@ def _fill(lead: Lead, info: dict) -> None:
             setattr(lead, k, info[k])
 
 
+def thread_ad_id(db: DB, thread: str) -> str | None:
+    """IG yazışması reklamdan (click-to-DM) açılıbsa ilk reklam ID-si."""
+    return db.scalar(select(SocialItem.ad_id).where(
+        SocialItem.channel == "instagram", SocialItem.kind == "dm", SocialItem.thread_id == thread,
+        SocialItem.ad_id.is_not(None)).order_by(SocialItem.id).limit(1))
+
+
 def capture_lead(db: DB, item: SocialItem, res: dict) -> Lead | None:
-    """DM-də nömrə varsa: kontakt + lead (source=instagram) və Telegram-a WhatsApp linkli kart. Təkrar kart getmir."""
+    """DM-də nömrə varsa: kontakt + lead (source=instagram, reklamdan gəlibsə reklam) və Telegram-a WhatsApp linkli kart. Təkrar kart getmir."""
     texts = [r.text for r in db.scalars(select(SocialItem).where(
         SocialItem.channel == "instagram", SocialItem.kind == "dm", SocialItem.thread_id == item.thread_id,
         SocialItem.id <= item.id).order_by(SocialItem.id.desc()).limit(20))][::-1]
@@ -202,10 +209,12 @@ def capture_lead(db: DB, item: SocialItem, res: dict) -> Lead | None:
         contact.name = name
     lead = bot.instagram_lead(db, contact.id)
     if not lead:
-        lead = Lead(contact_id=contact.id, name=name or contact.name or "", phone=phone, source="instagram")
+        ad_id = thread_ad_id(db, item.thread_id)
+        source = "reklam" if ad_id else "instagram"
+        lead = Lead(contact_id=contact.id, name=name or contact.name or "", phone=phone, source=source)
         db.add(lead)
         db.flush()
-        bot._event(db, lead, "created", {"source": "instagram", "igsid": item.thread_id})
+        bot._event(db, lead, "created", {"source": source, "igsid": item.thread_id, **({"ad_id": ad_id} if ad_id else {})})
     _fill(lead, info)
     user = instagram.username(item.thread_id)
     if user:

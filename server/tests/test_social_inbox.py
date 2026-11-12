@@ -344,6 +344,37 @@ def test_ig_phone_creates_lead_and_card(api, net, crm_env):
     assert len([m for m in crm_env.tg("sendMessage") if m["text"].startswith("📥")]) == 1  # təkrar kart yoxdur
 
 
+def ad_dm(mid="a1", text="Salam, reklamı gördüm", sender="555", ad_id="120000000000000001"):
+    body = dm(mid=mid, text=text, sender=sender)
+    body["entry"][0]["messaging"][0]["message"]["referral"] = {
+        "ref": "", "ad_id": ad_id, "source": "ADS", "type": "OPEN_THREAD",
+        "ads_context_data": {"ad_title": "Reels paketi", "video_url": "https://example.com/v.mp4"}}
+    return body
+
+
+def test_ig_ad_referral_marks_thread_and_lead_source(api, net, crm_env):
+    from models import Lead, LeadEvent
+    auto_mode()
+    crm_env.gemini(jreply("Salam! Nə çəkmək istəyirsiniz?"),
+                   jreply("Təşəkkürlər! Komanda WhatsApp-dan yazacaq.", lead={"name": "Aysel"}),
+                   jreply("Buyurun."))
+    post_ig(api, ad_dm(mid="a1"))
+    post_ig(api, dm(mid="a2", text="Nömrəm 055 123 45 67"))  # reklam yalnız ilk mesajda gəlir
+    assert [(i.external_id, i.ad_id) for i in items()] == [("a1", "120000000000000001"), ("a2", None)]
+    with SessionLocal() as db:
+        [lead] = db.scalars(select(Lead)).all()
+        assert lead.source == "reklam"
+        ev = db.scalar(select(LeadEvent).where(LeadEvent.lead_id == lead.id, LeadEvent.kind == "created"))
+        assert ev.data["ad_id"] == "120000000000000001"
+
+
+def test_ig_link_referral_without_ad_ignored(api, net, crm_env):
+    body = dm(mid="r1")
+    body["entry"][0]["messaging"][0]["referral"] = {"ref": "sayt", "source": "SHORTLINK", "type": "OPEN_THREAD"}
+    post_ig(api, body)
+    assert [i.ad_id for i in items()] == [None]
+
+
 def test_whatsapp_links_instagram_lead(api, net, crm_env):
     from crm import bot
     from models import Lead, WaContact, WaConversation

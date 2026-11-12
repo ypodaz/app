@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DB
 import tgtopics
 from crm import conf, tg
 from db import aware
-from models import BotDraft, LeadEvent, UnansweredQuestion, WaConversation, WaMessage
+from models import BotDraft, LeadEvent, SocialItem, UnansweredQuestion, WaConversation, WaMessage
 from views import BAKU
 
 HOUR = 21
@@ -32,10 +32,15 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
     gaps = db.scalars(select(UnansweredQuestion).where(*_in(UnansweredQuestion.created_at, since, until))
                       .order_by(UnansweredQuestion.id)).all()
     weekly = _weekly(db, until)
-    if not (convs or msgs or drafts or gaps or weekly):
+    ads = db.execute(select(SocialItem.ad_id, func.count(func.distinct(SocialItem.thread_id))).where(
+        SocialItem.ad_id.is_not(None), *_in(SocialItem.created_at, since, until)).group_by(SocialItem.ad_id)).all()
+    if not (convs or msgs or drafts or gaps or weekly or ads):
         return None
     lines = [f"📊 Bot hesabatı, {aware(until).astimezone(BAKU):%d.%m}", "",
              f"Yeni söhbət: {convs}", f"Müştəridən mesaj: {msgs}"]
+    if ads:  # nömrə yazmasa da sayılır; reklam ID-si Meta Ads ilə tutuşdurmaq üçün
+        lines.append(f"Reklamdan IG yazışma: {sum(n for _, n in ads)} (" + ", ".join(
+            f"reklam {a}: {n}" for a, n in ads) + ")")
     if drafts:
         by = Counter(d.status for d in drafts)
         lines.append(f"Bot qaralamaları: {len(drafts)} (" + ", ".join(

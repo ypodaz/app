@@ -138,3 +138,16 @@ def test_bot_review_script(api, tmp_path):
     assert "## Həll olunmamış suallar (1)\n\n- [handoff:diger] Dron var?" in text
     assert "  - Bot: Uzun bot cavabı\n  - Sahibkar: Qısa cavab" in text
     assert "## Bəyənilməyən qaralamalar (1)" in text and "Gizli Ad" not in text and "994509998877" not in text
+
+
+def test_build_counts_ad_conversations(api):
+    from models import SocialItem
+    at = DAY + timedelta(hours=10)
+    with SessionLocal() as db:
+        for i, (thread, ad) in enumerate([("t1", "120001"), ("t1", "120001"), ("t2", "120001"), ("t3", "120002"),
+                                          ("t4", None)]):
+            db.add(SocialItem(channel="instagram", kind="dm", external_id=f"x{i}", thread_id=thread, text="Salam",
+                              ad_id=ad, created_at=at))
+        db.commit()
+        text = digest.build(db, SINCE, UNTIL)
+    assert "Reklamdan IG yazışma: 3 (reklam 120001: 2, reklam 120002: 1)" in text
