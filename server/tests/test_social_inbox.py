@@ -23,6 +23,8 @@ class Net:
         self.calls = []  # (method, url, kw)
         self.threads = []  # YouTube commentThreads cavabı
         self.ig_error = None
+        self.ig_thread = []  # Instagram Conversations API: köhnə yazışmanın mesajları
+        self.ig_gets = []
 
 
 @pytest.fixture()
@@ -47,6 +49,9 @@ def net(crm_env, monkeypatch):
         return base_post(url, **kw)
 
     def fake_get(url, **kw):
+        if "graph.instagram.com" in url and url.endswith("/me/conversations"):
+            n.ig_gets.append(kw)
+            return Resp(200, {"data": [{"messages": {"data": n.ig_thread}}]})
         n.calls.append(("GET", url, kw))
         assert "youtube/v3/commentThreads" in url
         return Resp(200, {"items": n.threads})
@@ -452,3 +457,42 @@ def test_ig_new_auto_by_history(api, net, crm_env, monkeypatch, history, expecte
     with SessionLocal() as db:
         cached = conf.get(db, "ig_new:555")
     assert cached == {False: "1", True: "0", None: None}[history]
+
+
+def ig_msg(text, sender, ago):
+    t = (now() - ago).strftime("%Y-%m-%dT%H:%M:%S+0000")
+    return {"message": text, "from": {"id": sender}, "created_time": t}
+
+
+def test_ig_reply_sees_old_conversation(api, net, crm_env):
+    # kampaniya mesajını sahibkar app-dan göndərib, müştəri cavab verir: bot köhnə söhbəti və o mesajı görməlidir
+    net.ig_thread = [ig_msg("Salam", "555", timedelta(days=60)),  # API ən təzəni əvvəl qaytara bilər
+                     ig_msg("Podkast neçəyədir? 2 nəfərik", "555", timedelta(days=60, seconds=-5)),
+                     ig_msg("Salam! 2 nəfərlik podkast 1 saat 70 AZN-dir.", ME, timedelta(days=59)),
+                     ig_msg("Salam! Y Pod-dan yazırıq, 2 nəfərlik podkastla maraqlanmışdınız.", ME, timedelta(hours=1)),
+                     ig_msg("Hə, gələn həftə olar?", "555", timedelta(0))][::-1]
+    crm_env.gemini(jreply("Bəli, hansı gün?"))
+    post_ig(api, dm(mid="m1", text="Hə, gələn həftə olar?"))
+    turns = [(c["role"], c["parts"][0]["text"]) for c in crm_env.gemini_calls[0][1]]
+    joined = "\n".join(t for _, t in turns)  # ardıcıl eyni rollu mesajlar birləşir
+    assert turns[0] == ("user", "Salam\n\nPodkast neçəyədir? 2 nəfərik")  # xronoloji
+    assert "Y Pod-dan yazırıq" in joined and joined.count("Hə, gələn həftə olar?") == 1
+    assert turns[-1] == ("user", "Hə, gələn həftə olar?")
+    assert turns[1][0] == "model" and "1 saat 70 AZN" in turns[1][1]
+    assert net.ig_gets[0]["params"]["user_id"] == "555"
+
+
+def test_ig_history_api_error_keeps_local(api, net, crm_env, monkeypatch):
+    def broken(url, **kw):
+        raise httpx.ConnectError("yoxdur")
+    crm_env.gemini(jreply("Salam!"))
+    monkeypatch.setattr(httpx, "get", broken)
+    post_ig(api, dm(mid="m1", text="Salam"))
+    assert [c["parts"][0]["text"] for c in crm_env.gemini_calls[0][1]] == ["Salam"]
+
+
+def test_ig_manual_message_without_bot_no_alert(api, net, crm_env, monkeypatch):
+    # sahibkar köhnə müştəriyə əl ilə yazır (bot bu söhbətdə yazmayıb): Telegram-a xəbər getmir
+    monkeypatch.setattr(social_inbox, "ECHO_WAIT", 0)
+    post_ig(api, echo("app1", to="999"))
+    assert not any(k == "ig-human:999" for k, _ in crm_env.alerts)

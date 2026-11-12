@@ -27,6 +27,7 @@ from models import Lead, SocialItem, WaContact
 
 log = logging.getLogger("bot")
 HISTORY = 10
+OLD_MARGIN = timedelta(seconds=2)
 WA_NUMBER = "994555303532"
 DM_NOTE = ("\n\nKANAL: Bu, Instagram DM-dir. WhatsApp-dakı kimi qısa və isti cavab ver, suallara cavab ver. "
            "Məqsəd söhbəti WhatsApp-a keçirməkdir. İlk cavabda nömrə istəmə: əvvəl sualına cavab ver və bir sual ver. "
@@ -115,7 +116,7 @@ def on_echo(thread: str, mid: str) -> str:
             return "own"
         changed = set_human(db, thread)
         db.commit()
-    if changed:
+    if changed and recent:  # bot bu söhbətdə heç yazmayıbsa (məs. əl ilə kampaniya mesajı), xəbərə ehtiyac yoxdur
         alerts.notify(f"ig-human:{thread}", "Instagram: müştəriyə özünüz yazdınız, bot bu söhbətdə 7 gün avtomatik "
                                             "cavab verməyəcək (qaralamalar Telegram-a gələcək).")
     return "human"
@@ -215,13 +216,18 @@ def add(db: DB, data: dict) -> SocialItem | None:
 
 
 def _history(db: DB, item: SocialItem) -> list[tuple[str, str]]:
-    """DM: thread-in son 10 item-i (müştəri mətni + göndərilmiş cavabımız). Komment: yalnız özü."""
+    """DM: Instagram-dakı köhnə yazışmanın son 10 mesajı (bazadakılardan əvvəlki: webhook-dan qabaqkı söhbət, əl ilə
+    göndərilən kampaniya mesajı), sonra thread-in son 10 item-i (müştəri mətni + göndərilmiş cavabımız).
+    Komment: yalnız özü."""
     if item.kind != "dm":
         return [("user", item.text)]
     rows = db.scalars(select(SocialItem).where(SocialItem.channel == item.channel, SocialItem.kind == "dm",
                                                SocialItem.thread_id == item.thread_id, SocialItem.id <= item.id)
                       .order_by(SocialItem.id.desc()).limit(HISTORY)).all()
     out = []
+    if item.channel == "instagram" and rows:
+        start = aware(rows[-1].created_at) - OLD_MARGIN  # API vaxtı saniyəlikdir: ilk mesajın özü təkrarlanmasın
+        out = [(role, text) for role, text, t in instagram.thread_messages(item.thread_id) if t < start][-HISTORY:]
     for r in reversed(rows):
         out.append(("user", r.text))
         if r.status == "sent" and r.draft_text:
