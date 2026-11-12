@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
-import settings
+import tgtopics
 from crm import conf, tg
 from db import aware
 from models import BotDraft, LeadEvent, UnansweredQuestion, WaConversation, WaMessage
@@ -89,7 +89,7 @@ def send(db: DB, t: datetime) -> bool:
     local = aware(t).astimezone(BAKU)
     text = build(db, local.replace(hour=0, minute=0, second=0, microsecond=0), t)
     if text:
-        tg._call("sendMessage", {"chat_id": settings.TG_CHAT_ID, "text": text})
+        tg._call("sendMessage", {**tgtopics.dest("reports"), "text": text})
     conf.put(db, "digest_last", local.date().isoformat())  # fəaliyyət olmasa da: saatda bir yoxlanmasın
     db.commit()
     return bool(text)

@@ -117,7 +117,7 @@ def on_echo(thread: str, mid: str) -> str:
         changed = set_human(db, thread)
         db.commit()
     if changed and recent:  # bot bu söhbətdə heç yazmayıbsa (məs. əl ilə kampaniya mesajı), xəbərə ehtiyac yoxdur
-        alerts.notify(f"ig-human:{thread}", "Instagram: müştəriyə özünüz yazdınız, bot bu söhbətdə 7 gün avtomatik "
+        alerts.notify(f"ig-human:{thread}", topic="auto", text="Instagram: müştəriyə özünüz yazdınız, bot bu söhbətdə 7 gün avtomatik "
                                             "cavab verməyəcək (qaralamalar Telegram-a gələcək).")
     return "human"
 
@@ -291,7 +291,7 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
     except AiError as e:
         item.status, item.model_output, item.decided_at = "ignored", {"error": str(e)[:300], "regen": regen}, now()
         db.commit()
-        alerts.notify(f"social-ai:{item.id}", f"AI cavab vermədi ({item.channel} {item.kind}), özünüz baxın: "
+        alerts.notify(f"social-ai:{item.id}", topic="action", text=f"AI cavab vermədi ({item.channel} {item.kind}), özünüz baxın: "
                                               f"{item.text[:300]}")
         return "ai_error"
     ai.count_usage(db, "bot", *usage)
@@ -304,7 +304,7 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         item.status, item.decided_at = "ignored", now()
         db.commit()
         if item.kind == "dm" or problem:  # DM cavabsız qalmasın; spam komment üçün xəbər getmir
-            alerts.notify(f"social-empty:{item.id}", f"{social_tg.title(item)}: qaralama yazılmadı "
+            alerts.notify(f"social-empty:{item.id}", topic="action", text=f"{social_tg.title(item)}: qaralama yazılmadı "
                                                      f"({problem or res.get('handoff_reason') or 'boş cavab'}), "
                                                      f"özünüz baxın: {item.text[:300]}")
         return "ignored"
@@ -329,14 +329,15 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
                 db.commit()
             except SEND_ERRORS as e:
                 db.rollback()
-                alerts.notify(f"ig-auto:{item.id}", f"Instagram avtomatik cavab getmədi ({str(e)[:200]}), qaralama "
+                alerts.notify(f"ig-auto:{item.id}", topic="action", text=f"Instagram avtomatik cavab getmədi ({str(e)[:200]}), qaralama "
                                                     "Telegram-dadır.")
             else:
                 if res.get("handoff"):
                     set_human(db, item.thread_id)
                     db.commit()
                     social_tg.auto_log(item, f"🙋 Əməkdaş lazımdır (səbəb: {res.get('handoff_reason') or '-'}). Bot "
-                                             "cavab verdi və bu müştəriyə 7 gün susur, Instagram-dan özünüz yazın.")
+                                             "cavab verdi və bu müştəriyə 7 gün susur, Instagram-dan özünüz yazın.",
+                                       topic="action")
                     return f"handoff:{res.get('handoff_reason')}"
                 social_tg.auto_log(item)
                 return "sent"

@@ -81,7 +81,7 @@ def crm_env(monkeypatch):
     monkeypatch.setattr(chat, "PAUSE", (0, 0))  # iki mesaj arasında real gözləmə yoxdur
     monkeypatch.setattr(ai, "generate", fake_generate)
     monkeypatch.setattr(alerts, "notify",
-                        lambda key, text: (key != "start" and env.alerts.append((key, text))) or True)  # «server başladı» sayılmır
+                        lambda key, text, topic="server": (key != "start" and env.alerts.append((key, text))) or True)  # «server başladı» sayılmır
     return env
 
 

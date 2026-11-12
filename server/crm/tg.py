@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import settings
+import tgtopics
 from crm import chat, kapso
 from db import now
 from models import BotDraft, WaContact, WaConversation
@@ -43,7 +44,7 @@ def send_draft(db: DB, draft: BotDraft) -> str | None:
     if len(chat.split_reply(draft.text)) > 1:
         text += "\n\n✂️ 2 mesaj kimi gedəcək"  # müştəriyə getmir
     res = _call("sendMessage", {
-        "chat_id": settings.TG_CHAT_ID, "text": text,
+        **tgtopics.dest("action"), "text": text,
         "reply_markup": {"inline_keyboard": [[{"text": "✅ Göndər", "callback_data": f"d:{draft.id}:s"},
                                               {"text": "🔄 Yenidən yaz", "callback_data": f"d:{draft.id}:g"},
                                               {"text": "✖️ Rədd", "callback_data": f"d:{draft.id}:r"}]]}})
@@ -57,7 +58,7 @@ def handle_callback(db: DB, cq: dict) -> str:
     """callback_query-ni icra edir. Qaytarır: ignored | sent | rejected | resolved | error | regenerate | limit.
     `regenerate`-də yeni cavabı çağıran (webhook) fon işi kimi işə salır (`bot.regenerate`)."""
     msg = cq.get("message") or {}
-    if str((msg.get("chat") or {}).get("id")) != str(settings.TG_CHAT_ID):
+    if not tgtopics.chat_allowed((msg.get("chat") or {}).get("id")):
         return "ignored"
     if str(cq.get("data", "")).startswith("x:"):  # Instagram/YouTube qaralamaları
         from crm import social_tg
@@ -133,7 +134,7 @@ def handle_reply(db: DB, msg: dict) -> tuple[str, int | None]:
     """Sahibkar qaralama mesajına cavab olaraq göstəriş yazır («qısa yaz»). Qaytarır: (nəticə, draft_id).
     Nəticə: ignored | resolved | limit | regenerate. `regenerate`-də yeni qaralamanı çağıran fonda yazdırır."""
     chat_id = (msg.get("chat") or {}).get("id")
-    if str(chat_id) != str(settings.TG_CHAT_ID):
+    if not tgtopics.chat_allowed(chat_id):
         return "ignored", None
     text = (msg.get("text") or "").strip()
     reply_to = (msg.get("reply_to_message") or {}).get("message_id")
@@ -148,6 +149,19 @@ def handle_reply(db: DB, msg: dict) -> tuple[str, int | None]:
         _call("editMessageText", {"chat_id": chat_id, "message_id": reply_to,
                                   "text": f"🔄 Göstərişlə yenidən yazılır: «{text[:300]}»\n\n{draft.text[:3000]}"})
     else:
-        _call("sendMessage", {"chat_id": chat_id, "reply_to_message_id": msg.get("message_id"),
+        thread = {"message_thread_id": msg["message_thread_id"]} if msg.get("message_thread_id") else {}
+        _call("sendMessage", {"chat_id": chat_id, **thread, "reply_to_message_id": msg.get("message_id"),
                               "text": "Bu qaralama artıq həll olunub." if result == "resolved" else LIMIT_TEXT})
     return result, draft.id
+
+
+def auto_log(db: DB, conv: WaConversation, text: str) -> None:
+    """WhatsApp-da botun təsdiqsiz göndərdiyi cavab: «🤖 Bot özü cavabladı» mövzusuna düyməsiz qeyd.
+    Yalnız mövzu qrupu qurulubsa (əks halda şəxsi çat hər cavabla dolardı)."""
+    if not tgtopics.has_group():
+        return
+    contact = db.get(WaContact, conv.contact_id)
+    last = chat.last_message(db, conv.id, "customer")
+    _call("sendMessage", {**tgtopics.dest("auto"), "disable_web_page_preview": True,
+                          "text": (f"🤖 WhatsApp: {contact.name or 'Naməlum'} ({contact.phone or 'telefonsuz'})\n\n"
+                                   f"Müştəri: {(last.text if last else '-')[:700]}\n\nBot: {text[:2500]}")})

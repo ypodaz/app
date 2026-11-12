@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 import booking
-import settings
+import tgtopics
 from crm import conf, contacts
 from crm.tg import _call
 from db import aware, now
@@ -84,7 +84,7 @@ def send_queue(db: DB, today: date) -> bool:
     if not queue(db):
         return False  # boş növbə hər gün yazılmasın
     text, kb = queue_message(db, today)
-    _call("sendMessage", {"chat_id": settings.TG_CHAT_ID, "text": text, "reply_markup": kb})
+    _call("sendMessage", {**tgtopics.dest("tasks"), "text": text, "reply_markup": kb})
     return True
 
 
@@ -165,7 +165,7 @@ def send_feedback(db: DB, s: Shoot) -> None:
     body = (f"⭐ Rəy sorğusu\n{client.full_name} · {_label(s)} · {when}\n\nHazır mətn:\n{text}\n\n"
             + ("Düyməyə basın: WhatsApp hazır mətnlə açılacaq, istəsəniz dəyişib göndərin."
                if phone else "Müştərinin telefonu yoxdur: mətni əl ilə göndərin."))
-    payload = {"chat_id": settings.TG_CHAT_ID, "text": body[:4000], "disable_web_page_preview": True}
+    payload = {**tgtopics.dest("tasks"), "text": body[:4000], "disable_web_page_preview": True}
     if phone:
         payload["reply_markup"] = {"inline_keyboard": [[{"text": "💬 WhatsApp-da aç",
                                                          "url": f"https://wa.me/{phone}?text={quote(text)}"}]]}

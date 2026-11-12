@@ -194,7 +194,7 @@ def test_event_error_logged_alerted_and_not_retried(api, handled, monkeypatch, c
     """Bir hadisədə proqram xətası: 200 qaytarılır (Kapso sonsuz təkrar edib webhook-u dayandırmasın), alert gedir."""
     from routes import webhooks
     sent = []
-    monkeypatch.setattr(webhooks.alerts, "notify", lambda key, text: sent.append(key))
+    monkeypatch.setattr(webhooks.alerts, "notify", lambda key, text, topic="server": sent.append(key))
 
     def boom(*a, **k):
         raise RuntimeError("x")

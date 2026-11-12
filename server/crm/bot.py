@@ -314,7 +314,7 @@ def regenerate(draft_id: int, instruction: str | None = None) -> str:
         conv_id, text = old.conversation_id, old.text
     outcome = handle(conv_id, avoid=text, instruction=instruction)
     if outcome.startswith("skip:"):  # sahibkar «Yenidən yazılır…» görüb, səbəbsiz susmasın
-        alerts.notify(f"regen:{draft_id}", f"Yenidən yazılmadı ({outcome}). {chat.panel_link(conv_id)}")
+        alerts.notify(f"regen:{draft_id}", topic="action", text=f"Yenidən yazılmadı ({outcome}). {chat.panel_link(conv_id)}")
     return outcome
 
 
@@ -360,7 +360,7 @@ def route_away(db: DB, conv: WaConversation, contact: WaContact) -> str | None:
     conv.mode, conv.route = "human", kind
     db.commit()
     last_in = chat.last_message(db, conv.id, "customer")
-    alerts.notify(f"route:{conv.id}", f"{ROUTE_HEAD[kind]}: {contact.name or '-'}, +{contacts.normalize(contact.phone)}, "
+    alerts.notify(f"route:{conv.id}", topic="action", text=f"{ROUTE_HEAD[kind]}: {contact.name or '-'}, +{contacts.normalize(contact.phone)}, "
                                       f"söhbət sizdədir. Mesaj: «{(last_in.text if last_in else '')[:200]}»\n"
                                       f"{chat.panel_link(conv.id)}")
     return kind
@@ -394,7 +394,7 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     except AiError as e:
         conv.mode = "human"
         db.commit()
-        alerts.notify("bot-ai-down", f"AI cavab vermir, söhbət sizə keçdi. {contact.name} {contact.phone or ''}: "
+        alerts.notify("bot-ai-down", topic="action", text=f"AI cavab vermir, söhbət sizə keçdi. {contact.name} {contact.phone or ''}: "
                                      f"{e}\n{chat.panel_link(conv.id)}")
         return "ai_error"
     ai.count_usage(db, "bot", *usage)
@@ -418,8 +418,8 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         outcome = f"handoff:{res['handoff_reason']}"
         why = URGENT_REASONS.get(res["handoff_reason"] or "")
         urgent = f"🔴 TƏCİLİ: {why}, zəng edin: {contact.phone or '-'}\n" if why else ""
-        alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}",
-                      f"{urgent}{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
+        alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}", topic="action",
+                      text=f"{urgent}{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
                       f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
                       f"Səbəb: {res['handoff_reason'] or '-'}\nMüştəri: {(last_in.text if last_in else '')[:500]}\n"
                       f"Botun cavabı: {res['reply'][:500] or '(göndərilmədi: ' + (problem or '') + ')'}\n"
@@ -475,9 +475,10 @@ def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str |
     if auto_reply(db, conv) and not draft_only:
         try:
             chat.send_bot_reply(db, conv, text)
+            tg.auto_log(db, conv, text)
             return "sent"
         except kapso.KapsoError as e:
-            alerts.notify(f"bot-send:{conv.id}", f"avtomatik göndəriş alınmadı (qaralama yaradıldı): {e.message}")
+            alerts.notify(f"bot-send:{conv.id}", topic="action", text=f"avtomatik göndəriş alınmadı (qaralama yaradıldı): {e.message}")
             reason = f"göndərilmədi: {e.message}"[:200]
             text = getattr(e, "remaining", text)  # birinci hissə gedibsə, qaralamada yalnız qalan
     draft = BotDraft(conversation_id=conv.id, text=text, reason=reason, model_output=res)

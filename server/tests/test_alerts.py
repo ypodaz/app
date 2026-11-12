@@ -28,7 +28,7 @@ def sent(monkeypatch):
     monkeypatch.setattr(settings, "TG_BOT_TOKEN", "t")
     monkeypatch.setattr(settings, "TG_CHAT_ID", "1")
     monkeypatch.setattr(alerts.threading, "Thread", SyncThread)
-    monkeypatch.setattr(alerts, "_post", out.append)
+    monkeypatch.setattr(alerts, "_post", lambda text, topic="server": out.append(text))
     monkeypatch.setattr(alerts, "_last", {})
     return out
 

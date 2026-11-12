@@ -30,7 +30,7 @@ def ig(api, crm_env, monkeypatch):  # noqa: F811  (api cədvəlləri yaradır)
 
     monkeypatch.setattr(httpx, "get", fake_get)
     monkeypatch.setattr(httpx, "post", fake_post)
-    monkeypatch.setattr(alerts, "notify", lambda key, text: st["alerts"].append((key, text)) or True)
+    monkeypatch.setattr(alerts, "notify", lambda key, text, topic="server": st["alerts"].append((key, text)) or True)
     return st
 
 

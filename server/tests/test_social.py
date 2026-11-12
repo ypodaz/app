@@ -209,7 +209,7 @@ def fake_buffer(monkeypatch):
 @pytest.fixture()
 def alerted(monkeypatch):
     out = []
-    monkeypatch.setattr(alerts, "notify", lambda key, text: out.append((key, text)) or True)
+    monkeypatch.setattr(alerts, "notify", lambda key, text, topic="server": out.append((key, text)) or True)
     return out
 
 

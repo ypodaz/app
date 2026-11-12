@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session as DB
 
 import alerts
 import settings
+import tgtopics
 from crm import bot, chat, conf, kapso, tg
 from db import SessionLocal, aware, get_db, now
 from models import WaContact, WaConversation, WaMessage, WebhookEvent
@@ -269,6 +270,8 @@ def telegram_webhook(update: dict, background: BackgroundTasks,
         result = tg.handle_callback(db, cq)
         if result == "regenerate":  # Gemini bir neçə saniyə çəkir: Telegram-a dərhal cavab, yeni qaralama fonda
             background.add_task(bot.regenerate, int(str(cq["data"]).split(":")[1]))
+    elif msg and (msg.get("text") or "").strip().startswith("/qur"):  # mövzu qrupunun qurulması
+        result = tgtopics.setup(db, msg, tg._call)
     elif msg:
         result, draft_id = tg.handle_reply(db, msg)
         if result == "regenerate":
