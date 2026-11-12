@@ -605,27 +605,31 @@ def test_ig_comment_direct_marks_new_when_recipient_known(api, net, crm_env, mon
         assert conf.get(db, "ig_new:888") == "1"
 
 
-def test_ig_comment_direct_error_falls_back_to_draft(api, net, crm_env):
-    net.ig_error = "Token bitib"
-    crm_env.gemini(jreply("Direct-ə yazdıq 🙏"), jreply("Salam!"))
+def test_ig_comment_direct_error_still_replies_publicly(api, net, crm_env, monkeypatch):
+    def boom(cid, text):
+        raise social_inbox.instagram.IgError("Direct bağlıdır")
+    monkeypatch.setattr(social_inbox.instagram, "private_reply", boom)
+    crm_env.gemini(jreply("Ətraflı Direct-ə yazın 🙏"), jreply("Salam!"))
     post_ig(api, comment(cid="c7", text="Qiymət?"))
     [it] = items()
-    assert it.status == "pending" and it.draft_text == "Direct-ə yazdıq 🙏"
-    assert not [c for c in net.calls if c[1].endswith("/replies")]
-    assert any(k.startswith("ig-comment-dm:") for k, _ in crm_env.alerts)
-    assert "reply_markup" in crm_env.tg("sendMessage")[-1]
+    assert it.status == "sent" and it.draft_text == "Ətraflı Direct-ə yazın 🙏 Əlaqə: 055 530 35 32"
+    [rep] = [c for c in net.calls if c[1].endswith("/c7/replies")]
+    assert rep[2]["data"] == {"message": "Ətraflı Direct-ə yazın 🙏 Əlaqə: 055 530 35 32"}
+    assert any(k.startswith("ig-comment-dm:") for k, _ in crm_env.alerts) and "dm_text" not in it.model_output
 
 
-def test_ig_comment_skips_direct_when_human_talks(api, net, crm_env):
+def test_ig_comment_direct_even_when_owner_talks(api, net, crm_env):
+    # sahibkar bu adamla app-dan yazışsa da komment cavabsız qalmır: Direct + ictimai cavab gedir
     with SessionLocal() as db:
         social_inbox.set_human(db, "777")
         db.commit()
-    crm_env.gemini(jreply("Direct-ə yazdıq 🙏"))
+    crm_env.gemini(jreply("Direct-ə yazdıq 🙏"), jreply("Salam!"))
     body = comment(cid="c8", text="Qiymət?")
     body["entry"][0]["changes"][0]["value"]["from"]["id"] = "777"
     post_ig(api, body)
-    assert items()[0].status == "pending" and not [c for c in net.calls if "graph.instagram.com" in c[1]]
-    assert len(crm_env.gemini_calls) == 1
+    [it] = items()
+    assert it.status == "sent" and it.draft_text == social_inbox.IG_DIRECT_REPLY
+    assert [c[1] for c in net.calls if "graph.instagram.com" in c[1]][0].endswith("/me/messages")
 
 
 def test_youtube_interested_reply_always_has_phone(api, net, crm_env):
@@ -641,11 +645,22 @@ def test_youtube_interested_reply_always_has_phone(api, net, crm_env):
     assert ins[2]["json"]["snippet"]["textOriginal"].endswith("055 530 35 32")
 
 
-def test_comment_handoff_goes_to_draft(api, net, crm_env):
-    crm_env.gemini(jreply("Üzr istəyirik, komanda yazacaq 🙏", handoff=True, handoff_reason="sikayet"))
-    post_ig(api, comment(text="Pis xidmətdir!"))
-    assert items()[0].status == "pending" and "reply_markup" in crm_env.tg("sendMessage")[0]
-    assert not [c for c in net.calls if "graph.instagram.com" in c[1]]
+@pytest.mark.parametrize("reply", ["Üzr istəyirik, komanda yazacaq 🙏", ""])
+def test_comment_handoff_gets_polite_reply_and_owner_alert(api, net, crm_env, reply):
+    crm_env.gemini(jreply(reply, handoff=True, handoff_reason="sikayet"))
+    post_ig(api, comment(cid="c4", text="Pis xidmətdir! Qiymət niyə belədir?"))
+    [it] = items()
+    assert it.status == "sent" and it.draft_text == social_inbox.HANDOFF_REPLY and "055 530 35 32" in it.draft_text
+    graph = [c for c in net.calls if "graph.instagram.com" in c[1]]
+    assert len(graph) == 1 and graph[0][1].endswith("/c4/replies")  # şikayətdə Direct getmir
+    [msg] = crm_env.tg("sendMessage")
+    assert "🙋 Kommentə özünüz baxın" in msg["text"]
+
+
+def test_comment_spam_stays_unanswered(api, net, crm_env):
+    crm_env.gemini(jreply("", handoff=True, handoff_reason="diger"))
+    post_ig(api, comment(text="spam spam"))
+    assert items()[0].status == "ignored" and not [c for c in net.calls if "graph.instagram.com" in c[1]]
 
 
 def test_comment_draft_mode_keeps_telegram_draft(api, net, crm_env):

@@ -1,9 +1,10 @@
 """Instagram DM/komment və YouTube kommenti: AI qaralaması (WhatsApp botunun təlimatı + kanal qeydi) və göndəriş.
 
 Komment və YouTube: `comment_mode = auto` (susmaya görə) olanda AI cavabı özü ictimai yazır (sahibkar 🤖 mövzusunda
-görür); Instagram-da maraqlanana (INTEREST_RE) əvvəl ilk Direct mesajı da gedir (private reply). Şikayət, mübahisə,
-cavabı bilinməyən sual (handoff), spam və ya sutkada 40-dan çox cavab olanda qaralama Telegram-a düymələrlə gedir
-(social_tg), göndəriş sahibkar təsdiqindən sonradır. `/komment avto|qaralama` rejimi dəyişir.
+görür); Instagram-da maraqlanana (INTEREST_RE) əvvəl ilk Direct mesajı da gedir (private reply), Direct alınmasa
+ictimai cavab yenə nömrə ilə gedir. Şikayət, mübahisə, cavabı bilinməyən sual (handoff): sabit nəzakətli cavab
+(HANDOFF_REPLY) + sahibkara 🔴 xəbər. Spam cavabsız qalır. Sutkada 40-dan çox cavab və ya göndəriş xətası olanda
+qaralama Telegram-a düymələrlə gedir (social_tg). `/komment avto|qaralama` rejimi dəyişir.
 Instagram DM: `ig_dm_mode = auto` olanda bot özü cavab verir (sahibkar hər cavabı Telegram-da görür); `new_auto` —
 yalnız əvvəl bizimlə yazışmayana, köhnə yazışanlara qaralama. Handoff olanda
 və ya sahibkar Instagram app-dan özü yazanda o müştəriyə 7 gün avtomatik cavab getmir, yenə qaralama olur.
@@ -66,6 +67,8 @@ FIRST_DM_NOTE = ("\n\nBu adam Instagram postunun altında komment yazıb: «{tex
 PHONE = "055 530 35 32"
 IG_DIRECT_REPLY = f"Sizə Direct-dən yazdıq 🙏 Həmçinin {PHONE} nömrəsi ilə əlaqə saxlaya bilərsiniz."  # model yazmır: nömrə həmişə olsun
 YT_PHONE_TAIL = f" Əlaqə: {PHONE}"
+HANDOFF_REPLY = (f"Yazdığınız üçün təşəkkür edirik 🙏 Komandamız sizə tezliklə ətraflı cavab verəcək. Həmçinin {PHONE} "
+                 "nömrəsi ilə əlaqə saxlaya bilərsiniz.")
 AUTO_COMMENT_CAP = 40  # sutkada (sürüşən 24 saat) avtomatik komment cavabı limiti
 WHERE = {"instagram": "Instagram-da", "youtube": "YouTube-da"}
 
@@ -341,6 +344,14 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
     if item.kind == "dm" and not avoid:
         bot.note_gap(db, None, {**res, "handoff": True, "handoff_reason": "filtr"} if problem else res, item.text,
                      "[IG] ")
+    spam = not reply and not problem and res.get("handoff_reason") == "diger"
+    auto_comment = item.kind == "comment" and not avoid and not spam and comment_auto(db)
+    if auto_comment and (problem or not reply or res.get("handoff")):  # cavabsız qalmasın: sabit cavab + sahibkara xəbər
+        auto_comment = False  # aşağıda ikinci dəfə cəhd edilməsin
+        outcome = _auto_comment(db, item, from_id, handoff=True)
+        if outcome:
+            return outcome
+        reply = reply or HANDOFF_REPLY
     if not reply:
         item.status, item.decided_at = "ignored", now()
         db.commit()
@@ -351,7 +362,7 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         return "ignored"
     item.draft_text = reply
     db.commit()
-    if item.kind == "comment" and not avoid and not res.get("handoff") and comment_auto(db):
+    if auto_comment:
         outcome = _auto_comment(db, item, from_id)
         if outcome:
             return outcome
@@ -402,32 +413,41 @@ def _first_dm(db: DB, item: SocialItem) -> str:
     return "" if problem or res.get("handoff") else (res.get("reply") or "").strip()
 
 
-def _auto_comment(db: DB, item: SocialItem, from_id: str | None) -> str | None:
-    """Kommentə təsdiqsiz cavab. None: avtomatik getmədi, qaralama Telegram-a göndərilməlidir."""
+def _with_phone(text: str) -> str:
+    return text if PHONE in text else text.rstrip() + YT_PHONE_TAIL
+
+
+def _auto_comment(db: DB, item: SocialItem, from_id: str | None, handoff: bool = False) -> str | None:
+    """Kommentə təsdiqsiz cavab. None: avtomatik getmədi (limit və ya göndəriş xətası), qaralama Telegram-a gedir.
+
+    handoff: AI cavabı bilmir, şikayət və ya filtr — ictimai cavab sabit HANDOFF_REPLY, sahibkara 🔴 xəbər.
+    Instagram-da maraqlanana əvvəl Direct gedir (sahibkar o adamla özü yazışsa da); Direct alınmasa ictimai cavab
+    yenə gedir, sadəcə «Direct-dən yazdıq» demir və nömrə həmişə olur.
+    """
     if _auto_count(db) >= AUTO_COMMENT_CAP:
         return None
     dm_text = ""
     interested = bool(INTEREST_RE.search(item.text))
-    if item.channel == "youtube" and interested and PHONE not in (item.draft_text or ""):
-        item.draft_text = (item.draft_text or "").rstrip() + YT_PHONE_TAIL
-    if item.channel == "instagram" and interested:
-        if from_id and is_human(db, from_id):  # bu adamla insan danışır: bot Direct yazmasın
-            return None
+    if handoff:
+        item.draft_text = HANDOFF_REPLY
+    elif interested:
+        item.draft_text = _with_phone(item.draft_text or "")
+    if item.channel == "instagram" and interested and not handoff:
         dm_text = _first_dm(db, item)
-        if not dm_text:
-            return None
-        try:
-            rid, mid = instagram.private_reply(item.external_id, dm_text)
-        except instagram.IgError as e:  # Direct getmədi: «Direct-ə yazdıq» deyən ictimai cavab da getməsin
-            alerts.notify(f"ig-comment-dm:{item.id}", topic="action", text=f"Komment sahibinə Direct getmədi "
-                                                       f"({str(e)[:200]}), qaralama Telegram-dadır.")
-            return None
-        if mid:
-            _sent_mids.append(mid)
-        if rid and conf.get(db, f"ig_new:{rid}") is None:  # cavab yazsa new_auto rejimi avtomatik cavablasın
-            conf.put(db, f"ig_new:{rid}", "1")
-        item.model_output = {**(item.model_output or {}), "dm_text": dm_text, "dm_mid": mid}
-        item.draft_text = IG_DIRECT_REPLY  # Direct getdi: ictimai cavab sabit mətndir
+        if dm_text:
+            try:
+                rid, mid = instagram.private_reply(item.external_id, dm_text)
+            except instagram.IgError as e:  # Direct getmədi: ictimai cavab «Direct-dən yazdıq» demədən gedir
+                alerts.notify(f"ig-comment-dm:{item.id}", topic="action", text=f"Komment sahibinə Direct getmədi "
+                                                           f"({str(e)[:200]}), kommentə cavab yazıldı: {item.text[:200]}")
+                dm_text = ""
+            else:
+                if mid:
+                    _sent_mids.append(mid)
+                if rid and conf.get(db, f"ig_new:{rid}") is None:  # cavab yazsa new_auto rejimi avtomatik cavablasın
+                    conf.put(db, f"ig_new:{rid}", "1")
+                item.model_output = {**(item.model_output or {}), "dm_text": dm_text, "dm_mid": mid}
+                item.draft_text = IG_DIRECT_REPLY  # Direct getdi: ictimai cavab sabit mətndir
         db.commit()
     try:
         send(db, item)
@@ -438,7 +458,10 @@ def _auto_comment(db: DB, item: SocialItem, from_id: str | None) -> str | None:
         alerts.notify(f"comment-auto:{item.id}", topic="action", text=f"Komment cavabı getmədi ({str(e)[:200]}), "
                                                   "qaralama Telegram-dadır.")
         return None
-    if dm_text:
+    if handoff:
+        social_tg.auto_log(item, "🙋 Kommentə özünüz baxın (bot cavabı bilmir və ya şikayətdir). Bot nəzakətli cavab "
+                                 "yazdı, ətraflı cavabı siz verin.", topic="action")
+    elif dm_text:
         social_tg.auto_log(item, "🤖 Komment cavablandı + Direct yazıldı", topic="auto", extra=dm_text)
     else:
         social_tg.auto_log(item, "🤖 Komment avtomatik cavablandı", topic="auto")
