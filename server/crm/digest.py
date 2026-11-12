@@ -6,9 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import tgtopics
-from crm import conf, tg, turns
+from crm import calendar_ics, calendar_import, conf, tg, turns
 from db import aware
-from models import BotDraft, LeadEvent, SocialItem, UnansweredQuestion, WaConversation, WaMessage
+from models import BotDraft, LeadEvent, Shoot, SocialItem, UnansweredQuestion, WaConversation, WaMessage
 from views import BAKU
 
 HOUR = 21
@@ -35,7 +35,8 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
     ads = db.execute(select(SocialItem.ad_id, func.count(func.distinct(SocialItem.thread_id))).where(
         SocialItem.ad_id.is_not(None), *_in(SocialItem.created_at, since, until)).group_by(SocialItem.ad_id)).all()
     waiting = turns.waiting_lines(db)
-    if not (convs or msgs or drafts or gaps or weekly or ads or waiting):
+    cal = calendar_lines(db, until)
+    if not (convs or msgs or drafts or gaps or weekly or ads or waiting or cal):
         return None
     lines = [f"📊 Bot hesabatı, {aware(until).astimezone(BAKU):%d.%m}", "",
              f"Yeni söhbət: {convs}", f"Müştəridən mesaj: {msgs}"]
@@ -73,10 +74,27 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
             lines.append(f"… və daha {len(gaps) - GAPS} (panel → Bot ayarları → Cavabsız suallar)")
     if waiting:
         lines += ["", f"⏳ Komandaya ötürülüb, sizin cavabınızı gözləyən söhbətlər ({len(waiting)}):"] + waiting[:10]
+    if cal:
+        lines += [""] + cal
     if weekly:
         lines += ["", f"🗓 Həftəlik: son 7 gündə həll olunmamış {weekly} sual yığılıb. Claude-a «bot izləmə» yazın: "
                       "prompta və FAQ-a əlavə edək."]
     return "\n".join(lines)
+
+
+def calendar_lines(db: DB, until: datetime) -> list[str]:
+    """Bu günün təqvimi ilə app-ın fərqi: başlığı «… Y Pod» ilə bitən hadisələr sayılır (sub-icarə və s. yox).
+    App-da ±60 dəqiqə içində çəkilişi olmayan hadisə siyahıya düşür (panelə əl ilə yazılmalıdır)."""
+    day = aware(until).astimezone(BAKU).replace(hour=0, minute=0, second=0, microsecond=0)
+    own = [e for e in calendar_ics.titled(day, day + timedelta(days=1)) if calendar_import.is_own(e[2])]
+    starts = [aware(s) for s in db.scalars(select(Shoot.starts_at).where(
+        Shoot.status != "cancelled", Shoot.starts_at >= day - timedelta(hours=1), Shoot.starts_at < day + timedelta(days=1, hours=1)))]
+    if not own and not starts:
+        return []
+    missing = [(a, t) for a, _, t in own if not any(abs(s - a) <= timedelta(minutes=60) for s in starts)]
+    lines = [f"📅 Təqvimdə bu gün {len(own)} «Y Pod» çəkilişi / app-da {len(starts)}"]
+    lines += [f"• {a.astimezone(BAKU):%H:%M} {t[:80]} — app-da yoxdur (panel → Çəkilişlər → Yeni)" for a, t in missing[:8]]
+    return lines
 
 
 def _weekly(db: DB, until: datetime) -> int:

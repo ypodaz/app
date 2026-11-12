@@ -92,3 +92,24 @@ def busy(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
         except Exception as e:  # noqa: BLE001 — biri alınmasa digəri işləyir
             log.warning("ICS təqvimi emal edilmədi (%s: %s)", name, type(e).__name__)
     return out
+
+
+def titled(start: datetime, end: datetime) -> list[tuple[datetime, datetime, str]]:
+    """Y Pod təqviminin [start, end) ilə kəsişən vaxtlı hadisələri başlığı ilə (gündəlik «təqvim / app» müqayisəsi üçün).
+    Başlıq yalnız sahibkarın Telegram hesabatına gedir, loglanmır. Alınmasa []."""
+    cal = _load("main")
+    if cal is None:
+        return []
+    out = []
+    try:
+        for ev in recurring_ical_events.of(cal).between(start, end):
+            a, b = ev.start, ev.end
+            if not isinstance(a, datetime) or str(ev.get("STATUS", "")).upper() == "CANCELLED":
+                continue
+            a = _dt(a)
+            b = _dt(b) if isinstance(b, datetime) else a
+            out.append((a, b, " ".join(str(ev.get("SUMMARY", "")).split())))
+    except Exception as e:  # noqa: BLE001
+        log.warning("ICS başlıqları emal edilmədi (%s)", type(e).__name__)
+        return []
+    return sorted(out)
