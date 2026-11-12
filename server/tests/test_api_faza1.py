@@ -338,10 +338,10 @@ def test_studio_rent_earns_cashback(api):
     adm = admin_token(api)
     cid, _ = new_client(api, adm, "Videoqraf Elnur")
     rent = make_shoot(api, adm, cid, kind="studio_rent", cameras=0, editing=False, duration_min=120)
-    assert rent["total"] == 10000 and rent["cameras"] == 0
+    assert rent["total"] == 8000 and rent["cameras"] == 0
     r = api.post(f"/api/admin/shoots/{rent['id']}/close", json={"duration_min": 120, "paid_method": "cash"},
                  headers=bearer(adm))
-    assert r.json()["cashback_earned"] == 4000  # ilk çəkiliş bonusu: 40%
+    assert r.json()["cashback_earned"] == 3200  # ilk çəkiliş bonusu: 40%
 
 
 def test_discount_flows_to_deposit_and_close(api):

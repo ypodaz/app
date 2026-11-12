@@ -161,8 +161,12 @@ def test_package_prices_match_site():
 
 def test_studio_rent_hourly_with_cashback():
     p = m.price(kind="studio_rent", location="studio", cameras=0, duration_min=90, editing=False)
-    assert p.total == 75 * A
-    assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 750)
+    assert p.total == 65 * A
+    assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 650)
+    rent = {h: m.price(kind="studio_rent", location="studio", cameras=0, duration_min=h * 60, editing=False).total
+            for h in (1, 2, 3, 4)}
+    assert rent == {1: 50 * A, 2: 80 * A, 3: 120 * A, 4: 160 * A}  # facts: 1 saat 50, 2 saat 80, 3 saat 120
+    assert m.price(kind="studio_rent", location="studio", cameras=0, duration_min=30, editing=False).total == 25 * A
     with pytest.raises(ValueError):
         m.price(kind="studio_rent", location="studio", cameras=0, duration_min=60, editing=True)
     with pytest.raises(ValueError):

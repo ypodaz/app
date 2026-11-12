@@ -15,7 +15,15 @@ SHOOT_PER_HOUR = {
     "onsite": {1: 140 * AZN, 2: 240 * AZN, 3: 340 * AZN},
 }
 REELS_PACK = {"studio": 150 * AZN, "onsite": 250 * AZN}
-STUDIO_RENT_PER_HOUR = 50 * AZN  # yalnız studiya (videoqraflar üçün), kamera/montaj yoxdur
+# Studiya icarəsi (müştəri özü çəkir, kamera/montaj yoxdur): 1 saat 50, 2 saat 80, 3 saat 120 AZN.
+# Yarım saatlar arada xətti (1,5 saat 65, 2,5 saat 100), 3 saatdan sonra hər saat 40.
+STUDIO_RENT_HALF_HOURS = (25 * AZN, 25 * AZN, 15 * AZN, 15 * AZN, 20 * AZN, 20 * AZN)
+STUDIO_RENT_HALF_HOUR_AFTER = 20 * AZN
+
+
+def studio_rent_price(duration_min: int) -> int:
+    halves = duration_min // 30
+    return sum(STUDIO_RENT_HALF_HOURS[:halves]) + max(0, halves - len(STUDIO_RENT_HALF_HOURS)) * STUDIO_RENT_HALF_HOUR_AFTER
 EDITING = 100 * AZN
 REEL = 10 * AZN
 EXTRA_CAMERA_PER_HOUR = 50 * AZN
@@ -128,7 +136,7 @@ def _gross_price(*, kind, location, cameras, duration_min, editing, reels_count,
             raise ValueError("Müddət yarım saat addımla olmalıdır")
         if editing or reels_count:
             raise ValueError("Studiya icarəsinə montaj və Reels daxil deyil")
-        return Price(STUDIO_RENT_PER_HOUR * duration_min // 60, 0, 0, 0)
+        return Price(studio_rent_price(duration_min), 0, 0, 0)
     if kind != "shoot":
         raise ValueError("Naməlum xidmət növü")
     if cameras not in SHOOT_PER_HOUR[location]:
