@@ -43,14 +43,15 @@ def send_draft(db: DB, draft: BotDraft) -> str | None:
     text = f"💬 {head}\n\nMüştəri: {(last.text if last else '-')[:700]}\n\nQaralama:\n{draft.text[:2000]}"
     if len(chat.split_reply(draft.text)) > 1:
         text += "\n\n✂️ 2 mesaj kimi gedəcək"  # müştəriyə getmir
+    where = tgtopics.dest("action")
     res = _call("sendMessage", {
-        **tgtopics.dest("action"), "text": text,
+        **where, "text": text,
         "reply_markup": {"inline_keyboard": [[{"text": "✅ Göndər", "callback_data": f"d:{draft.id}:s"},
                                               {"text": "🔄 Yenidən yaz", "callback_data": f"d:{draft.id}:g"},
                                               {"text": "✖️ Rədd", "callback_data": f"d:{draft.id}:r"}]]}})
     mid = ((res or {}).get("result") or {}).get("message_id")
     if mid:
-        draft.telegram_message_id = str(mid)
+        draft.telegram_message_id, draft.telegram_chat_id = str(mid), str(where["chat_id"])
     return str(mid) if mid else None
 
 
@@ -66,6 +67,9 @@ def handle_callback(db: DB, cq: dict) -> str:
     if str(cq.get("data", "")).startswith("m:"):  # montaj növbəsi: «✅ Təhvil verildi»
         from crm import aftercare
         return aftercare.handle_callback(db, cq)
+    if str(cq.get("data", "")).startswith("t:"):  # to-do: «☑️ Bitdi»
+        from crm import todo
+        return todo.handle_callback(db, cq)
     parts = str(cq.get("data", "")).split(":")
     if len(parts) != 3 or parts[0] != "d" or parts[2] not in ("s", "r", "g") or not parts[1].isdigit():
         return "ignored"
@@ -137,10 +141,17 @@ def handle_reply(db: DB, msg: dict) -> tuple[str, int | None]:
     if not tgtopics.chat_allowed(chat_id):
         return "ignored", None
     text = (msg.get("text") or "").strip()
-    reply_to = (msg.get("reply_to_message") or {}).get("message_id")
+    replied = msg.get("reply_to_message") or {}
+    reply_to = replied.get("message_id")
     if not text or not reply_to:
         return "ignored", None
-    draft = db.scalar(select(BotDraft).where(BotDraft.telegram_message_id == str(reply_to))
+    # mövzuda adi mesajın reply_to_message-i mövzunun açılış mesajıdır: bu, qaralamaya cavab deyil
+    if replied.get("forum_topic_created") or (msg.get("message_thread_id") and reply_to == msg["message_thread_id"]):
+        return "ignored", None
+    same_chat = BotDraft.telegram_chat_id == str(chat_id)
+    if str(chat_id) == str(settings.TG_CHAT_ID):  # chat_id-si olmayan köhnə sətirlər şəxsi çatdadır
+        same_chat = same_chat | BotDraft.telegram_chat_id.is_(None)
+    draft = db.scalar(select(BotDraft).where(BotDraft.telegram_message_id == str(reply_to), same_chat)
                       .order_by(BotDraft.id.desc()))
     if not draft:
         return "ignored", None

@@ -171,7 +171,14 @@ def test_send_dm(api, net, crm_env):
     assert callback(api, f"x:{it.id}:s").json()["result"] == "resolved"
 
 
+def draft_mode():
+    with SessionLocal() as db:
+        conf.put(db, "comment_mode", "draft")
+        db.commit()
+
+
 def test_send_comment_reply(api, net, crm_env):
+    draft_mode()
     crm_env.gemini(jreply("Təşəkkürlər! Ətraflı məlumat üçün DM-ə yazın."))
     post_ig(api, comment(cid="c2", parent="c1"))
     it = items()[0]
@@ -230,6 +237,7 @@ def test_youtube_poll_new_only(api, net, crm_env):
         assert youtube.poll(db) == []  # ilk dəfə: yalnız başlanğıc vaxtı
         conf.put(db, youtube.LAST_KEY, (now() - timedelta(minutes=30)).isoformat())
         db.commit()
+    draft_mode()
     net.threads = [thread("new", "Studiya harada yerləşir?", 5), thread("mine", "cavab", 3, CHANNEL),
                    thread("old", "köhnə", 600)]
     crm_env.gemini(jreply("Salam! Ünvan DM-də."))
@@ -506,3 +514,177 @@ def test_dm_gap_recorded_comment_spam_not(api, net, crm_env):
     post_ig(api, comment(text="spam spam"))
     with SessionLocal() as db:
         assert [q.question for q in db.query(UnansweredQuestion)] == ["[IG] [handoff:diger] Sizdə dron var?"]
+
+
+# --- komment: avtomatik cavab ---
+
+def test_interest_regex():
+    yes = ["+", " ++ ", "Qiymət nədir?", "neçəyə başa gəlir", "Rezerv etmək olar?", "çəkiliş istəyirəm", "Maraqlıdır",
+           "Ətraflı yaza bilərsiz?", "ünvan?", "5+ nəfərik", "price?"]
+    no = ["Çox gözəl!", "Əla video", "Təbriklər 👏"]
+    assert all(social_inbox.INTEREST_RE.search(t) for t in yes)
+    assert not any(social_inbox.INTEREST_RE.search(t) for t in no)
+
+
+def test_comment_mode_default_auto(api, net, crm_env):
+    with SessionLocal() as db:
+        assert social_inbox.comment_auto(db)
+        conf.put(db, "comment_mode", "draft")
+        assert not social_inbox.comment_auto(db)
+
+
+def test_ig_comment_not_interested_auto_public_reply(api, net, crm_env):
+    crm_env.gemini(jreply("Təşəkkürlər! 🙏"))
+    post_ig(api, comment(cid="c9", text="Çox gözəl!"))
+    [it] = items()
+    assert it.status == "sent" and it.model_output["auto"] is True
+    [(_, url, kw)] = [c for c in net.calls if "graph.instagram.com" in c[1]]
+    assert url.endswith("/v24.0/c9/replies") and kw["data"] == {"message": "Təşəkkürlər! 🙏"}
+    [msg] = crm_env.tg("sendMessage")
+    assert msg["text"].startswith("🤖 Komment avtomatik cavablandı") and "reply_markup" not in msg
+    assert "Instagram DM" not in crm_env.gemini_calls[0][0] and "Direct-ə yazdıq" in crm_env.gemini_calls[0][0]
+
+
+def test_ig_comment_interested_sends_direct_then_public(api, net, crm_env):
+    crm_env.gemini(jreply("Direct-ə yazdıq 🙏"), jreply("Salam! Kommentinizə görə yazırıq, podkast 70 AZN-dir. Neçə nəfərsiniz?"))
+    body = comment(cid="c5", text="Qiymət nədir?")
+    body["entry"][0]["changes"][0]["value"]["from"]["id"] = "777"
+    post_ig(api, body)
+    [it] = items()
+    posts = [(c[1], c[2]) for c in net.calls if "graph.instagram.com" in c[1]]
+    assert posts[0][0].endswith("/me/messages")
+    assert posts[0][1]["json"] == {"recipient": {"comment_id": "c5"},
+                                   "message": {"text": "Salam! Kommentinizə görə yazırıq, podkast 70 AZN-dir. Neçə nəfərsiniz?"}}
+    assert posts[1][0].endswith("/c5/replies") and posts[1][1]["data"] == {"message": social_inbox.IG_DIRECT_REPLY}
+    assert "055 530 35 32" in social_inbox.IG_DIRECT_REPLY and it.draft_text == social_inbox.IG_DIRECT_REPLY
+    assert it.status == "sent" and it.model_output["dm_mid"] == "mid.out1" and it.model_output["auto"] is True
+    assert it.model_output["from_id"] == "777" and "mid.out1" in social_inbox._sent_mids
+    assert "Qiymət nədir?" in crm_env.gemini_calls[1][0] and "Instagram DM" in crm_env.gemini_calls[1][0]
+    [msg] = crm_env.tg("sendMessage")
+    assert msg["text"].startswith("🤖 Komment cavablandı + Direct yazıldı") and "podkast 70 AZN" in msg["text"]
+    with SessionLocal() as db:  # recipient_id cavabda yoxdur: ig_new yazılmır
+        assert conf.get(db, "ig_new:777") is None
+
+
+def test_ig_comment_direct_marks_new_when_recipient_known(api, net, crm_env, monkeypatch):
+    monkeypatch.setattr(social_inbox.instagram, "private_reply", lambda cid, text: ("888", "mid.x"))
+    crm_env.gemini(jreply("Direct-ə yazdıq 🙏"), jreply("Salam!"))
+    post_ig(api, comment(cid="c6", text="+"))
+    with SessionLocal() as db:
+        assert conf.get(db, "ig_new:888") == "1"
+
+
+def test_ig_comment_direct_error_falls_back_to_draft(api, net, crm_env):
+    net.ig_error = "Token bitib"
+    crm_env.gemini(jreply("Direct-ə yazdıq 🙏"), jreply("Salam!"))
+    post_ig(api, comment(cid="c7", text="Qiymət?"))
+    [it] = items()
+    assert it.status == "pending" and it.draft_text == "Direct-ə yazdıq 🙏"
+    assert not [c for c in net.calls if c[1].endswith("/replies")]
+    assert any(k.startswith("ig-comment-dm:") for k, _ in crm_env.alerts)
+    assert "reply_markup" in crm_env.tg("sendMessage")[-1]
+
+
+def test_ig_comment_skips_direct_when_human_talks(api, net, crm_env):
+    with SessionLocal() as db:
+        social_inbox.set_human(db, "777")
+        db.commit()
+    crm_env.gemini(jreply("Direct-ə yazdıq 🙏"))
+    body = comment(cid="c8", text="Qiymət?")
+    body["entry"][0]["changes"][0]["value"]["from"]["id"] = "777"
+    post_ig(api, body)
+    assert items()[0].status == "pending" and not [c for c in net.calls if "graph.instagram.com" in c[1]]
+    assert len(crm_env.gemini_calls) == 1
+
+
+def test_youtube_interested_reply_always_has_phone(api, net, crm_env):
+    net.threads = [thread("n2", "Çəkiliş istəyirəm", 5)]
+    with SessionLocal() as db:
+        youtube.poll(db)
+        conf.put(db, youtube.LAST_KEY, (now() - timedelta(minutes=30)).isoformat())
+        db.commit()
+    crm_env.gemini(jreply("Salam, yazın!"))
+    youtube.tick()
+    assert items()[0].draft_text == "Salam, yazın! Əlaqə: 055 530 35 32"
+    ins = [c for c in net.calls if c[1].endswith("/youtube/v3/comments")][0]
+    assert ins[2]["json"]["snippet"]["textOriginal"].endswith("055 530 35 32")
+
+
+def test_comment_handoff_goes_to_draft(api, net, crm_env):
+    crm_env.gemini(jreply("Üzr istəyirik, komanda yazacaq 🙏", handoff=True, handoff_reason="sikayet"))
+    post_ig(api, comment(text="Pis xidmətdir!"))
+    assert items()[0].status == "pending" and "reply_markup" in crm_env.tg("sendMessage")[0]
+    assert not [c for c in net.calls if "graph.instagram.com" in c[1]]
+
+
+def test_comment_draft_mode_keeps_telegram_draft(api, net, crm_env):
+    draft_mode()
+    crm_env.gemini(jreply("Təşəkkürlər!"))
+    post_ig(api, comment(text="Çox gözəl!"))
+    assert items()[0].status == "pending" and not [c for c in net.calls if "graph.instagram.com" in c[1]]
+
+
+def test_comment_public_send_error_falls_back_to_draft(api, net, crm_env, monkeypatch):
+    def boom(cid, text):
+        raise social_inbox.instagram.IgError("Komment silinib")
+    monkeypatch.setattr(social_inbox.instagram, "reply_comment", boom)
+    crm_env.gemini(jreply("Təşəkkürlər!"))
+    post_ig(api, comment(text="Çox gözəl!"))
+    assert items()[0].status == "pending" and any(k.startswith("comment-auto:") for k, _ in crm_env.alerts)
+    assert "reply_markup" in crm_env.tg("sendMessage")[-1]
+
+
+def test_youtube_comment_auto_public_reply(api, net, crm_env):
+    net.threads = [thread("new", "Qiymət neçədir?", 5)]
+    with SessionLocal() as db:
+        youtube.poll(db)
+        conf.put(db, youtube.LAST_KEY, (now() - timedelta(minutes=30)).isoformat())
+        db.commit()
+    crm_env.gemini(jreply("Salam! WhatsApp-dan yazın: 055 530 35 32 🙏"))
+    youtube.tick()
+    [it] = items()
+    assert it.status == "sent" and it.model_output["auto"] is True
+    assert len(crm_env.gemini_calls) == 1 and "055 530 35 32" in crm_env.gemini_calls[0][0]
+    assert it.draft_text == "Salam! WhatsApp-dan yazın: 055 530 35 32 🙏"  # nömrə artıq var: təkrarlanmır
+    assert crm_env.tg("sendMessage")[0]["text"].startswith("🤖 Komment avtomatik cavablandı")
+    assert [c for c in net.calls if c[1].endswith("/youtube/v3/comments")]
+
+
+def test_comment_auto_cap_24h(api, net, crm_env):
+    with SessionLocal() as db:
+        for i in range(social_inbox.AUTO_COMMENT_CAP):
+            db.add(SocialItem(channel="youtube", kind="comment", external_id=f"old{i}", thread_id="v", text="x",
+                              status="sent", decided_at=now() - timedelta(hours=1), model_output={"auto": True}))
+        db.add(SocialItem(channel="youtube", kind="comment", external_id="manual", thread_id="v", text="x",
+                          status="sent", decided_at=now(), model_output={}))
+        db.add(SocialItem(channel="youtube", kind="comment", external_id="ancient", thread_id="v", text="x",
+                          status="sent", decided_at=now() - timedelta(hours=30), model_output={"auto": True}))
+        db.commit()
+    crm_env.gemini(jreply("Təşəkkürlər!"))
+    post_ig(api, comment(cid="cap1", text="Çox gözəl!"))
+    assert items()[-1].status == "pending"
+    assert "reply_markup" in crm_env.tg("sendMessage")[-1]
+
+
+def cmd(api, text, user=CHAT, chat=CHAT, thread=None):
+    m = {"message_id": 7, "text": text, "from": {"id": int(user)}, "chat": {"id": int(chat)}}
+    if thread:
+        m["message_thread_id"] = thread
+    return api.post("/api/webhooks/telegram", json={"message": m}, headers={"X-Telegram-Bot-Api-Secret-Token": TG_SECRET})
+
+
+def test_komment_command(api, net, crm_env):
+    assert cmd(api, "/komment").json()["result"] == "ok"
+    assert "avtomatik cavab" in crm_env.tg("sendMessage")[-1]["text"]
+    assert cmd(api, "/komment qaralama").json()["result"] == "set"
+    with SessionLocal() as db:
+        assert conf.get(db, "comment_mode") == "draft"
+    assert "qaralama (təsdiqlə)" in crm_env.tg("sendMessage")[-1]["text"]
+    assert cmd(api, "/komment@ypod_bot avto").json()["result"] == "set"
+    with SessionLocal() as db:
+        assert conf.get(db, "comment_mode") == "auto"
+    n = len(crm_env.tg("sendMessage"))
+    assert cmd(api, "/komment qaralama", user=555).json()["result"] == "not_owner"
+    assert len(crm_env.tg("sendMessage")) == n
+    with SessionLocal() as db:
+        assert conf.get(db, "comment_mode") == "auto"

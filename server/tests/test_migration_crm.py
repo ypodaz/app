@@ -33,3 +33,16 @@ def test_people_table_migration(tmp_path):
     alembic(url, "downgrade", "0012")
     assert "people" not in set(inspect(create_engine(url)).get_table_names())
     alembic(url, "upgrade", "head")
+
+
+def test_tasks_and_draft_chat_migration(tmp_path):
+    url = f"sqlite:///{tmp_path / 't.db'}"
+    alembic(url, "upgrade", "head")
+    insp = inspect(create_engine(url))
+    assert "tasks" in insp.get_table_names()
+    assert "telegram_chat_id" in {c["name"] for c in insp.get_columns("bot_drafts")}
+    alembic(url, "downgrade", "0013")
+    insp = inspect(create_engine(url))
+    assert "tasks" not in insp.get_table_names()
+    assert "telegram_chat_id" not in {c["name"] for c in insp.get_columns("bot_drafts")}
+    alembic(url, "upgrade", "head")

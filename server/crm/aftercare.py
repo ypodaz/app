@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session as DB
 
 import booking
 import tgtopics
-from crm import conf, contacts
+from crm import conf, contacts, todo
 from crm.tg import _call
 from db import aware, now
 from models import Client, Material, Shoot
@@ -68,12 +68,15 @@ def _queue_line(i: int, s: Shoot, client: Client | None, today: date) -> str:
 
 def queue_message(db: DB, today: date) -> tuple[str, dict | None]:
     shoots = queue(db)
+    tasks = todo.section(db)
     if not shoots:
-        return "📋 Montaj növbəsi boşdur ✅", None
+        return "\n\n".join(["📋 Montaj növbəsi boşdur ✅", *([tasks] if tasks else [])]), None
     clients = {c.id: c for c in db.scalars(select(Client).where(Client.id.in_({s.client_id for s in shoots})))}
     lines = [f"📋 Montaj növbəsi ({len(shoots)})", ""]
     lines += [_queue_line(i, s, clients.get(s.client_id), today) for i, s in enumerate(shoots, 1)]
     lines += ["", "Təhvil verəndə düyməyə basın. Material linkini app-a paneldən əlavə edin."]
+    if tasks:
+        lines += ["", tasks]
     rows = [[{"text": f"✅ {i}. {_first(clients[s.client_id].full_name if s.client_id in clients else '')} — "
                       "təhvil verildi", "callback_data": f"m:{s.id}:r"}]
             for i, s in enumerate(shoots[:MAX_BUTTONS], 1)]
@@ -81,10 +84,10 @@ def queue_message(db: DB, today: date) -> tuple[str, dict | None]:
 
 
 def send_queue(db: DB, today: date) -> bool:
-    if not queue(db):
-        return False  # boş növbə hər gün yazılmasın
+    if not queue(db) and not todo.open_tasks(db):
+        return False  # boş növbə (və açıq iş yoxdursa) hər gün yazılmasın
     text, kb = queue_message(db, today)
-    _call("sendMessage", {**tgtopics.dest("tasks"), "text": text, "reply_markup": kb})
+    _call("sendMessage", {**tgtopics.dest("tasks"), "text": text, **({"reply_markup": kb} if kb else {})})
     return True
 
 

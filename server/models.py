@@ -401,6 +401,7 @@ class BotDraft(Base):
     reason: Mapped[Optional[str]] = mapped_column(String(200))
     model_output: Mapped[Optional[dict]] = mapped_column(JSON)
     telegram_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+    telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(32))  # NULL: köhnə sətir (şəxsi çat)
     decided_at: Mapped[Optional[datetime]] = mapped_column(TS)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
 
@@ -522,3 +523,14 @@ class Person(Base):
     card_at: Mapped[Optional[datetime]] = mapped_column(TS)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
+
+
+class Task(Base):
+    """Sahibkarın 📋 «Montaj və işlər» mövzusuna yazdığı iş (to-do): bitəndə done_at."""
+    __tablename__ = "tasks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    done_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    tg_message_id: Mapped[Optional[str]] = mapped_column(String(32))

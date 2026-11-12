@@ -1,6 +1,7 @@
 """Telegram: Instagram/YouTube qaralamaları (✅ Göndər / 🔄 Yenidən yaz / ✖️ Rədd), callback_data `x:{id}:s|g|r`."""
 import threading
 
+import settings
 import tgtopics
 from crm.tg import MAX_REGENERATE, _call
 from db import now
@@ -36,9 +37,31 @@ def send(item: SocialItem) -> str | None:
     return str(mid) if mid else None
 
 
-def auto_log(item: SocialItem, head: str = "🤖 Avtomatik cavab getdi", topic: str = "auto") -> None:
-    """Avtomatik göndərilən cavab: düyməsiz qeyd (sahibkar nə yazıldığını görsün)."""
-    _call("sendMessage", {**tgtopics.dest(topic), "text": f"{head}\n\n{_body(item)}"[:4000]})
+def auto_log(item: SocialItem, head: str = "🤖 Avtomatik cavab getdi", topic: str = "auto", extra: str = "") -> None:
+    """Avtomatik göndərilən cavab: düyməsiz qeyd (sahibkar nə yazıldığını görsün). `extra`: əlavə Direct mətni."""
+    body = _body(item) + (f"\n\nDirect:\n{extra[:1500]}" if extra else "")
+    _call("sendMessage", {**tgtopics.dest(topic), "text": f"{head}\n\n{body}"[:4000]})
+
+
+def comment_command(db, msg: dict) -> str:
+    """`/komment` — rejimi göstərir, `/komment avto|qaralama` dəyişir (yalnız sahibkar). Qaytarır: not_owner | ok | set."""
+    from crm import conf, social_inbox  # dövri import olmasın
+
+    chat = msg.get("chat") or {}
+    if str((msg.get("from") or {}).get("id")) != str(settings.TG_CHAT_ID) or not tgtopics.chat_allowed(chat.get("id")):
+        return "not_owner"
+    arg = (msg.get("text") or "").split()[1:2]
+    new = {"avto": "auto", "qaralama": "draft"}.get(arg[0].lower()) if arg else None
+    if new:
+        conf.put(db, "comment_mode", new)
+        db.commit()
+    mode = "avtomatik cavab" if social_inbox.comment_auto(db) else "qaralama (təsdiqlə)"
+    head = "✅ Dəyişdi. " if new else ""
+    thread = {"message_thread_id": msg["message_thread_id"]} if msg.get("message_thread_id") else {}
+    _call("sendMessage", {"chat_id": chat.get("id"), **thread,
+                          "text": f"{head}Komment rejimi: {mode}\n/komment avto — özü cavablasın\n"
+                                  "/komment qaralama — hər cavab sizə gəlsin"})
+    return "set" if new else "ok"
 
 
 def lead_card(text: str, wa_url: str) -> None:

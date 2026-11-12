@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session as DB
 import alerts
 import settings
 import tgtopics
-from crm import bot, chat, conf, kapso, tg
+from crm import bot, chat, conf, kapso, social_tg, tg, todo
 from db import SessionLocal, aware, get_db, now
 from models import WaContact, WaConversation, WaMessage, WebhookEvent
 
@@ -266,12 +266,20 @@ def telegram_webhook(update: dict, background: BackgroundTasks,
     if not hmac.compare_digest(x_telegram_bot_api_secret_token or "", settings.TG_WEBHOOK_SECRET):
         raise HTTPException(401, "Secret yanlışdır")
     cq, msg = update.get("callback_query"), update.get("message")
+    text = ((msg or {}).get("text") or "").strip()
+    cmd = text.split()[0].split("@")[0].lower() if text.startswith("/") else ""  # «/isler@bot» da işləsin
     if cq:
         result = tg.handle_callback(db, cq)
         if result == "regenerate":  # Gemini bir neçə saniyə çəkir: Telegram-a dərhal cavab, yeni qaralama fonda
             background.add_task(bot.regenerate, int(str(cq["data"]).split(":")[1]))
-    elif msg and (msg.get("text") or "").strip().startswith("/qur"):  # mövzu qrupunun qurulması
+    elif msg and cmd == "/qur":  # mövzu qrupunun qurulması
         result = tgtopics.setup(db, msg, tg._call)
+    elif msg and cmd == "/komment":  # komment rejimi: avto | qaralama
+        result = social_tg.comment_command(db, msg)
+    elif msg and cmd == "/isler":  # açıq işlər
+        result = todo.list_command(db, msg)
+    elif msg and (result := todo.topic_message(db, msg)):  # 📋 mövzusuna yazılan iş (qaralama məntiqinə düşməsin)
+        pass
     elif msg:
         result, draft_id = tg.handle_reply(db, msg)
         if result == "regenerate":

@@ -134,6 +134,7 @@ def parse(body: dict) -> list[dict]:
                         "thread_id": str((v.get("media") or {}).get("id") or ""),
                         "parent_id": str(v.get("parent_id") or v["id"]),  # cavab üst kommentin altına yazılır
                         "author": str(frm.get("username") or "")[:120], "text": v["text"],
+                        "model_output": {"from_id": str(frm["id"])} if frm.get("id") else None,
                         "created_at": _time((entry.get("time") or 0) * 1000) if entry.get("time") else now()})
     return out
 
@@ -213,6 +214,12 @@ def _post(path: str, **kw) -> dict:
 def send_dm(igsid: str, text: str) -> str:
     data = _post("/me/messages", json={"recipient": {"id": igsid}, "message": {"text": text}})
     return str(data.get("message_id") or "")
+
+
+def private_reply(comment_id: str, text: str) -> tuple[str, str]:
+    """Komment sahibinə ilk Direct mesajı (komment id-si ilə). Qaytarır: (recipient_id, message_id)."""
+    data = _post("/me/messages", json={"recipient": {"comment_id": comment_id}, "message": {"text": text}})
+    return str(data.get("recipient_id") or ""), str(data.get("message_id") or "")
 
 
 def reply_comment(comment_id: str, text: str) -> str:

@@ -133,3 +133,59 @@ def test_wa_auto_reply_logged_only_with_group(api, crm_env):
         tg.auto_log(db, db.get(WaConversation, conv_id), "Bəli")
     log = crm_env.tg("sendMessage")[-1]
     assert log["message_thread_id"] == 12 and log["text"].startswith("🤖 WhatsApp: Aysel")
+
+
+# --- mövzuda adi mesaj qaralamaya cavab sayılmır ---
+
+def _draft_row(mid, chat_id):
+    _, conv_id = mk_conv()
+    with SessionLocal() as db:
+        db.add(BotDraft(conversation_id=conv_id, text="Köhnə qaralama", telegram_message_id=str(mid),
+                        telegram_chat_id=chat_id))
+        db.commit()
+
+
+def _topic_msg(reply_to, thread=13, **reply_extra):
+    return {"message_id": 40, "text": "salam, test", "from": {"id": int(CHAT)}, "message_thread_id": thread,
+            "chat": {"id": GROUP, "type": "supergroup", "is_forum": True},
+            "reply_to_message": {"message_id": reply_to, **reply_extra}}
+
+
+def test_topic_plain_message_does_not_hit_old_draft(api, crm_env):
+    _setup()
+    _draft_row(11, None)  # köhnə şəxsi çat qaralaması, mesaj id-si mövzunun (11) açılış mesajı ilə üst-üstə düşür
+    before = len(crm_env.tg("sendMessage"))
+    for body in (_topic_msg(11, thread=11, forum_topic_created={"name": "x"}), _topic_msg(11, thread=11)):
+        assert api.post("/api/webhooks/telegram", json={"message": body}, headers=H).json()["result"] == "ignored"
+    assert len(crm_env.tg("sendMessage")) == before and not crm_env.gemini_calls
+    with SessionLocal() as db:
+        assert db.query(BotDraft).one().status == "pending"
+
+
+def test_reply_lookup_scoped_by_chat(api, crm_env):
+    _setup()
+    _draft_row(50, str(CHAT))  # şəxsi çatdakı qaralama
+    before = len(crm_env.tg("sendMessage"))
+    body = _topic_msg(50, thread=14)  # qrupda eyni nömrəli mesaja cavab: başqa mesajdır
+    assert api.post("/api/webhooks/telegram", json={"message": body}, headers=H).json()["result"] == "ignored"
+    assert len(crm_env.tg("sendMessage")) == before
+    with SessionLocal() as db:
+        assert db.query(BotDraft).one().status == "pending"
+
+
+def test_reply_legacy_row_without_chat_id_matches_private_chat_only(api, crm_env):
+    _draft_row(60, None)
+    crm_env.gemini(jreply("Qısa."))
+    private = {"message_id": 41, "text": "qısa yaz", "from": {"id": int(CHAT)}, "chat": {"id": int(CHAT)},
+               "reply_to_message": {"message_id": 60}}
+    assert api.post("/api/webhooks/telegram", json={"message": private}, headers=H).json()["result"] == "regenerate"
+
+
+def test_send_draft_stores_chat_id(api, crm_env):
+    _setup()
+    _, conv_id = mk_conv()
+    crm_env.gemini(jreply("Salam, buyurun"))
+    bot.handle(conv_id)
+    with SessionLocal() as db:
+        d = db.query(BotDraft).one()
+        assert d.telegram_chat_id == str(GROUP) and d.telegram_message_id

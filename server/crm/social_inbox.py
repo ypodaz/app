@@ -1,6 +1,9 @@
 """Instagram DM/komment və YouTube kommenti: AI qaralaması (WhatsApp botunun təlimatı + kanal qeydi) və göndəriş.
 
-Komment və YouTube: qaralama Telegram-a düymələrlə gedir (social_tg), göndəriş sahibkar təsdiqindən sonradır.
+Komment və YouTube: `comment_mode = auto` (susmaya görə) olanda AI cavabı özü ictimai yazır (sahibkar 🤖 mövzusunda
+görür); Instagram-da maraqlanana (INTEREST_RE) əvvəl ilk Direct mesajı da gedir (private reply). Şikayət, mübahisə,
+cavabı bilinməyən sual (handoff), spam və ya sutkada 40-dan çox cavab olanda qaralama Telegram-a düymələrlə gedir
+(social_tg), göndəriş sahibkar təsdiqindən sonradır. `/komment avto|qaralama` rejimi dəyişir.
 Instagram DM: `ig_dm_mode = auto` olanda bot özü cavab verir (sahibkar hər cavabı Telegram-da görür); `new_auto` —
 yalnız əvvəl bizimlə yazışmayana, köhnə yazışanlara qaralama. Handoff olanda
 və ya sahibkar Instagram app-dan özü yazanda o müştəriyə 7 gün avtomatik cavab getmir, yenə qaralama olur.
@@ -44,9 +47,26 @@ PHONE_RE = re.compile(r"(?:\+|00)?\d[\d\s\-().]{6,17}\d")
 _sent_mids: deque = deque(maxlen=500)  # API ilə göndərdiyimiz DM-lər: echo-su gələndə «sahibkar yazdı» sayılmasın
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
-COMMENT_NOTE = ("\n\nKANAL: Bu, {where} ictimai kommentdir. 1–2 qısa, isti cümlə yaz, qiymət yazma, ətraflı məlumat üçün "
-                "DM-ə və ya WhatsApp-a dəvət et. Komment spam, təhqir və ya mənasızdırsa reply boş qaytar, handoff = true, "
-                "handoff_reason = «diger». Lead sahələri null qalır.")
+COMMENT_NOTE = ("\n\nKANAL: Bu, {where} ictimai kommentdir. 1–2 qısa, isti cümlə yaz, ən çoxu bir emoji (yalnız 🙏 və ya 😊), "
+                "qiymət yazma. Komment spam, təhqir və ya mənasızdırsa reply boş qaytar, handoff = true, "
+                "handoff_reason = «diger». Şikayət, mənfi fikir, mübahisə və ya cavabını dəqiq bilmədiyin sualdırsa "
+                "handoff = true (sahibkar özü baxacaq). Maraqlanan (qiymət soruşur, necə yazılacağını soruşur, çəkiliş "
+                "istəyir, «+», «maraqlıdır», «ətraflı») üçün qısa isti cavab ver. {tail} Lead sahələri null qalır.")
+COMMENT_TAILS = {
+    "instagram": "Maraqlananlara biz Direct mesajı göndəririk: ictimai cavabda qısaca bunu de (məs. «Direct-ə yazdıq 🙏»), "
+                 "qiyməti ictimai yazma.",
+    "youtube": "YouTube-da Direct yoxdur: maraqlananı WhatsApp 055 530 35 32 və ya Instagram @ypod.az Direct-inə dəvət et, "
+               "qiyməti ictimai yazma.",
+}
+# Maraq əlamətləri: komment mətnində bunlardan biri varsa Instagram-da ilk Direct də göndərilir
+INTEREST_RE = re.compile(r"^\s*\++\s*$|qiymət|qiymet|neçəyə|necəyə|price|rezerv|bron|çəkiliş|cekilis|maraq|ətraflı|etrafli|"
+                         r"əlaqə|elaqe|nömrə|nomre|necə yazılım|harada|ünvan|\+", re.I)
+FIRST_DM_NOTE = ("\n\nBu adam Instagram postunun altında komment yazıb: «{text}». Ona ilk Direct mesajını yaz: salamla, "
+                 "kommentinə istinad et, sualı varsa cavab ver (qiymət və faktlar təlimatdakı kimi), sonda bir sual ver.")
+PHONE = "055 530 35 32"
+IG_DIRECT_REPLY = f"Sizə Direct-dən yazdıq 🙏 Həmçinin {PHONE} nömrəsi ilə əlaqə saxlaya bilərsiniz."  # model yazmır: nömrə həmişə olsun
+YT_PHONE_TAIL = f" Əlaqə: {PHONE}"
+AUTO_COMMENT_CAP = 40  # sutkada (sürüşən 24 saat) avtomatik komment cavabı limiti
 WHERE = {"instagram": "Instagram-da", "youtube": "YouTube-da"}
 
 
@@ -58,6 +78,17 @@ SEND_ERRORS = (instagram.IgError, youtube.YtError, WindowClosed)
 
 
 NEW_BUFFER = timedelta(hours=1)  # yeni adamın ilk mesajlarından bir az əvvəlki yazışma «köhnə» sayılır
+
+
+def comment_auto(db: DB) -> bool:
+    """Kommentə təsdiqsiz cavab: `auto` (susmaya görə) və ya `draft`."""
+    return (conf.get(db, "comment_mode", "auto") or "auto").strip().lower() != "draft"
+
+
+def _auto_count(db: DB) -> int:
+    rows = db.scalars(select(SocialItem.model_output).where(
+        SocialItem.kind == "comment", SocialItem.status == "sent", SocialItem.decided_at >= now() - timedelta(hours=24)))
+    return sum(1 for mo in rows if (mo or {}).get("auto"))
 
 
 def ig_auto(db: DB, item: SocialItem) -> bool:
@@ -280,12 +311,13 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
                                                           SocialItem.status == "sent").limit(1))
         note = DM_NOTE
     else:
-        first, note = False, COMMENT_NOTE.format(where=WHERE.get(item.channel, ""))
+        first, note = False, COMMENT_NOTE.format(where=WHERE.get(item.channel, ""),
+                                                 tail=COMMENT_TAILS.get(item.channel, ""))
     system = bot.build_system(db, now(), first_message=first) + note
     if avoid:
         system += (f"\n\nSAHİBKAR ƏVVƏLKİ QARALAMANI BƏYƏNMƏDİ: «{avoid[:1500]}». Başqa cür yaz: fərqli başlanğıc və "
                    "ifadələr. Faktlar və qaydalar eyni qalır.")
-    regen = (item.model_output or {}).get("regen", 0)
+    regen, from_id = (item.model_output or {}).get("regen", 0), (item.model_output or {}).get("from_id")
     try:
         res, usage, problem = bot.converse(system, bot.contents_from(_history(db, item)))
     except AiError as e:
@@ -296,7 +328,7 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         return "ai_error"
     ai.count_usage(db, "bot", *usage)
     reply = "" if problem else res["reply"]
-    item.model_output = {**res, "problem": problem, "regen": regen}
+    item.model_output = {**res, "problem": problem, "regen": regen, **({"from_id": from_id} if from_id else {})}
     if item.kind == "dm" and not avoid:
         bot.note_gap(db, None, {**res, "handoff": True, "handoff_reason": "filtr"} if problem else res, item.text,
                      "[IG] ")
@@ -310,6 +342,10 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         return "ignored"
     item.draft_text = reply
     db.commit()
+    if item.kind == "comment" and not avoid and not res.get("handoff") and comment_auto(db):
+        outcome = _auto_comment(db, item, from_id)
+        if outcome:
+            return outcome
     if item.kind == "dm":  # köhnə cavabsız qaralamalar artıq lazım deyil
         for old in db.scalars(select(SocialItem).where(SocialItem.channel == item.channel, SocialItem.kind == "dm",
                                                        SocialItem.thread_id == item.thread_id,
@@ -344,6 +380,60 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
     social_tg.send(item)
     db.commit()
     return "draft"
+
+
+def _first_dm(db: DB, item: SocialItem) -> str:
+    """Komment yazana ilk Direct mətni (ikinci AI çağırışı). Boş: yazılmadı, qaralama Telegram-a gedir."""
+    system = (bot.build_system(db, now(), first_message=True) + DM_NOTE + FIRST_DM_NOTE.format(text=item.text[:500]))
+    try:
+        res, usage, problem = bot.converse(system, bot.contents_from([("user", item.text)]))
+    except AiError:
+        return ""
+    ai.count_usage(db, "bot", *usage)
+    return "" if problem or res.get("handoff") else (res.get("reply") or "").strip()
+
+
+def _auto_comment(db: DB, item: SocialItem, from_id: str | None) -> str | None:
+    """Kommentə təsdiqsiz cavab. None: avtomatik getmədi, qaralama Telegram-a göndərilməlidir."""
+    if _auto_count(db) >= AUTO_COMMENT_CAP:
+        return None
+    dm_text = ""
+    interested = bool(INTEREST_RE.search(item.text))
+    if item.channel == "youtube" and interested and PHONE not in (item.draft_text or ""):
+        item.draft_text = (item.draft_text or "").rstrip() + YT_PHONE_TAIL
+    if item.channel == "instagram" and interested:
+        if from_id and is_human(db, from_id):  # bu adamla insan danışır: bot Direct yazmasın
+            return None
+        dm_text = _first_dm(db, item)
+        if not dm_text:
+            return None
+        try:
+            rid, mid = instagram.private_reply(item.external_id, dm_text)
+        except instagram.IgError as e:  # Direct getmədi: «Direct-ə yazdıq» deyən ictimai cavab da getməsin
+            alerts.notify(f"ig-comment-dm:{item.id}", topic="action", text=f"Komment sahibinə Direct getmədi "
+                                                       f"({str(e)[:200]}), qaralama Telegram-dadır.")
+            return None
+        if mid:
+            _sent_mids.append(mid)
+        if rid and conf.get(db, f"ig_new:{rid}") is None:  # cavab yazsa new_auto rejimi avtomatik cavablasın
+            conf.put(db, f"ig_new:{rid}", "1")
+        item.model_output = {**(item.model_output or {}), "dm_text": dm_text, "dm_mid": mid}
+        item.draft_text = IG_DIRECT_REPLY  # Direct getdi: ictimai cavab sabit mətndir
+        db.commit()
+    try:
+        send(db, item)
+        item.model_output = {**(item.model_output or {}), "auto": True}
+        db.commit()
+    except SEND_ERRORS as e:
+        db.rollback()
+        alerts.notify(f"comment-auto:{item.id}", topic="action", text=f"Komment cavabı getmədi ({str(e)[:200]}), "
+                                                  "qaralama Telegram-dadır.")
+        return None
+    if dm_text:
+        social_tg.auto_log(item, "🤖 Komment cavablandı + Direct yazıldı", topic="auto", extra=dm_text)
+    else:
+        social_tg.auto_log(item, "🤖 Komment avtomatik cavablandı", topic="auto")
+    return "sent"
 
 
 def send(db: DB, item: SocialItem) -> None:
