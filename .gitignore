@@ -12,3 +12,6 @@ __pycache__/
 web/node_modules/
 web/dist/
 .DS_Store
+
+# prod bazanın lokal nüsxələri — açıq repoya düşməməli
+backups/
