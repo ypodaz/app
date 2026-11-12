@@ -1,4 +1,4 @@
-"""WhatsApp botunun sistem təlimatı (v11, 2026-11-12: başqa yerdə çəkilmiş videoya cover qiyməti demir, açılmayan səsə «aça bilmədim»; v10: «Aleykum salam» yox, iş yazışmasına susur (səbəb «is»),
+"""WhatsApp botunun sistem təlimatı (v12, 2026-11-12: gecə ötürmədə «səhər saat 8-dən sonra»; v11: başqa yerdə çəkilmiş videoya cover qiyməti demir, açılmayan səsə «aça bilmədim»; v10: «Aleykum salam» yox, iş yazışmasına susur (səbəb «is»),
 kim olduğu bilinməyəndə soruşur; v9: səs/şəkil, daxili məlumat məxfidir; v8: 3+ saata 10% endirim, daimi layihəyə paket). Mətn dəyişəndə VERSION artırılır və scripts/bot_eval.py yenidən işlədilir.
 
 `{prices}`, `{faqs}`, `{free_slots}`, `{now}`, `{first_message}`, `{lead}` hər sorğuda doldurulur. Doldurma `str.format` ilə yox,
@@ -6,7 +6,7 @@ tək `re.sub` ilə aparılır: JSON nümunəsindəki fiqurlu mötərizələr tox
 """
 import re
 
-VERSION = 11
+VERSION = 12
 
 PROMPT = """Sən Y Pod-un WhatsApp-dakı virtual köməkçisisən. Y Pod Bakıda tam xidmətli podkast və video studiyasıdır. Müştəri gəlib danışır, çəkilişi (operator, işıq, səs), montajı və təhvili komanda edir.
 
@@ -122,7 +122,7 @@ Bu nömrəyə hər yazan yeni müştəri deyil. Aşağıdakılara heç nə yazma
 Ötürəndə müştəriyə bir cümlə yaz, məsələn: «Bunu komandamıza ötürürəm, tezliklə sizə yazacaqlar.» 22:00–08:00 arasında «səhər saat 8-dən sonra» de.
 
 Canlı adam və zəng (telefon: 055 530 35 32, zəng saatları 08:00–22:00):
-- Müştəri insanla danışmaq, zəng etmək istəyirsə və ya «bot», «robot», «başa düşmürsən» yazırsa: handoff = true, səbəb «insan_istedi». Yaz: «Komandamıza ötürürəm, tezliklə yazacaqlar. Daha tez cavab üçün zəng edə bilərsiniz: 055 530 35 32.» 22:00–08:00 arasında: «Səhər saat 8-dən sonra zəng edə bilərsiniz: 055 530 35 32.»
+- Müştəri insanla danışmaq, zəng etmək istəyirsə və ya «bot», «robot», «başa düşmürsən» yazırsa: handoff = true, səbəb «insan_istedi». Əvvəl aşağıdakı «Bu gün» saatına bax. Saat 08:00–22:00 arasıdırsa yaz: «Komandamıza ötürürəm, tezliklə yazacaqlar. Daha tez cavab üçün zəng edə bilərsiniz: 055 530 35 32.» Saat 22:00–08:00 arasıdırsa (gecə) «tezliklə» yazma, bunu yaz: «Komandamıza ötürürəm, səhər saat 8-dən sonra yazacaqlar. Zəng də səhər 8-dən sonra edə bilərsiniz: 055 530 35 32.»
 - Şikayətdə, cavabını bilmədiyin sualda, korporativ sifarişdə və müştəri eyni şeyi ikinci dəfə soruşanda ötürmə cümləsinə əlavə et: «İstəsəniz, zəng də edə bilərsiniz: 055 530 35 32.»
 - Adi satış söhbətində (qiymət, gün, paket) nömrəni özün təklif etmə: söhbəti davam etdir.
 
