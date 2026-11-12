@@ -106,7 +106,7 @@ def org_id() -> str:
 
 
 def get_channels(org_id: str) -> list[dict]:
-    data = _gql("query Channels($input: ChannelsInput!) { channels(input: $input) { id service name isQueuePaused } }",
+    data = _gql("query Channels($input: ChannelsInput!) { channels(input: $input) { id service name isQueuePaused isDisconnected } }",
                 {"input": {"organizationId": org_id}})
     return data["channels"]
 
@@ -139,6 +139,27 @@ def create_post(channel_id: str, service: str, text: str, video_url: str, due_at
     res = _gql(CREATE_POST, {"input": inp})["createPost"]
     if "post" not in res:
         raise BufferError("Buffer createPost: " + str(res.get("message") or res)[:300])
+    return res["post"]
+
+
+EDIT_POST = """mutation EditPost($input: EditPostInput!) {
+  editPost(input: $input) {
+    ... on PostActionSuccess { post { id dueAt } }
+    ... on MutationError { message }
+  }
+}"""
+
+
+def share_now(post_id: str, service: str, text: str, video_url: str, title: str | None = None,
+              thumbnail_offset_ms: int = 1000) -> dict:
+    """Buffer-dəki mövcud postu dərhal göndərir (kanal yenidən qoşulandan sonra). Canlı yoxlanıb: text, assets və
+    metadata olmadan yalnız mode kifayət etmir. MutationError olarsa BufferError."""
+    inp = {"id": post_id, "mode": "shareNow", "schedulingType": "automatic", "text": text,
+           "assets": [{"video": {"url": video_url, "metadata": {"thumbnailOffset": thumbnail_offset_ms}}}],
+           "metadata": _metadata(service, title)}
+    res = _gql(EDIT_POST, {"input": inp})["editPost"]
+    if "post" not in res:
+        raise BufferError("Buffer editPost: " + str(res.get("message") or res)[:300])
     return res["post"]
 
 

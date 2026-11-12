@@ -1,6 +1,7 @@
 """Paylaşım dövrü: Buffer növbəsini doldurur və statusları yoxlayır (push.loop kimi, SCHEDULER bayrağı ilə).
 
-Hər 15 dəqiqədə növbə doldurma, hər 2 saatda status sinxronu. `social_queue_enabled` ayarı true deyilsə heç nə göndərilmir.
+Hər 15 dəqiqədə növbə doldurma, hər 2 saatda status sinxronu,
+hər saat Buffer kanalının ayrılıb-ayrılmadığı yoxlanır (ayrılsa Telegram, qayıdanda bu günün xətalı postları təkrar). `social_queue_enabled` ayarı true deyilsə heç nə göndərilmir.
 """
 import asyncio
 import logging
@@ -16,6 +17,7 @@ from db import SessionLocal, aware, now
 from models import MediaAsset, Setting, SocialPost
 from social import buffer, facebook
 from social.schedule import ENABLED_PLATFORMS
+from views import BAKU
 
 log = logging.getLogger("social")
 INTERVAL = 15 * 60
@@ -26,9 +28,11 @@ FILL_BATCH = 5
 LATE_AFTER = timedelta(minutes=45)
 MAX_ATTEMPTS = 3
 CHANNEL_TTL = 24 * 3600
+CHANNEL_CHECK_EVERY = 3600
 
 _channels: dict = {"at": 0.0, "map": {}}
 _last_sync = 0.0
+_last_channel_check = 0.0
 
 
 def queue_enabled(db: DB) -> bool:
@@ -190,8 +194,80 @@ def sync_status(db: DB) -> dict:
     return out
 
 
+def retry_today(db: DB, service: str, channel_id: str) -> int:
+    """Bu günün (Bakı) xətalı postlarını yenidən göndərir: Buffer-də varsa shareNow, yoxdursa yeni post."""
+    t = now()
+    day = t.astimezone(BAKU).date()
+    posts = [p for p in db.scalars(select(SocialPost).where(
+        SocialPost.platform == service, SocialPost.status == "error", SocialPost.scheduled_at <= t,
+    ).order_by(SocialPost.scheduled_at)).all() if aware(p.scheduled_at).astimezone(BAKU).date() == day]
+    sent = 0
+    for post in posts:
+        asset = db.get(MediaAsset, post.media_asset_id)
+        if not asset.public_url:
+            log.warning("post %s təkrarda atlandı: video %s üçün public_url yoxdur", post.id, asset.number)
+            continue
+        try:
+            if post.external_id:
+                buffer.share_now(post.external_id, service, post.text, asset.public_url, title=post.title,
+                                 thumbnail_offset_ms=asset.cover_offset_ms)
+            else:
+                res = buffer.create_post(channel_id, service, post.text, asset.public_url, t + timedelta(minutes=2),
+                                         title=post.title, thumbnail_offset_ms=asset.cover_offset_ms)
+                post.external_id = res["id"]
+        except (buffer.BufferCapReached, buffer.BufferBackoff):
+            db.commit()
+            break
+        except buffer.BufferError as e:
+            log.warning("post %s təkrar göndərilmədi: %s", post.id, e)
+            continue
+        post.status, post.error, post.attempts = "queued", None, 0
+        db.commit()
+        sent += 1
+    return sent
+
+
+def check_channels(db: DB) -> dict:
+    """Buffer kanalı ayrılıbsa Telegram-a xəbər verir; yenidən qoşulanda bu günün xətalı postlarını təkrar göndərir."""
+    out = {"disconnected": [], "reconnected": []}
+    try:
+        chans = buffer.get_channels(buffer.org_id())
+    except buffer.BufferError as e:
+        log.warning("Buffer kanal yoxlaması alınmadı: %s", e)
+        return out
+    _channels["map"] = {c["service"]: c["id"] for c in chans}
+    _channels["at"] = time.monotonic()
+    for c in chans:
+        service = c["service"]
+        if service not in ENABLED_PLATFORMS:
+            continue
+        key = f"buffer_disconnected:{service}"
+        row = db.get(Setting, key)
+        if c.get("isDisconnected") and not row:
+            db.add(Setting(key=key, value=now().isoformat()))
+            db.commit()
+            alerts.notify(f"buffer-disc:{service}",
+                          f"⚠️ Buffer-də {service} kanalı ayrılıb (çox vaxt Facebook/Instagram parolu dəyişəndə olur). "
+                          "Buffer → Channels → Refresh edin. Qoşulana qədər bu kanalın postları çıxmayacaq.",
+                          topic="action")
+            out["disconnected"].append(service)
+        elif not c.get("isDisconnected") and row:
+            db.delete(row)
+            db.commit()
+            try:
+                sync_status(db)  # xətalı postlar «error» kimi işarələnsin
+            except buffer.BufferError as e:
+                log.warning("kanal qayıdandan sonra status sinxronu alınmadı: %s", e)
+            n = retry_today(db, service, c["id"])
+            msg = (f"Bu günün {n} postu yenidən göndərildi." if n else "Yenidən göndərilməli post yoxdur.")
+            alerts.notify(f"buffer-back:{service}:{now().astimezone(BAKU).date().isoformat()}",
+                          f"✅ Buffer-də {service} yenidən qoşuldu. {msg}", topic="action")
+            out["reconnected"].append(service)
+    return out
+
+
 def tick() -> None:
-    global _last_sync
+    global _last_sync, _last_channel_check
     with SessionLocal() as db:
         if not queue_enabled(db):
             return
@@ -199,6 +275,12 @@ def tick() -> None:
             fill_queue(db)
         except Exception:  # doldurma yıxılsa da sinxron işləsin
             log.exception("növbə doldurma")
+        if time.monotonic() - _last_channel_check >= CHANNEL_CHECK_EVERY:
+            _last_channel_check = time.monotonic()
+            try:
+                check_channels(db)
+            except Exception:
+                log.exception("kanal yoxlaması")
         if time.monotonic() - _last_sync >= SYNC_EVERY:
             _last_sync = time.monotonic()
             try:

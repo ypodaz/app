@@ -512,3 +512,87 @@ def test_import_with_facebook_adds_only_missing(api, monkeypatch):
         assert schedule.import_items(db, date(2026, 11, 20), [item(1)]) == {"created": 1, "skipped": 3}
         assert db.scalar(select(SocialPost).where(SocialPost.platform == "facebook")).text == "ig1"
         assert schedule.import_items(db, date(2026, 11, 20), [item(2)]) == {"created": 4, "skipped": 0}
+
+
+# --- kanal yoxlaması ---
+
+def chans(**disc):
+    return lambda org: [{"id": f"c-{s}", "service": s, "name": s, "isQueuePaused": False,
+                         "isDisconnected": disc.get(s, False)} for s in ("instagram", "tiktok", "youtube")]
+
+
+def err_post(db, n, platform="instagram", ext="b1", days_ago=0):
+    # Bakı günü ilə müqayisə üçün: bu günün Bakı 00:00-dan sonrası, ya da dünən
+    t = datetime.now(timezone.utc) - timedelta(minutes=5)
+    if days_ago:
+        t -= timedelta(days=days_ago)
+    elif t.astimezone(worker.BAKU).date() != datetime.now(timezone.utc).astimezone(worker.BAKU).date():
+        t = datetime.now(timezone.utc)  # Bakı gecəyarısına yaxın kənar hal
+    a = MediaAsset(number=n, day=n, slot="seher", title=f"V{n}", file_name=f"{n}.mp4", public_url="https://cdn.test/v.mp4")
+    db.add(a)
+    db.flush()
+    p = SocialPost(media_asset_id=a.id, platform=platform, text="t", scheduled_at=t, status="error",
+                   external_id=ext, error="x", attempts=3)
+    db.add(p)
+    db.commit()
+    return p
+
+
+def test_disconnect_alerts_once(api, fake_buffer, alerted, monkeypatch):
+    monkeypatch.setattr(buffer, "get_channels", chans(instagram=True))
+    with SessionLocal() as db:
+        assert worker.check_channels(db)["disconnected"] == ["instagram"]
+        assert db.get(Setting, "buffer_disconnected:instagram")
+        worker.check_channels(db)
+    assert len(alerted) == 1 and alerted[0][0] == "buffer-disc:instagram" and "instagram" in alerted[0][1]
+
+
+def test_reconnect_retries_todays_errors(api, fake_buffer, alerted, monkeypatch):
+    shared = []
+    monkeypatch.setattr(buffer, "share_now", lambda pid, svc, text, url, title=None, thumbnail_offset_ms=1000:
+                        shared.append(pid) or {"id": pid})
+    monkeypatch.setattr(buffer, "get_channels", chans(instagram=True))
+    with SessionLocal() as db:
+        a = err_post(db, 1, ext="bx")
+        old = err_post(db, 2, ext="by", days_ago=1)
+        new = err_post(db, 3, ext=None)
+        worker.check_channels(db)
+        monkeypatch.setattr(buffer, "get_channels", chans())
+        assert worker.check_channels(db)["reconnected"] == ["instagram"]
+        for p in (a, old, new):
+            db.refresh(p)
+        assert db.get(Setting, "buffer_disconnected:instagram") is None
+        assert shared == ["bx"] and a.status == "queued" and a.error is None and a.attempts == 0
+        assert old.status == "error"
+        assert new.status == "queued" and new.external_id == "b1" and fake_buffer.created[0]["channel"] == "c-instagram"
+    assert alerted[-1][0].startswith("buffer-back:instagram:") and "2 postu" in alerted[-1][1]
+
+
+def test_reconnect_without_errors_says_so(api, fake_buffer, alerted, monkeypatch):
+    monkeypatch.setattr(buffer, "get_channels", chans(tiktok=True))
+    with SessionLocal() as db:
+        worker.check_channels(db)
+        monkeypatch.setattr(buffer, "get_channels", chans())
+        worker.check_channels(db)
+    assert "post yoxdur" in alerted[-1][1]
+
+
+def test_check_channels_buffer_error_is_silent(api, fake_buffer, alerted, monkeypatch):
+    def boom(org):
+        raise buffer.BufferError("şəbəkə")
+
+    monkeypatch.setattr(buffer, "get_channels", boom)
+    with SessionLocal() as db:
+        assert worker.check_channels(db) == {"disconnected": [], "reconnected": []}
+    assert alerted == []
+
+
+def test_tick_checks_channels_once_per_hour(api, fake_buffer, monkeypatch):
+    calls = []
+    monkeypatch.setattr(worker, "check_channels", lambda db: calls.append(1))
+    monkeypatch.setattr(worker, "_last_channel_check", -10_000_000.0)
+    with SessionLocal() as db:
+        worker.set_queue_enabled(db, True)
+    worker.tick()
+    worker.tick()
+    assert len(calls) == 1
