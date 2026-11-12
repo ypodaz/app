@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import tgtopics
-from crm import conf, tg
+from crm import conf, tg, turns
 from db import aware
 from models import BotDraft, LeadEvent, SocialItem, UnansweredQuestion, WaConversation, WaMessage
 from views import BAKU
@@ -15,8 +15,8 @@ HOUR = 21
 SAMPLES = 3
 GAPS = 8  # hesabatda ən çoxu neçə «bilmədiyi sual»
 WEEK = timedelta(days=7)
-STATUSES = (("sent", "göndərildi"), ("edited", "dəyişdirilib göndərildi"), ("rejected", "rədd"),
-            ("pending", "gözləyir"))
+STATUSES = (("sent", "göndərildi"), ("edited", "dəyişdirilib göndərildi"), ("auto", "1 saatdan sonra bot özü göndərdi"),
+            ("rejected", "rədd"), ("pending", "gözləyir"))
 
 
 def _in(col, since, until):
@@ -34,7 +34,8 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
     weekly = _weekly(db, until)
     ads = db.execute(select(SocialItem.ad_id, func.count(func.distinct(SocialItem.thread_id))).where(
         SocialItem.ad_id.is_not(None), *_in(SocialItem.created_at, since, until)).group_by(SocialItem.ad_id)).all()
-    if not (convs or msgs or drafts or gaps or weekly or ads):
+    waiting = turns.waiting_lines(db)
+    if not (convs or msgs or drafts or gaps or weekly or ads or waiting):
         return None
     lines = [f"📊 Bot hesabatı, {aware(until).astimezone(BAKU):%d.%m}", "",
              f"Yeni söhbət: {convs}", f"Müştəridən mesaj: {msgs}"]
@@ -70,6 +71,8 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
         lines += [f"• {g.question[:200]}" for g in gaps[:GAPS]]
         if len(gaps) > GAPS:
             lines.append(f"… və daha {len(gaps) - GAPS} (panel → Bot ayarları → Cavabsız suallar)")
+    if waiting:
+        lines += ["", f"⏳ Komandaya ötürülüb, sizin cavabınızı gözləyən söhbətlər ({len(waiting)}):"] + waiting[:10]
     if weekly:
         lines += ["", f"🗓 Həftəlik: son 7 gündə həll olunmamış {weekly} sual yığılıb. Claude-a «bot izləmə» yazın: "
                       "prompta və FAQ-a əlavə edək."]

@@ -20,13 +20,14 @@ export type Lead = {
   preferred_date: string | null; people: number | null; cameras: number | null; editing: boolean | null; source: string;
   stage: Stage; notes: string; shoot_id: number | null; created_at: string; updated_at: string;
 };
+export type ConvMode = 'bot' | 'human' | 'owner' | 'wait'; // owner: sahibkar yazıb; wait: komandaya ötürülüb (server/crm/turns.py)
 export type Contact = { id: number; name: string | null; phone: string | null; excluded: boolean };
 export type Conv = {
-  id: number; contact: Contact; last_message: Msg | null; unread: number; mode: 'bot' | 'human';
+  id: number; contact: Contact; last_message: Msg | null; unread: number; mode: ConvMode;
   pending_drafts: number; lead_stage: Stage | null; last_message_at: string | null; window_expires_at: string | null;
 };
 export type ConvOpen = {
-  id: number; mode: 'bot' | 'human'; unread: number; contact: Contact & { bot_muted_until: string | null };
+  id: number; mode: ConvMode; unread: number; contact: Contact & { bot_muted_until: string | null };
   messages: Msg[]; drafts: Draft[]; lead: Lead | null; window_expires_at: string | null; window_open: boolean;
 };
 

@@ -43,7 +43,9 @@ def detect_lang(text: str) -> str | None:
     if letters and sum("Ѐ" <= c <= "ӿ" for c in letters) / len(letters) > 0.3:
         return "ru"
     words = set(re.findall(r"[^\W\d_]+", text.lower()))
-    if "ə" in text.lower() or len(words & AZ_WORDS) >= 2:
+    if "ə" in text.lower():
+        return "az"
+    if len(words & AZ_WORDS) >= 2 and len(words & AZ_WORDS) > len(words & TR_WORDS):  # «saat», «montaj» türkcədə də var
         return "az"
     scores = {"tr": len(words & TR_WORDS), "en": len(words & EN_WORDS), "az": len(words & AZ_WORDS)}
     best = max(scores, key=scores.get)
@@ -82,6 +84,8 @@ def check(res: dict, expect: dict, global_bad: list[str]) -> list[str]:
     for k, v in (expect.get("lead") or {}).items():
         if res["lead"].get(k) != v:
             bad.append(f"lead.{k}={res['lead'].get(k)} (gözlənən {v})")
+    if "asan" in expect and bool(res.get("asan")) != expect["asan"]:
+        bad.append(f"asan={bool(res.get('asan'))} (gözlənən {expect['asan']})")
     if "unanswered" in expect and bool(res["unanswered_question"]) != expect["unanswered"]:
         bad.append(f"unanswered_question={'var' if res['unanswered_question'] else 'yoxdur'}")
     if re.search(r"\d{12,}", re.sub(r"[\s\-]", "", reply)):

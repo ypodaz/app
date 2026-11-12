@@ -163,6 +163,20 @@ def share_now(post_id: str, service: str, text: str, video_url: str, title: str 
     return res["post"]
 
 
+def reschedule(post_id: str, service: str, text: str, video_url: str, due_at: datetime, title: str | None = None,
+               thumbnail_offset_ms: int = 1000) -> dict:
+    """Buffer-dəki vaxtlanmış postun vaxtını dəyişir (editPost, customScheduled). `share_now` kimi mətn, video və
+    metadata da göndərilir. MutationError olarsa BufferError."""
+    inp = {"id": post_id, "mode": "customScheduled", "schedulingType": "automatic", "text": text,
+           "dueAt": due_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+           "assets": [{"video": {"url": video_url, "metadata": {"thumbnailOffset": thumbnail_offset_ms}}}],
+           "metadata": _metadata(service, title)}
+    res = _gql(EDIT_POST, {"input": inp})["editPost"]
+    if "post" not in res:
+        raise BufferError("Buffer editPost: " + str(res.get("message") or res)[:300])
+    return res["post"]
+
+
 def get_posts(org_id: str, channel_ids: list[str], since: datetime) -> list[dict]:
     """[{id, status, dueAt, channelId, error}]. `since` UTC-dən sonra vaxtlanmış postlar."""
     q = """query Posts($input: PostsInput!) {

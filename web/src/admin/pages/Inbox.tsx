@@ -45,7 +45,7 @@ function ConvList({ list, err, sel }: { list: Conv[] | null; err: string; sel?: 
     const s = q.trim().toLowerCase();
     return (list ?? []).filter((c) => {
       if (filter === 'draft' && !c.pending_drafts) return false;
-      if (filter === 'reply' && !(c.mode === 'human' && c.last_message?.direction === 'in')) return false;
+      if (filter === 'reply' && !(c.mode !== 'bot' && c.last_message?.direction === 'in')) return false;
       return !s || contactName(c.contact).toLowerCase().includes(s) || (c.contact.phone ?? '').includes(s.replace(/^\+/, ''));
     });
   }, [list, filter, q]);
@@ -68,7 +68,7 @@ function ConvList({ list, err, sel }: { list: Conv[] | null; err: string; sel?: 
               <span className="c-ct"><b>{name}</b><time>{whenShort(c.last_message_at)}</time></span>
               <span className="c-cm">{c.last_message ? (c.last_message.direction === 'out' ? 'Siz: ' : '') + (firstLine(c.last_message.text) || '…') : 'Mesaj yoxdur'}</span>
               <span className="c-tags">
-                <AChip tone={c.mode === 'bot' ? 'cal' : 'cb'}>{c.mode === 'bot' ? 'Bot' : 'Siz'}</AChip>
+                <AChip tone={c.mode === 'bot' ? 'cal' : 'cb'}>{c.mode === 'bot' ? 'Bot' : c.mode === 'wait' ? 'Gözləyir' : 'Siz'}</AChip>
                 {c.pending_drafts > 0 && <AChip tone="beh">Qaralama</AChip>}
                 <StageChip stage={c.lead_stage} />
                 {c.contact.excluded && <AChip tone="off">Bot yazmır</AChip>}
@@ -133,7 +133,9 @@ function Chat({ id, onChanged }: { id: number; onChanged: () => void }) {
           <a className="a-bg a-bg-i" href="#/bot" aria-label="Bot ayarları"><span aria-hidden="true">⚙︎</span></a>
         </header>
         <div className="c-mode">
-          <ASeg<'bot' | 'human'> pill label="Rejim" options={[{ value: 'bot', label: 'Bot yazır' }, { value: 'human', label: 'Mən yazıram' }]} value={data.mode} onChange={setMode} disabled={act.busy} />
+          <ASeg<'bot' | 'human'> pill label="Rejim" options={[{ value: 'bot', label: 'Bot yazır' }, { value: 'human', label: 'Mən yazıram' }]} value={data.mode === 'human' ? 'human' : 'bot'} onChange={setMode} disabled={act.busy} />
+          {data.mode === 'owner' && <small>Söhbəti siz aparırsınız: bot qaralama yazır, 1 saat toxunmasanız özü göndərir (gecə yalnız asan cavab).</small>}
+          {data.mode === 'wait' && <small>Bot komandaya ötürüb, sizin cavabınızı gözləyir. Asan suallara özü cavab verir.</small>}
         </div>
         {!data.window_open && <div className="c-warn" role="status">24 saat keçib, müştəri yazmayınca mesaj getməyəcək.</div>}
         <div className="c-msgs">

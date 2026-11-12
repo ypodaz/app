@@ -97,6 +97,8 @@ def decide_draft(db: DB, draft: BotDraft, action: str, text: str | None = None) 
     if draft.status == "edited":
         draft.text = final  # orijinal `model_output["reply"]`-da qalır
     draft.decided_at = now()
+    from crm import turns  # dövri import olmasın: turns chat-ı işlədir
+    turns.draft_approved(db, conv)  # sahibkar qaralamanı təsdiqlədi: bot söhbəti yenə özü aparır
     return draft
 
 

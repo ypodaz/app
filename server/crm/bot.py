@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session as DB
 
 import ai
 import alerts
+import tgtopics
 from ai import WD, AiError
-from crm import bot_prompt, chat, conf, contacts, customer_card, kapso, slots, tg, voice
+from crm import bot_prompt, chat, conf, contacts, customer_card, kapso, slots, tg, turns, voice
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -32,7 +33,7 @@ STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
 BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
 FOUND_VIA = ("instagram", "tiktok", "youtube", "reklam", "tanis", "google", "diger")
 # Lead cədvəlində sütunu olmayan sahələr qeydlərə (notes) «Etiket: dəyər» sətri kimi yazılır
-NOTE_FIELDS = {"instagram": "Instagram", "found_via": "Haradan tapıb"}
+NOTE_FIELDS = {"instagram": "Instagram", "found_via": "Haradan tapıb", "referred_by": "Kim tövsiyə edib"}
 IG_TALK = "Instagram yazışması"  # IG DM-dən lead yarananda müştərinin son mesajları (social_inbox)
 MAX_REGENERATE = tg.MAX_REGENERATE
 # Telegram xəbərində 🔴 ilə başda çıxan səbəblər: sahibkar dərhal geri zəng etsin
@@ -102,11 +103,13 @@ def parse_reply(text: str) -> dict:
         "language": lang if lang in LANGS else None,
         "handoff": handoff,
         "handoff_reason": _null(data.get("handoff_reason")) if handoff else None,
+        "asan": bool(_bool(data.get("asan"))) and not handoff,  # sırf fakt cavabı: gecə sahibkarı gözləmədən gedir
         "intent": _null(data.get("intent")),
         "lead": {"name": _null(lead.get("name")), "service": _null(lead.get("service")),
                  "preferred_date": _null(lead.get("preferred_date")), "people": _int(lead.get("people")),
                  "cameras": _int(lead.get("cameras")), "editing": _bool(lead.get("editing")),
-                 "instagram": _str(lead.get("instagram"), 64), "found_via": _found_via(lead.get("found_via"))},
+                 "instagram": _str(lead.get("instagram"), 64), "found_via": _found_via(lead.get("found_via")),
+                 "referred_by": _str(lead.get("referred_by"), 120)},
         "stage": _null(data.get("stage")),
         "unanswered_question": _null(data.get("unanswered_question")),
     }
@@ -137,6 +140,7 @@ def _lead_text(lead: Lead | None) -> str:
              ("kamera", lead.cameras), ("montaj", None if lead.editing is None else ("bəli" if lead.editing else "xeyr")),
              ("instagram", _note_value(lead, NOTE_FIELDS["instagram"])),
              ("haradan tapıb", _note_value(lead, NOTE_FIELDS["found_via"])),
+             ("kim tövsiyə edib", _note_value(lead, NOTE_FIELDS["referred_by"])),
              ("Instagram-da yazdıqları", _note_value(lead, IG_TALK))]
     known = [f"{k}: {v}" for k, v in parts if v not in (None, "")]
     return "; ".join(known + [f"mərhələ: {lead.stage}"]) if known else "hələ heç nə məlum deyil"
@@ -367,9 +371,13 @@ def route_away(db: DB, conv: WaConversation, contact: WaContact) -> str | None:
     conv.mode, conv.route = "human", kind
     db.commit()
     last_in = chat.last_message(db, conv.id, "customer")
-    alerts.notify(f"route:{conv.id}", topic="action", text=f"{ROUTE_HEAD[kind]}: {contact.name or '-'}, +{contacts.normalize(contact.phone)}, "
-                                      f"söhbət sizdədir. Mesaj: «{(last_in.text if last_in else '')[:200]}»\n"
-                                      f"{chat.panel_link(conv.id)}")
+    text = (f"{ROUTE_HEAD[kind]}: {contact.name or '-'}, +{contacts.normalize(contact.phone)}, "
+            f"söhbət sizdədir. Mesaj: «{(last_in.text if last_in else '')[:200]}»\n{chat.panel_link(conv.id)}")
+    if kind == "personal":  # səhv işarələnibsə, bir toxunuşla müştəri kimi bota qaytarmaq olsun (crm/friends.py)
+        tg._call("sendMessage", {**tgtopics.dest("action"), "text": text, "disable_web_page_preview": True,
+                                 "reply_markup": {"inline_keyboard": [[tg.customer_button(contact.id)]]}})
+    else:
+        alerts.notify(f"route:{conv.id}", topic="action", text=text)
     return kind
 
 
@@ -424,18 +432,20 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         outcome = deliver(db, conv, res["reply"], res, reason=f"handoff:{res['handoff_reason']}" if res["handoff"] else None,
                           draft_only=bool(avoid))
     if res["handoff"]:
-        # Avtomatik rejimdə söhbət insana keçir. Qaralama rejimində sahibkar hər cavabı onsuz da təsdiqləyir:
-        # kilid botu sonrakı suallarda susdururdu, ona görə yalnız xəbərdarlıq gedir.
+        # Avtomatik rejimdə söhbət sahibkarın cavabını gözləyir (asan suala bot yenə cavab verir, crm/turns.py).
+        # Qaralama rejimində sahibkar hər cavabı onsuz da təsdiqləyir, ona görə yalnız xəbərdarlıq gedir.
         auto = auto_reply(db, conv, contact)
-        if auto:
+        if auto and silent:  # iş yazışması satış söhbəti deyil: bot bu söhbətə ümumiyyətlə yazmır
             conv.mode = "human"
+        elif auto:
+            turns.to_wait(db, conv, now())
         outcome = f"handoff:{res['handoff_reason']}"
         why = URGENT_REASONS.get(res["handoff_reason"] or "")
         urgent = f"🔴 TƏCİLİ: {why}, zəng edin: {contact.phone or '-'}\n" if why else ""
         if res["handoff_reason"] in SILENT_REASONS:
             urgent = "🧾 İş yazışması (montaj, layihə və ya komanda), bot cavab yazmadı, özünüz cavab verin\n"
         alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}", topic="action",
-                      text=f"{urgent}{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
+                      text=f"{urgent}{'söhbət sizə keçdi' if auto and silent else 'bot komandaya ötürdü, sizin cavabınızı gözləyir (asan suallara özü cavab verir)' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
                       f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
                       f"Səbəb: {res['handoff_reason'] or '-'}\nMüştəri: {(last_in.text if last_in else '')[:500]}\n"
                       f"Botun cavabı: {res['reply'][:500] or '(göndərilmədi: ' + (problem or '') + ')'}\n"
@@ -455,10 +465,10 @@ def _file_handoff(db: DB, conv: WaConversation, contact: WaContact, last_in: WaM
             sent = FILE_REPLY
         except kapso.KapsoError as e:
             log.warning("fayl cavabı getmədi (söhbət %s): %s", conv.id, e.message)
-        conv.mode = "human"
+        turns.to_wait(db, conv, now())
     db.commit()
     alerts.notify(f"handoff:{conv.id}:{last_in.id}", topic="action",
-                  text=f"📎 Fayl göndərildi, {'bot qısa cavab verdi və söhbət sizə keçdi' if sent else 'bot cavab yazmadı'}\n"
+                  text=f"📎 Fayl göndərildi, {'bot qısa cavab verdi, sizin cavabınızı gözləyir' if sent else 'bot cavab yazmadı'}\n"
                   f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\nMesaj: {(last_in.text or '')[:500]}\n"
                   f"{chat.panel_link(conv.id)}")
     return "handoff:fayl"
@@ -508,7 +518,11 @@ def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str |
             draft_only: bool = False) -> str:
     """`auto`: dərhal göndərir; `draft` (susmaya görə): qaralama + Telegram düyməsi. Qaytarır: sent | draft.
     `draft_only`: yenidən yazılan cavab avtomatik rejimdə də yalnız qaralama olur."""
-    if auto_reply(db, conv) and not draft_only:
+    auto_at = None
+    send_now = auto_reply(db, conv) and not draft_only
+    if send_now:
+        send_now, auto_at = turns.plan(conv, res, now())  # sahibkar yazıbsa və ya gözləyirsə: qaralama (crm/turns.py)
+    if send_now:
         try:
             chat.send_bot_reply(db, conv, text)
             tg.auto_log(db, conv, text)
@@ -517,7 +531,7 @@ def deliver(db: DB, conv: WaConversation, text: str, res: dict, *, reason: str |
             alerts.notify(f"bot-send:{conv.id}", topic="action", text=f"avtomatik göndəriş alınmadı (qaralama yaradıldı): {e.message}")
             reason = f"göndərilmədi: {e.message}"[:200]
             text = getattr(e, "remaining", text)  # birinci hissə gedibsə, qaralamada yalnız qalan
-    draft = BotDraft(conversation_id=conv.id, text=text, reason=reason, model_output=res)
+    draft = BotDraft(conversation_id=conv.id, text=text, reason=reason, model_output=res, auto_at=auto_at)
     db.add(draft)
     db.commit()
     tg.send_draft(db, draft)

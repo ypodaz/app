@@ -354,16 +354,16 @@ def test_handoff_other_reason_alert_not_urgent(api, crm_env):
     assert "TƏCİLİ" not in text
 
 
-def test_handoff_in_auto_mode_sets_human(api, crm_env):
+def test_handoff_in_auto_mode_waits_for_owner(api, crm_env):
     _, conv_id = mk_conv(text="Qiymətdə endirim olar?")
     with SessionLocal() as db:
         conf.put(db, "bot_mode", "auto")
         db.commit()
     crm_env.gemini(jreply("Bunu komandamıza ötürürəm.", handoff=True, handoff_reason="endirim"))
     assert bot.handle(conv_id) == "handoff:endirim"
-    assert one(WaConversation).mode == "human"
+    assert one(WaConversation).mode == "wait"
     (key, text), = crm_env.alerts
-    assert "söhbət sizə keçdi" in text
+    assert "sizin cavabınızı gözləyir" in text
 
 
 def test_history_roles_and_prompt_inputs(api, crm_env):
@@ -953,9 +953,9 @@ def test_file_auto_mode_fixed_reply_and_handoff_without_ai(api, crm_env, label):
     assert crm_env.gemini_calls == []
     (_, body), = crm_env.kapso()
     assert body["text"]["body"] == bot.FILE_REPLY and "virtual köməkçi" in bot.FILE_REPLY
-    assert one(WaConversation).mode == "human"
+    assert one(WaConversation).mode == "wait"
     (key, text), = crm_env.alerts
-    assert text.startswith("📎 Fayl göndərildi") and "söhbət sizə keçdi" in text and "#inbox/" in text
+    assert text.startswith("📎 Fayl göndərildi") and "sizin cavabınızı gözləyir" in text and "#inbox/" in text
 
 
 def test_file_draft_mode_stays_silent_and_alerts(api, crm_env):

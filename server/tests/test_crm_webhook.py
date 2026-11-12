@@ -92,7 +92,7 @@ def test_customer_message_sets_window_unread_and_counter(api, handled):
         assert kapso.month_count(db) == 1
 
 
-def test_business_app_sent_mutes_bot_and_rejects_drafts(api, handled):
+def test_business_app_sent_hands_turn_to_owner_and_rejects_drafts(api, handled):
     cid, conv_id = mk_conv()
     with SessionLocal() as db:
         db.add(BotDraft(conversation_id=conv_id, text="qaralama"))
@@ -103,10 +103,10 @@ def test_business_app_sent_mutes_bot_and_rejects_drafts(api, handled):
     with SessionLocal() as db:
         m = db.scalar(select(WaMessage).where(WaMessage.wamid == "w-phone"))
         assert m.direction == "out" and m.source == "phone"
-        muted = aware(db.get(WaContact, cid).bot_muted_until)
-        assert timedelta(hours=11, minutes=55) < muted - now() <= timedelta(hours=12)
+        assert db.get(WaContact, cid).bot_muted_until is None  # 12 saatlıq susdurma yoxdur
+        assert db.get(WaConversation, conv_id).mode == "owner"
         d = db.scalar(select(BotDraft))
-        assert d.status == "rejected" and d.reason == "telefondan cavab verildi"
+        assert d.status == "rejected" and d.reason == "sahibkar özü yazdı"
     assert handled == []
 
 

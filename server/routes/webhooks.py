@@ -17,14 +17,13 @@ from sqlalchemy.orm import Session as DB
 import alerts
 import settings
 import tgtopics
-from crm import bot, chat, conf, kapso, social_tg, tg, todo
+from crm import bot, chat, conf, friends, kapso, social_tg, tg, todo, turns
 from db import SessionLocal, aware, get_db, now
 from models import WaContact, WaConversation, WaMessage, WebhookEvent
 
 log = logging.getLogger("webhooks")
 router = APIRouter(prefix="/api/webhooks")
 
-MUTE_AFTER_PHONE = timedelta(hours=12)
 WINDOW = timedelta(hours=24)
 MEDIA_LABEL = {"image": "[şəkil]", "video": "[video]", "document": "[sənəd]"}
 STATUS_RANK = {"sent": 1, "delivered": 2, "read": 3}
@@ -152,8 +151,7 @@ def on_sent(db: DB, ev: dict) -> None:
                          type=str(msg.get("type") or "text")[:16], text=text, transcript=transcript, status="sent",
                          media_url=((msg.get("kapso") or {}).get("media_url") or None), raw=ev, created_at=t))
         _touch(conv, t)
-        contact.bot_muted_until = now() + MUTE_AFTER_PHONE
-        chat.reject_pending(db, conv.id, "telefondan cavab verildi")
+        turns.owner_wrote(db, conv)  # söhbəti sahibkar aparır: bot qaralama yazır, 1 saatdan sonra özü göndərir
         kapso.count_message(db)
     elif existing:
         _set_status(existing, "sent")  # bizim göndərdiyimiz (cloud_api): yalnız status
@@ -278,6 +276,8 @@ def telegram_webhook(update: dict, background: BackgroundTasks,
         result = social_tg.comment_command(db, msg)
     elif msg and cmd == "/isler":  # açıq işlər
         result = todo.list_command(db, msg)
+    elif msg and cmd == "/dostlar":  # botun yazmadığı dostlar
+        result = friends.list_command(db, msg)
     elif msg and (result := todo.topic_message(db, msg)):  # 📋 mövzusuna yazılan iş (qaralama məntiqinə düşməsin)
         pass
     elif msg:

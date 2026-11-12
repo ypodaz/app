@@ -75,11 +75,11 @@ def test_schedule_gaps_stay_and_baku_to_utc():
     assert len(rows) == 14 * 3 and {r["platform"] for r in rows} == {"instagram", "tiktok", "youtube"}
     assert not [r for r in rows if r["number"] in (28, 36)]
     one = {(r["number"], r["platform"]): r["scheduled_at"] for r in rows}
-    # 25 = Gün 13 səhər → 20.11 + 12 gün = 02.12, Bakı 09:00 = UTC 05:00; 26 axşam 20:00 = UTC 16:00
-    assert one[(25, "tiktok")] == datetime(2026, 12, 2, 5, 0, tzinfo=timezone.utc)
-    assert one[(26, "tiktok")] == datetime(2026, 12, 2, 16, 0, tzinfo=timezone.utc)
-    # 29 (Gün 15 səhər) 28-in boş slotundan sonra da öz gününə düşür: 04.12
-    assert one[(29, "instagram")] == datetime(2026, 12, 4, 5, 0, tzinfo=timezone.utc)
+    # gündə bir, 20:00: 25 = Gün 13 səhər → 20.11 + 24 gün = 14.12, Bakı 20:00 = UTC 16:00; 26 (axşam) → 15.12
+    assert one[(25, "tiktok")] == datetime(2026, 12, 14, 16, 0, tzinfo=timezone.utc)
+    assert one[(26, "tiktok")] == datetime(2026, 12, 15, 16, 0, tzinfo=timezone.utc)
+    # 29 (Gün 15 səhər) 28-in boş gününü tutmur, öz gününə düşür: 18.12
+    assert one[(29, "instagram")] == datetime(2026, 12, 18, 16, 0, tzinfo=timezone.utc)
     assert "facebook" not in {r["platform"] for r in rows}
     assert {r["platform"] for r in schedule.generate(videos[:1], date(2026, 11, 20), ("facebook",))} == {"facebook"}
 
@@ -359,9 +359,10 @@ def test_admin_social_api(api, monkeypatch):
     body = {"start_date": "2026-11-20", "items": [item(1, day=1), item(2, day=1, slot="axsam")]}
     assert api.post("/api/admin/social/import", json=body, headers=h).json() == {"created": 6, "skipped": 0}
     assert api.post("/api/admin/social/import", json=body, headers=h).json() == {"created": 0, "skipped": 6}
-    posts = api.get("/api/admin/social/posts?from=2026-11-20&to=2026-11-20", headers=h).json()
-    assert len(posts) == 6 and posts[0]["scheduled_at"].startswith("2026-11-20T05:00")
-    assert len(api.get("/api/admin/social/posts?from=2026-11-21", headers=h).json()) == 0
+    posts = api.get("/api/admin/social/posts?from=2026-11-20&to=2026-11-21", headers=h).json()
+    assert len(posts) == 6 and posts[0]["scheduled_at"].startswith("2026-11-20T16:00")  # gündə bir, 20:00
+    assert len(api.get("/api/admin/social/posts?from=2026-11-20&to=2026-11-20", headers=h).json()) == 3
+    assert len(api.get("/api/admin/social/posts?from=2026-11-22", headers=h).json()) == 0
 
     pid = posts[0]["id"]
     # Panel Bakı vaxtını +04:00 ilə göndərir: SQLite qurşağı atır, ona görə UTC-yə çevrilib saxlanmalıdır.
@@ -596,3 +597,26 @@ def test_tick_checks_channels_once_per_hour(api, fake_buffer, monkeypatch):
     worker.tick()
     worker.tick()
     assert len(calls) == 1
+
+
+def test_reschedule_script_one_per_day_and_moves_buffer(api, monkeypatch):  # noqa: F811
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("social_reschedule", Path(__file__).resolve().parents[1] / "scripts/social_reschedule.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    calls = []
+    monkeypatch.setattr(buffer, "reschedule", lambda pid, svc, text, url, due, title=None: calls.append((pid, due)))
+    with SessionLocal() as db:
+        schedule.import_items(db, date(2026, 11, 11), [item(1, day=1), item(2, day=1, slot="axsam"), item(3, day=2)],
+                              ("tiktok",))
+        p1, p2, p3 = db.scalars(select(SocialPost).order_by(SocialPost.id)).all()
+        p1.status = "published"
+        p2.status, p2.external_id = "queued", "buf2"
+        db.commit()
+    assert mod.main(["--start", "2026-11-13", "--apply"]) == 0
+    with SessionLocal() as db:
+        from db import aware
+        got = {p.media_asset_id: (p.status, aware(p.scheduled_at)) for p in db.scalars(select(SocialPost))}
+    utc20 = lambda d: datetime(2026, 11, d, 16, 0, tzinfo=timezone.utc)  # noqa: E731  Bakı 20:00
+    assert [v for _, v in sorted(got.items())][1:] == [("queued", utc20(13)), ("planned", utc20(14))]
+    assert calls == [("buf2", utc20(13))]  # paylaşılmış post toxunulmur, növbədəki Buffer-də də köçür

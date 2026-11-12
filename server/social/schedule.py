@@ -1,6 +1,8 @@
-"""Təqvim generatoru: gün sırası ilə hər gün səhər 09:00 və axşam 20:00 (Bakı vaxtı).
+"""Təqvim generatoru: gündə bir paylaşım, axşam 20:00 (Bakı vaxtı; sahibkarın qərarı, 2026-11-13).
 
-Videosu olmayan slot boş qalır, növbəti videolar sürüşmür (hər video öz gününə düşür).
+Kontent planı hələ «gün N səhər/axşam» kimi yazılır: hər slot ayrıca günə düşür, səhər və axşam videoları növbələşir
+(gün 1 səhər → 1-ci gün, gün 1 axşam → 2-ci gün, gün 2 səhər → 3-cü gün…). Videosu olmayan slot boş qalır,
+növbəti videolar sürüşmür (hər video öz gününə düşür). Mövcud təqvimi köçürmək: scripts/social_reschedule.py.
 """
 from datetime import date, datetime, time, timedelta, timezone
 
@@ -11,7 +13,8 @@ from models import MediaAsset, SocialPost
 from social import facebook
 from views import BAKU
 
-SLOT_TIMES = {"seher": time(9, 0), "axsam": time(20, 0)}
+POST_TIME = time(20, 0)
+SLOT_ORDER = {"seher": 0, "axsam": 1}
 ENABLED_PLATFORMS = ("instagram", "tiktok", "youtube")  # Buffer platformaları
 
 
@@ -21,8 +24,8 @@ def active_platforms() -> tuple:
 
 
 def slot_utc(start: date, day: int, slot: str) -> datetime:
-    """`day` 1-dən başlayır: gün 1 = start tarixi."""
-    local = datetime.combine(start + timedelta(days=day - 1), SLOT_TIMES[slot], tzinfo=BAKU)
+    """`day` 1-dən başlayır: gün 1 səhər = start tarixi, gün 1 axşam = növbəti gün (hər gün 20:00)."""
+    local = datetime.combine(start + timedelta(days=(day - 1) * 2 + SLOT_ORDER[slot]), POST_TIME, tzinfo=BAKU)
     return local.astimezone(timezone.utc)
 
 

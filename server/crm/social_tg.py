@@ -22,9 +22,14 @@ def _body(item: SocialItem) -> str:
 
 
 def _buttons(item: SocialItem) -> dict:
-    return {"inline_keyboard": [[{"text": "✅ Göndər", "callback_data": f"x:{item.id}:s"},
-                                 {"text": "🔄 Yenidən yaz", "callback_data": f"x:{item.id}:g"},
-                                 {"text": "✖️ Rədd", "callback_data": f"x:{item.id}:r"}]]}
+    rows = [[{"text": "✅ Göndər", "callback_data": f"x:{item.id}:s"},
+             {"text": "🔄 Yenidən yaz", "callback_data": f"x:{item.id}:g"},
+             {"text": "✖️ Rədd", "callback_data": f"x:{item.id}:r"}]]
+    if item.channel == "instagram" and item.kind == "dm":
+        from crm import friends  # dövri import olmasın
+        if btn := friends.ig_button(item.thread_id):
+            rows.append([btn])
+    return {"inline_keyboard": rows}
 
 
 def send(item: SocialItem) -> str | None:

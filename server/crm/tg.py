@@ -29,6 +29,16 @@ def _call(method: str, payload: dict) -> dict | None:
         return None
 
 
+def friends_button(contact_id: int) -> dict:
+    from crm import friends  # dövri import olmasın: friends tg-ni işlədir
+    return friends.wa_button(contact_id)
+
+
+def customer_button(contact_id: int) -> dict:
+    from crm import friends
+    return friends.customer_button(contact_id)
+
+
 def send_draft(db: DB, draft: BotDraft) -> str | None:
     """Qaralamanı düymələrlə TG_CHAT_ID-yə göndərir, telegram_message_id saxlayır (commit çağıran tərəfindədir)."""
     conv = db.get(WaConversation, draft.conversation_id)
@@ -43,12 +53,17 @@ def send_draft(db: DB, draft: BotDraft) -> str | None:
     text = f"💬 {head}\n\nMüştəri: {(last.text if last else '-')[:700]}\n\nQaralama:\n{draft.text[:2000]}"
     if len(chat.split_reply(draft.text)) > 1:
         text += "\n\n✂️ 2 mesaj kimi gedəcək"  # müştəriyə getmir
+    if draft.auto_at:
+        text += "\n⏱ 1 saat ərzində toxunmasanız və yazmasanız, bot özü göndərəcək"
+    elif conv.mode in ("owner", "wait") and draft.status == "pending":
+        text += "\n🌙 Siz baxana qədər gözləyir" if conv.mode == "owner" else "\n⏳ Komandaya ötürülüb, sizin cavabınızı gözləyir"
     where = tgtopics.dest("action")
     res = _call("sendMessage", {
         **where, "text": text,
         "reply_markup": {"inline_keyboard": [[{"text": "✅ Göndər", "callback_data": f"d:{draft.id}:s"},
                                               {"text": "🔄 Yenidən yaz", "callback_data": f"d:{draft.id}:g"},
-                                              {"text": "✖️ Rədd", "callback_data": f"d:{draft.id}:r"}]]}})
+                                              {"text": "✖️ Rədd", "callback_data": f"d:{draft.id}:r"}],
+                                             [friends_button(contact.id)]]}})
     mid = ((res or {}).get("result") or {}).get("message_id")
     if mid:
         draft.telegram_message_id, draft.telegram_chat_id = str(mid), str(where["chat_id"])
@@ -67,6 +82,9 @@ def handle_callback(db: DB, cq: dict) -> str:
     if str(cq.get("data", "")).startswith("m:"):  # montaj növbəsi: «✅ Təhvil verildi»
         from crm import aftercare
         return aftercare.handle_callback(db, cq)
+    if str(cq.get("data", "")).startswith("f:"):  # dostlar: «🙅 Dostdur, bot yazmasın» / «✅ Bot yazsın»
+        from crm import friends
+        return friends.handle_callback(db, cq)
     if str(cq.get("data", "")).startswith("t:"):  # to-do: «☑️ Bitdi»
         from crm import todo
         return todo.handle_callback(db, cq)

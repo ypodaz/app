@@ -397,9 +397,10 @@ class BotDraft(Base):
     business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
     conversation_id: Mapped[int] = mapped_column(ForeignKey("wa_conversations.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | sent | rejected | edited
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | sent | rejected | edited | auto
     reason: Mapped[Optional[str]] = mapped_column(String(200))
     model_output: Mapped[Optional[dict]] = mapped_column(JSON)
+    auto_at: Mapped[Optional[datetime]] = mapped_column(TS)  # sahibkar toxunmasa bot bu vaxt özü göndərir (crm/turns.py)
     telegram_message_id: Mapped[Optional[str]] = mapped_column(String(32))
     telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(32))  # NULL: köhnə sətir (şəxsi çat)
     decided_at: Mapped[Optional[datetime]] = mapped_column(TS)

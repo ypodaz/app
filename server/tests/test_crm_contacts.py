@@ -58,19 +58,27 @@ def test_foreign_and_personal_go_human_once(api, crm_env, phone, kind, head):
     assert bot.handle(conv_id) == f"route:{'personal' if kind else 'foreign'}"
     c = conv_of(conv_id)
     assert c.mode == "human" and c.route
-    assert crm_env.gemini_calls == [] and crm_env.tg("sendMessage") == []
+    assert crm_env.gemini_calls == []
     with SessionLocal() as db:
         assert db.scalar(select(BotDraft.id)) is None
-    (key, text), = crm_env.alerts
+    if kind:  # şəxsi kontakt: düyməli kart («✅ Müştəridir, bot yazsın»)
+        (card,) = crm_env.tg("sendMessage")
+        assert crm_env.alerts == []
+        key, text = f"route:{conv_id}", card["text"]
+        assert card["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == f"f:w:{cid}:on"
+    else:
+        assert crm_env.tg("sendMessage") == []
+        (key, text), = crm_env.alerts
     assert key == f"route:{conv_id}" and text.startswith(head) and "söhbət sizdədir. Mesaj: «Qiymət nədir?»" in text
+    sent = len(crm_env.alerts) + len(crm_env.tg("sendMessage"))
     # növbəti mesaj: söhbət insandadır, xəbər təkrarlanmır
-    assert bot.handle(conv_id) == "skip:human" and len(crm_env.alerts) == 1
+    assert bot.handle(conv_id) == "skip:human" and len(crm_env.alerts) + len(crm_env.tg("sendMessage")) == sent
     # sahibkar `bot`-a qaytarıbsa, bot işləyir və təkrar ötürmür
     with SessionLocal() as db:
         db.get(WaConversation, conv_id).mode = "bot"
         db.commit()
     crm_env.gemini(jreply())
-    assert bot.handle(conv_id) == "draft" and len(crm_env.alerts) == 1
+    assert bot.handle(conv_id) == "draft" and len(crm_env.alerts) == (0 if kind else 1)
 
 
 def test_customer_and_new_numbers_get_bot(api, crm_env):

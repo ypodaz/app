@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import booking
 from auth import current_admin, new_card_code
-from crm import bot, chat, conf, kapso
+from crm import bot, chat, conf, kapso, turns
 from db import get_db
 from models import (BotDraft, Client, Faq, Lead, LeadEvent, QuickReply, UnansweredQuestion, WaContact, WaConversation,
                     WaMessage)
@@ -115,6 +115,7 @@ def inbox_send(conv_id: int, body: SendIn, db: DB = Depends(get_db)):
         raise HTTPException(409, kapso.window_closed_text())
     try:
         m = chat.send_out(db, c, body.text.strip(), "panel")
+        turns.owner_wrote(db, c)
     except kapso.KapsoError as e:
         db.rollback()
         send_error(e)

@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import AiError
-from crm import bot, conf, contacts, instagram, social_tg, voice, youtube
+from crm import bot, conf, contacts, friends, instagram, social_tg, voice, youtube
 from db import SessionLocal, aware, now
 from models import Lead, SocialItem, WaContact
 
@@ -302,6 +302,10 @@ def draft(item_id: int, avoid: str | None = None) -> str:
 def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
     if item.status != "pending":
         return "skip:decided"
+    if item.kind == "dm" and friends.is_ig_friend(db, item.thread_id):  # sahibkarın dostu: bot yazmır
+        item.status, item.decided_at = "ignored", now()
+        db.commit()
+        return "skip:friend"
     if item.kind == "dm":
         newer = db.scalar(select(SocialItem.id).where(SocialItem.channel == item.channel, SocialItem.kind == "dm",
                                                       SocialItem.thread_id == item.thread_id,
