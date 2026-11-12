@@ -120,3 +120,20 @@ def test_set_note_replaces_existing_line():
     lead = Lead(notes="Zəng etdi\nHaradan tapıb: google")
     bot._set_note(lead, "Haradan tapıb", "tanis")
     assert lead.notes == "Zəng etdi\nHaradan tapıb: tanis"
+
+
+def test_image_described_before_bot_reply(api, crm_env, downloads):
+    downloads.resp = _Audio(content=b"\xff\xd8jpeg", ctype="image/jpeg")
+    cid, conv_id = mk_conv(text="[şəkil] belə çəkə bilərsiniz?")
+    with SessionLocal() as db:
+        m = db.scalar(select(WaMessage).where(WaMessage.conversation_id == conv_id))
+        m.type, m.media_url = "image", "https://api.kapso.ai/media/img"
+        db.commit()
+    crm_env.gemini("İki nəfər mikrofon qarşısında, podkast kadrı", jreply("Bəli, belə çəkirik."))
+    bot.handle(conv_id)
+    with SessionLocal() as db:
+        m = db.scalar(select(WaMessage).where(WaMessage.conversation_id == conv_id, WaMessage.type == "image"))
+        assert m.text == "[şəkil: İki nəfər mikrofon qarşısında, podkast kadrı] belə çəkə bilərsiniz?"
+    img_call, bot_call = crm_env.gemini_calls
+    assert img_call[1][0]["parts"][0]["inlineData"]["mimeType"] == "image/jpeg"
+    assert "podkast kadrı" in bot_call[1][-1]["parts"][0]["text"]

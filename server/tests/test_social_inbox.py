@@ -388,3 +388,28 @@ def test_ig_voice_failed_stays_placeholder(api, net, crm_env, monkeypatch):
     [it] = items()
     assert it.text == "[audio]" and "audio_url" not in (it.model_output or {})
     assert crm_env.gemini_calls[0][1][-1]["parts"][0]["text"] == "[audio]"
+
+
+def image_dm(mid="i1", url="https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=2"):
+    b = dm(mid=mid)
+    b["entry"][0]["messaging"][0]["message"] = {"mid": mid, "attachments": [{"type": "image", "payload": {"url": url}}]}
+    return b
+
+
+def test_ig_image_described_before_reply(api, net, crm_env, monkeypatch):
+    from crm import voice
+    monkeypatch.setattr(voice, "image_text", lambda db, url: "Reels kadrı, qız kameraya danışır")
+    crm_env.gemini(jreply("Belə Reels çəkirik."))
+    post_ig(api, image_dm())
+    [it] = items()
+    assert it.text == "[şəkil: Reels kadrı, qız kameraya danışır]"
+    assert crm_env.gemini_calls[0][1][-1]["parts"][0]["text"] == it.text
+
+
+def test_ig_image_failed_stays_label(api, net, crm_env, monkeypatch):
+    from crm import voice
+    monkeypatch.setattr(voice, "image_text", lambda db, url: "")
+    crm_env.gemini(jreply("Şəkil açılmadı, nə ilə bağlı olduğunu yaza bilərsiniz? 🙏"))
+    post_ig(api, image_dm())
+    [it] = items()
+    assert it.text == "[şəkil]" and "image_url" not in (it.model_output or {})

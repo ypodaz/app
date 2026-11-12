@@ -379,7 +379,7 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         return f"route:{routed}"
     if chat.reject_pending(db, conv.id, "yeni mesaj gəldi"):
         db.commit()
-    voice.fill_missing(db, conv.id)  # Kapso transkript verməyibsə səsli mesaj burada mətnə çevrilir
+    voice.fill_missing(db, conv.id)  # səsli mesaj mətnə çevrilir, şəkil təsvir olunur (Gemini)
     first =chat.last_message(db, conv.id, "bot") is None
     lead = db.get(Lead, conv.lead_id) if conv.lead_id else None
     system = build_system(db, now(), first_message=first, lead=lead, customer=customer_card.build(db, contact))

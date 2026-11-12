@@ -233,10 +233,13 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
             item.status, item.decided_at = "ignored", now()
             db.commit()
             return "skip:newer"
-        audio_url = (item.model_output or {}).get("audio_url")
-        if audio_url:  # səsli mesaj bir dəfə mətnə çevrilir; alınmasa «[audio]» qalır və bot yazmağı xahiş edir
-            item.text = voice.text_from_url(db, audio_url) or item.text
-            item.model_output = {k: v for k, v in item.model_output.items() if k != "audio_url"}
+        mo = item.model_output or {}
+        if mo.get("audio_url") or mo.get("image_url"):  # bir dəfə Gemini ilə oxunur; alınmasa «[audio]»/«[şəkil]»
+            if mo.get("audio_url"):  # qalır və bot yazmağı xahiş edir
+                item.text = voice.text_from_url(db, mo["audio_url"]) or item.text
+            else:
+                item.text = voice.image_label(voice.image_text(db, mo["image_url"]))
+            item.model_output = {k: v for k, v in mo.items() if k not in ("audio_url", "image_url")}
             db.commit()
         first = not db.scalar(select(SocialItem.id).where(SocialItem.channel == item.channel, SocialItem.kind == "dm",
                                                           SocialItem.thread_id == item.thread_id,
