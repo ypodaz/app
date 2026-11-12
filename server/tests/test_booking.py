@@ -85,6 +85,16 @@ def test_leyla_b4a_first_shoot_two_hours(db):
     assert b.close_shoot(db, None, s2, duration_min=60, paid_method="cash") == 21 * A
 
 
+def test_first_shoot_before_joining_within_7_days_gets_40_percent(db):
+    # profil çəkilişin günü/sonra açılır: çəkilişdən sonra 7 gün içində app-a qoşulsa, o çəkiliş ilk sayılır
+    c = client(db, "Xəyalə", activated=at(12, 18))
+    s = shoot(db, c, kind="studio_rent", cameras=0, starts_at=at(12, 13), duration_min=120)
+    assert b.close_shoot(db, None, s, duration_min=120, paid_method="cash") == 32 * A
+    late = client(db, "Gecikən", activated=at(20, 18))
+    s2 = shoot(db, late, starts_at=at(12, 13))
+    assert b.close_shoot(db, None, s2, duration_min=60, paid_method="cash") == 7 * A  # 8 gün sonra: 10%
+
+
 def test_not_activated_client_gets_10_percent(db):
     c = client(db, "Köhnə")
     s = shoot(db, c)

@@ -233,9 +233,16 @@ def waive_deposit(db: DB, admin_id: int | None, s: Shoot) -> None:
     _audit(db, admin_id, "deposit_waive", s, before)
 
 
+FIRST_SHOOT_GRACE = timedelta(days=7)  # profil çəkilişdən sonra açılır: 7 gün içində qoşulsa, o çəkiliş də ilk sayılır
+
+
 def is_first_shoot(db: DB, client: Client, s: Shoot) -> bool:
-    """App-a qoşulduqdan sonra bağlanan ilk çəkiliş (keçmişdə earn_first yoxdursa)."""
-    if not client.activated_at or aware(s.starts_at) < aware(client.activated_at):
+    """App-a qoşulduqdan sonra (və ya qoşulmadan ən çoxu 7 gün əvvəl) bağlanan ilk çəkiliş, keçmişdə earn_first
+    yoxdursa. Bağlananda müştəri hələ qoşulmayıbsa, ilk çəkiliş sayılmır."""
+    if not client.activated_at:
+        return False
+    since = aware(client.activated_at) - FIRST_SHOOT_GRACE
+    if aware(s.starts_at) < since:
         return False
     had_bonus = db.scalar(select(func.count()).select_from(CashbackLedger)
                           .where(CashbackLedger.client_id == client.id, CashbackLedger.kind == "earn_first"))
@@ -243,7 +250,7 @@ def is_first_shoot(db: DB, client: Client, s: Shoot) -> bool:
         return False
     earlier = db.scalar(select(func.count()).select_from(Shoot).where(
         Shoot.client_id == client.id, Shoot.status == "completed", Shoot.id != s.id,
-        Shoot.starts_at >= client.activated_at))
+        Shoot.starts_at >= since))
     return not earlier
 
 
