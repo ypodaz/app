@@ -413,3 +413,21 @@ def test_ig_image_failed_stays_label(api, net, crm_env, monkeypatch):
     post_ig(api, image_dm())
     [it] = items()
     assert it.text == "[şəkil]" and "image_url" not in (it.model_output or {})
+
+
+def test_ig_echo_after_restart_recognized_from_db(api, net, crm_env, monkeypatch):
+    # deploy zamanı yeni prosesin yaddaşı boşdur: botun öz echo-su bazadakı sent_mid ilə tanınmalıdır
+    monkeypatch.setattr(social_inbox, "ECHO_WAIT", 0)
+    auto_mode()
+    crm_env.gemini(jreply("Salam!"))
+    post_ig(api, dm(mid="m1", text="Salam"))
+    social_inbox._sent_mids.clear()
+    post_ig(api, echo("mid.out1"))
+    with SessionLocal() as db:
+        assert not social_inbox.is_human(db, "555")
+    assert not any(k == "ig-human:555" for k, _ in crm_env.alerts)
+
+
+def test_prompt_keeps_internal_data_private():
+    from crm import bot_prompt
+    assert "Bu məlumatı sizinlə bölüşə bilmərik" in bot_prompt.PROMPT

@@ -85,6 +85,11 @@ def on_echo(thread: str, mid: str) -> str:
     if mid in _sent_mids:
         return "own"
     with SessionLocal() as db:
+        recent = db.scalars(select(SocialItem.model_output).where(  # deploy zamanı yaddaş boş ola bilər: bazaya bax
+            SocialItem.channel == "instagram", SocialItem.kind == "dm", SocialItem.thread_id == thread,
+            SocialItem.status == "sent").order_by(SocialItem.id.desc()).limit(20)).all()
+        if any((mo or {}).get("sent_mid") == mid for mo in recent):
+            return "own"
         changed = set_human(db, thread)
         db.commit()
     if changed:
