@@ -53,8 +53,8 @@ COMMENT_NOTE = ("\n\nKANAL: Bu, {where} ictimai kommentdir. 1–2 qısa, isti c�
                 "handoff = true (sahibkar özü baxacaq). Maraqlanan (qiymət soruşur, necə yazılacağını soruşur, çəkiliş "
                 "istəyir, «+», «maraqlıdır», «ətraflı») üçün qısa isti cavab ver. {tail} Lead sahələri null qalır.")
 COMMENT_TAILS = {
-    "instagram": "Maraqlananlara biz Direct mesajı göndəririk: ictimai cavabda qısaca bunu de (məs. «Direct-ə yazdıq 🙏»), "
-                 "qiyməti ictimai yazma.",
+    "instagram": "«Direct-ə yazdıq» demə (Direct-i sistem özü göndərir və bunu özü yazır). Maraqlananı Direct-ə və ya "
+                 "WhatsApp 055 530 35 32-yə yazmağa dəvət et, qiyməti ictimai yazma.",
     "youtube": "YouTube-da Direct yoxdur: maraqlananı WhatsApp 055 530 35 32 və ya Instagram @ypod.az Direct-inə dəvət et, "
                "qiyməti ictimai yazma.",
 }

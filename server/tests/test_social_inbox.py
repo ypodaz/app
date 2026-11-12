@@ -542,7 +542,7 @@ def test_ig_comment_not_interested_auto_public_reply(api, net, crm_env):
     assert url.endswith("/v24.0/c9/replies") and kw["data"] == {"message": "Təşəkkürlər! 🙏"}
     [msg] = crm_env.tg("sendMessage")
     assert msg["text"].startswith("🤖 Komment avtomatik cavablandı") and "reply_markup" not in msg
-    assert "Instagram DM" not in crm_env.gemini_calls[0][0] and "Direct-ə yazdıq" in crm_env.gemini_calls[0][0]
+    assert "Instagram DM" not in crm_env.gemini_calls[0][0] and "Direct-i sistem özü göndərir" in crm_env.gemini_calls[0][0]
 
 
 def test_ig_comment_interested_sends_direct_then_public(api, net, crm_env):
