@@ -353,3 +353,10 @@ def test_whatsapp_links_instagram_lead(api, net, crm_env):
     ("2 saat, 3 kamera, 150 AZN", None), ("012 555 66 77", None), ("15.11.2026 saat 14:00", None)])
 def test_find_phone(text, phone):
     assert social_inbox.find_phone([text]) == phone
+
+
+def test_ig_mid_fits_columns():
+    # Instagram DM mid 164 simvoldur; SQLite uzunluğu yoxlamır, Postgres isə 128-də xəta verirdi
+    from models import SocialItem
+    for col in ("external_id", "thread_id", "parent_id"):
+        assert SocialItem.__table__.c[col].type.length >= 200

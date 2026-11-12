@@ -480,9 +480,9 @@ class SocialItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     channel: Mapped[str] = mapped_column(String(12))  # instagram | youtube
     kind: Mapped[str] = mapped_column(String(10))  # dm | comment
-    external_id: Mapped[str] = mapped_column(String(128), unique=True)  # IG mid / IG comment id / YT comment id
-    thread_id: Mapped[str] = mapped_column(String(128), index=True)  # IG: göndərənin IGSID və ya media id; YT: video id
-    parent_id: Mapped[Optional[str]] = mapped_column(String(128))  # cavabın yazılacağı (üst) komment
+    external_id: Mapped[str] = mapped_column(String(255), unique=True)  # IG mid / IG comment id / YT comment id
+    thread_id: Mapped[str] = mapped_column(String(255), index=True)  # IG: göndərənin IGSID və ya media id; YT: video id
+    parent_id: Mapped[Optional[str]] = mapped_column(String(255))  # cavabın yazılacağı (üst) komment
     author: Mapped[str] = mapped_column(String(120), default="")
     text: Mapped[str] = mapped_column(Text)
     draft_text: Mapped[Optional[str]] = mapped_column(Text)
