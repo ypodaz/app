@@ -119,6 +119,8 @@ def collect(db: DB, ig_archive: dict | None = None) -> list[dict]:
         if isinstance(me, dict):
             own_id = str(me.get("id") or own_id)
             own_names.add(str(me.get("username") or "").lower())
+        elif me:  # real arxivdə "me" yalnız öz hesabımızın id-sidir (sətir)
+            own_id = str(me)
         for conv in ig_archive.get("conversations") or []:
             others = [p for p in conv.get("participants") or []
                       if str(p.get("id")) != own_id and str(p.get("username") or "").lower() not in own_names - {""}]

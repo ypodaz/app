@@ -68,6 +68,18 @@ def test_collect_merges_and_excludes(api):
     assert w["sources"] == ["wa"] and w["facts"]["lead_service"] == "reels"
 
 
+def test_collect_archive_me_as_plain_id(api, monkeypatch):
+    import settings
+    monkeypatch.setattr(settings, "IG_USER_ID", "")
+    archive = {**ARCHIVE, "me": "900",
+               "conversations": [{**ARCHIVE["conversations"][0],
+                                  "participants": [{"id": "900"}, {"username": "Test_User", "id": "111"}]}]}
+    with SessionLocal() as db:
+        bundles = people.collect(db, archive)
+    assert [b["igsid"] for b in bundles] == ["111"]
+    assert "Y Pod: Salam!" in bundles[0]["transcript"]
+
+
 def test_collect_ig_phone_links_live_thread_and_own_account(api, monkeypatch):
     import settings
     monkeypatch.setattr(settings, "IG_USER_ID", "900")
