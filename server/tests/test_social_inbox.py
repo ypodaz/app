@@ -360,3 +360,31 @@ def test_ig_mid_fits_columns():
     from models import SocialItem
     for col in ("external_id", "thread_id", "parent_id"):
         assert SocialItem.__table__.c[col].type.length >= 200
+
+
+def voice_dm(mid="v1", url="https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1"):
+    b = dm(mid=mid)
+    b["entry"][0]["messaging"][0]["message"] = {"mid": mid, "attachments": [{"type": "audio", "payload": {"url": url}}]}
+    return b
+
+
+def test_ig_voice_transcribed_before_reply(api, net, crm_env, monkeypatch):
+    from crm import voice
+    seen = []
+    monkeypatch.setattr(voice, "text_from_url", lambda db, url: seen.append(url) or "Reels çəkmək istəyirəm")
+    crm_env.gemini(jreply("Əla, Reels Paketi var."))
+    post_ig(api, voice_dm())
+    [it] = items()
+    assert seen == ["https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1"]
+    assert it.text == "Reels çəkmək istəyirəm" and it.draft_text.startswith("Əla")
+    assert crm_env.gemini_calls[0][1][-1]["parts"][0]["text"] == "Reels çəkmək istəyirəm"
+
+
+def test_ig_voice_failed_stays_placeholder(api, net, crm_env, monkeypatch):
+    from crm import voice
+    monkeypatch.setattr(voice, "text_from_url", lambda db, url: "")
+    crm_env.gemini(jreply("Səsli mesajı aça bilmədim, qısa yazsanız, dərhal cavab verərəm 🙏"))
+    post_ig(api, voice_dm())
+    [it] = items()
+    assert it.text == "[audio]" and "audio_url" not in (it.model_output or {})
+    assert crm_env.gemini_calls[0][1][-1]["parts"][0]["text"] == "[audio]"

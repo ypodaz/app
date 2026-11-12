@@ -21,6 +21,7 @@ from db import SessionLocal, aware, now
 log = logging.getLogger("instagram")
 GRAPH = "https://graph.instagram.com/v24.0"
 REFRESH_URL = "https://graph.instagram.com/refresh_access_token"
+AUDIO = "[audio]"  # crm.voice.PLACEHOLDER ilə eyni: mətnə çevrilməyən səsli mesaj
 WINDOW = timedelta(hours=24)  # DM-ə yalnız son müştəri mesajından 24 saat ərzində cavab vermək olar
 REFRESH_EVERY = timedelta(days=7)
 TOKEN_KEY, SOURCE_KEY, REFRESHED_KEY = "ig_token", "ig_token_source", "ig_token_refreshed_at"
@@ -107,10 +108,17 @@ def parse(body: dict) -> list[dict]:
     for entry in body.get("entry") or []:
         for m in entry.get("messaging") or []:
             msg, sender = m.get("message") or {}, str((m.get("sender") or {}).get("id") or "")
-            if msg.get("is_echo") or not sender or sender == me or not msg.get("mid") or not (msg.get("text") or "").strip():
+            text = (msg.get("text") or "").strip()
+            audio = next((str((a.get("payload") or {}).get("url") or "") for a in msg.get("attachments") or []
+                          if isinstance(a, dict) and a.get("type") == "audio"), "")
+            if msg.get("is_echo") or not sender or sender == me or not msg.get("mid") or not (text or audio):
                 continue
-            out.append({"channel": "instagram", "kind": "dm", "external_id": str(msg["mid"]), "thread_id": sender,
-                        "parent_id": None, "author": "", "text": msg["text"], "created_at": _time(m.get("timestamp"))})
+            item = {"channel": "instagram", "kind": "dm", "external_id": str(msg["mid"]), "thread_id": sender,
+                    "parent_id": None, "author": "", "text": msg.get("text") or AUDIO,
+                    "created_at": _time(m.get("timestamp"))}
+            if audio and not text:  # səsli mesaj: qaralamadan əvvəl social_inbox mətnə çevirir
+                item["model_output"] = {"audio_url": audio}
+            out.append(item)
         # sənəddə komment həm `changes[]` içində, həm də birbaşa entry-də (field/value) göstərilir
         changes = entry.get("changes") or ([entry] if entry.get("field") else [])
         for ch in changes:

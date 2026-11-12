@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import AiError
-from crm import bot, conf, contacts, instagram, social_tg, youtube
+from crm import bot, conf, contacts, instagram, social_tg, voice, youtube
 from db import SessionLocal, aware, now
 from models import Lead, SocialItem, WaContact
 
@@ -233,6 +233,11 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
             item.status, item.decided_at = "ignored", now()
             db.commit()
             return "skip:newer"
+        audio_url = (item.model_output or {}).get("audio_url")
+        if audio_url:  # səsli mesaj bir dəfə mətnə çevrilir; alınmasa «[audio]» qalır və bot yazmağı xahiş edir
+            item.text = voice.text_from_url(db, audio_url) or item.text
+            item.model_output = {k: v for k, v in item.model_output.items() if k != "audio_url"}
+            db.commit()
         first = not db.scalar(select(SocialItem.id).where(SocialItem.channel == item.channel, SocialItem.kind == "dm",
                                                           SocialItem.thread_id == item.thread_id,
                                                           SocialItem.status == "sent").limit(1))

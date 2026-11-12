@@ -19,7 +19,7 @@ log = logging.getLogger("voice")
 PLACEHOLDER = "[audio]"
 MAX_BYTES = 8_000_000  # ~8 dəqiqəlik səsli mesaj
 KAPSO_HOST = "api.kapso.ai"  # Kapso açarı yalnız bu ünvana göndərilir
-SYSTEM = ("Bu WhatsApp səsli mesajını danışıldığı dildə (çox vaxt azərbaycanca, bəzən rusca, türkcə və ya ingiliscə) "
+SYSTEM = ("Bu səsli mesajı danışıldığı dildə (çox vaxt azərbaycanca, bəzən rusca, türkcə və ya ingiliscə) "
           "olduğu kimi mətnə çevir. Yalnız mətni qaytar: izah, tərcümə, dırnaq yoxdur. Danışıq yoxdursa boş qaytar.")
 
 
@@ -36,28 +36,35 @@ def _download(url: str) -> tuple[bytes, str] | None:
         log.warning("səs faylı yüklənmədi: HTTP %s, %s bayt", r.status_code, len(r.content or b""))
         return None
     mime = (r.headers.get("content-type") or "audio/ogg").split(";")[0].strip()
+    if mime == "video/mp4":  # Instagram səsli mesajı mp4 (AAC) kimi gələ bilər
+        mime = "audio/mp4"
     return r.content, (mime if mime.startswith("audio/") else "audio/ogg")
 
 
-def transcribe(db: DB, m: WaMessage) -> bool:
-    """Mesajı yerində yeniləyir (text, transcript). Qaytarır: alındımı. Commit çağıran tərəfindədir."""
-    if not (m.media_url and settings.GEMINI_API_KEY):
-        return False
-    got = _download(m.media_url)
+def text_from_url(db: DB, url: str | None) -> str:
+    """Səs faylının linki → mətn; alınmasa "" (WhatsApp və Instagram DM üçün ortaq). Xəta atmır."""
+    if not (url and settings.GEMINI_API_KEY):
+        return ""
+    got = _download(url)
     if not got:
-        return False
+        return ""
     data, mime = got
     try:
         out = ai.generate(SYSTEM, [{"role": "user", "parts": [
             {"inlineData": {"mimeType": mime, "data": base64.b64encode(data).decode()}}]}], max_tokens=1500)
     except ai.AiError:
         log.warning("səs mətnə çevrilmədi (Gemini)")
-        return False
+        return ""
     ai.count_usage(db, "voice", *out["usage"])
-    text = ai.text_of(out["content"]).strip()
+    return ai.text_of(out["content"]).strip()[:4000]
+
+
+def transcribe(db: DB, m: WaMessage) -> bool:
+    """Mesajı yerində yeniləyir (text, transcript). Qaytarır: alındımı. Commit çağıran tərəfindədir."""
+    text = text_from_url(db, m.media_url)
     if not text:
         return False
-    m.text = m.transcript = text[:4000]
+    m.text = m.transcript = text
     return True
 
 
