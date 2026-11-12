@@ -938,3 +938,52 @@ def test_gap_not_duplicated_on_regenerate(api, crm_env):
     bot.handle(conv_id)
     bot.handle(conv_id, avoid="Komandamız deyəcək")
     assert count(UnansweredQuestion) == 1
+
+
+# --- v10: fayl, iş yazışması, «əleykum» ---
+
+@pytest.mark.parametrize("label", ["[video]", "[sənəd] material.zip"])
+def test_file_auto_mode_fixed_reply_and_handoff_without_ai(api, crm_env, label):
+    # video/sənədi bot aça bilmir: AI çağırılmır, sabit cavab gedir, söhbət sahibkara keçir
+    _, conv_id = mk_conv(text=label)
+    with SessionLocal() as db:
+        conf.put(db, "bot_mode", "auto")
+        db.commit()
+    assert bot.handle(conv_id) == "handoff:fayl"
+    assert crm_env.gemini_calls == []
+    (_, body), = crm_env.kapso()
+    assert body["text"]["body"] == bot.FILE_REPLY and "virtual köməkçi" in bot.FILE_REPLY
+    assert one(WaConversation).mode == "human"
+    (key, text), = crm_env.alerts
+    assert text.startswith("📎 Fayl göndərildi") and "söhbət sizə keçdi" in text and "#inbox/" in text
+
+
+def test_file_draft_mode_stays_silent_and_alerts(api, crm_env):
+    # qaralama rejimi (köhnə kontakt): müştəriyə heç nə yazılmır, qaralama da yoxdur, yalnız xəbər
+    _, conv_id = mk_conv(text="[video]")
+    assert bot.handle(conv_id) == "handoff:fayl"
+    assert crm_env.gemini_calls == [] and crm_env.kapso() == [] and count(BotDraft) == 0
+    (key, text), = crm_env.alerts
+    assert "bot cavab yazmadı" in text
+
+
+@pytest.mark.parametrize("mode", ["auto", "draft"])
+def test_work_message_silent_handoff(api, crm_env, mode):
+    # montaj/layihə yazışması: model nə yazsa da müştəriyə getmir, lead yaranmır, sahibkara xəbər gedir
+    _, conv_id = mk_conv(text="Dünənki montaj nə vaxt hazır olacaq?")
+    with SessionLocal() as db:
+        conf.put(db, "bot_mode", mode)
+        db.commit()
+    crm_env.gemini(jreply("Komandamıza ötürürəm.", handoff=True, handoff_reason="is"))
+    assert bot.handle(conv_id) == "handoff:is"
+    assert crm_env.kapso() == [] and count(BotDraft) == 0 and count(Lead) == 0
+    assert one(WaConversation).mode == ("human" if mode == "auto" else "bot")
+    (key, text), = crm_env.alerts
+    assert text.startswith("🧾 İş yazışması") and "Dünənki montaj" in text
+
+
+@pytest.mark.parametrize("bad", ["Aleykum salam! Buyurun", "Salam əleyküm, necə kömək edə bilərik?",
+                                 "Əleykümsalam"])
+def test_aleykum_greeting_rejected(bad):
+    assert bot.check_filter(bad)
+    assert bot.check_filter("Salam, hər vaxtınız xeyir! Necə kömək edə bilərik?") is None

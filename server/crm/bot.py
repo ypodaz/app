@@ -37,6 +37,11 @@ IG_TALK = "Instagram yazışması"  # IG DM-dən lead yarananda müştərinin so
 MAX_REGENERATE = tg.MAX_REGENERATE
 # Telegram xəbərində 🔴 ilə başda çıxan səbəblər: sahibkar dərhal geri zəng etsin
 URGENT_REASONS = {"insan_istedi": "müştəri canlı adamla danışmaq istəyir", "sikayet": "şikayət var"}
+ALEYKUM_RE = re.compile(r"[əae]l[eə]y?k[uü]m", re.I)  # «Aleykum salam» dindar tondur, sahibkar istəmir
+# Video və sənədi bot aça bilmir: sabit cavab, söhbət sahibkara keçir (AI çağırılmır). routes/webhooks.MEDIA_LABEL
+FILE_LABELS = ("[video]", "[sənəd]")
+FILE_REPLY = "Mən Y Pod-un virtual köməkçisiyəm, faylı komandamıza ötürürəm, baxıb sizə məlumat verəcəklər 🙏"
+SILENT_REASONS = ("is",)  # iş yazışması (montaj materialı, mövcud layihə, komanda): bot heç nə yazmır
 
 
 class BotFormatError(Exception):
@@ -116,6 +121,8 @@ def check_filter(reply: str, language: str | None = None) -> str | None:
     for w in words:
         if w in low:
             return f"qadağan söz «{w.strip()}»"
+    if ALEYKUM_RE.search(reply):
+        return "«əleykum» salamı (yalnız «Salam» və ya «Hər vaxtınız xeyir» yaz)"
     if len(reply) > MAX_REPLY:
         return f"{MAX_REPLY} simvoldan uzun"
     return None
@@ -380,6 +387,9 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     if chat.reject_pending(db, conv.id, "yeni mesaj gəldi"):
         db.commit()
     voice.fill_missing(db, conv.id)  # səsli mesaj mətnə çevrilir, şəkil təsvir olunur (Gemini)
+    last_file = chat.last_message(db, conv.id, "customer")
+    if not avoid and last_file and (last_file.text or "").startswith(FILE_LABELS):
+        return _file_handoff(db, conv, contact, last_file)
     first =chat.last_message(db, conv.id, "bot") is None
     lead = db.get(Lead, conv.lead_id) if conv.lead_id else None
     system = build_system(db, now(), first_message=first, lead=lead, customer=customer_card.build(db, contact))
@@ -402,7 +412,11 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     res = {**res, "customer_short": customer_card.short(db, contact)}  # Telegram qaralama başlığı üçün (model_output)
     if problem:  # iki dəfə filtrə düşdü: cavab getmir, söhbət insana keçir
         res = {**res, "handoff": True, "handoff_reason": "filtr", "reply": ""}
-    apply_result(db, conv, contact, res)
+    silent = res["handoff"] and res["handoff_reason"] in SILENT_REASONS
+    if silent:  # iş yazışması: müştəriyə heç nə getmir, satış lead-i də yaranmır
+        res = {**res, "reply": ""}
+    else:
+        apply_result(db, conv, contact, res)
     if not avoid:  # «Yenidən yaz»da eyni sual ikinci dəfə yazılmasın
         note_gap(db, conv.id, res, last_in.text if last_in else "")
     outcome = "draft"
@@ -418,6 +432,8 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         outcome = f"handoff:{res['handoff_reason']}"
         why = URGENT_REASONS.get(res["handoff_reason"] or "")
         urgent = f"🔴 TƏCİLİ: {why}, zəng edin: {contact.phone or '-'}\n" if why else ""
+        if res["handoff_reason"] in SILENT_REASONS:
+            urgent = "🧾 İş yazışması (montaj, layihə və ya komanda), bot cavab yazmadı, özünüz cavab verin\n"
         alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}", topic="action",
                       text=f"{urgent}{'söhbət sizə keçdi' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
                       f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
@@ -426,6 +442,26 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
                       f"{chat.panel_link(conv.id)}")
     db.commit()
     return outcome
+
+
+def _file_handoff(db: DB, conv: WaConversation, contact: WaContact, last_in: WaMessage) -> str:
+    """Video/sənəd: yeni müştəriyə (avtomatik rejim) sabit cavab gedir və söhbət sahibkara keçir; köhnə kontakta
+    (qaralama rejimi) heç nə yazılmır. Hər halda 🔴 mövzusuna xəbər gedir."""
+    sent = ""
+    if auto_reply(db, conv, contact):
+        try:
+            chat.send_bot_reply(db, conv, FILE_REPLY)
+            tg.auto_log(db, conv, FILE_REPLY)
+            sent = FILE_REPLY
+        except kapso.KapsoError as e:
+            log.warning("fayl cavabı getmədi (söhbət %s): %s", conv.id, e.message)
+        conv.mode = "human"
+    db.commit()
+    alerts.notify(f"handoff:{conv.id}:{last_in.id}", topic="action",
+                  text=f"📎 Fayl göndərildi, {'bot qısa cavab verdi və söhbət sizə keçdi' if sent else 'bot cavab yazmadı'}\n"
+                  f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\nMesaj: {(last_in.text or '')[:500]}\n"
+                  f"{chat.panel_link(conv.id)}")
+    return "handoff:fayl"
 
 
 GAP_REASONS = ("diger", "bilinmir", "filtr")
