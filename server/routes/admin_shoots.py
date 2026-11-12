@@ -384,6 +384,9 @@ def production(shoot_id: int, body: ProductionIn, db: DB = Depends(get_db)):
     s = get_shoot(db, shoot_id)
     if body.production == "ready" and s.production != "ready":
         booking._notify(db, s.client_id, "materials_ready", shoot_id=s.id)
+        s.delivered_at = now()
+    elif body.production != "ready":
+        s.delivered_at = None
     s.production, s.delivery_on = body.production, body.delivery_on
     db.commit()
     return shoot_out(db, s)

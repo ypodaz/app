@@ -85,3 +85,56 @@ def test_worker_run_survives_digest_error(api, monkeypatch):
     monkeypatch.setattr(digest, "send", boom)
     with SessionLocal() as db:
         assert worker.run(db) == 0
+
+
+# --- bot izləmə: bilmədiyi suallar, bəyənilməyən qaralamalar, həftəlik xatırlatma ---
+
+def test_build_lists_gaps_and_rejected(api):
+    _seed()
+    with SessionLocal() as db:
+        from models import UnansweredQuestion
+        for q in ["Parkinq var?", "[handoff:diger] İki ölçüdə export olur?", "[IG] [boş cavab] ???"]:
+            db.add(UnansweredQuestion(question=q, created_at=DAY + timedelta(hours=11)))
+        db.commit()
+        text = digest.build(db, SINCE, UNTIL)
+    assert "❓ Botun bilmədiyi suallar (3):" in text
+    assert "• [handoff:diger] İki ölçüdə export olur?" in text and "• Parkinq var?" in text
+    assert "Bəyənilməyən qaralamalar (rədd / yenidən yaz):\n✖️ c" in text
+    assert "✖️ e" not in text  # handoff qaralaması rədd edilsə də bura düşmür
+    assert "🗓 Həftəlik" not in text  # 12.11 cümə axşamıdır
+
+
+def test_gaps_alone_make_report(api):
+    with SessionLocal() as db:
+        from models import UnansweredQuestion
+        db.add(UnansweredQuestion(question="Parkinq var?", created_at=DAY + timedelta(hours=11)))
+        db.commit()
+        assert "❓ Botun bilmədiyi suallar (1):" in digest.build(db, SINCE, UNTIL)
+
+
+def test_monday_weekly_line(api):
+    monday = datetime(2026, 11, 16, tzinfo=BAKU)
+    with SessionLocal() as db:
+        from models import UnansweredQuestion
+        db.add(UnansweredQuestion(question="Köhnə", created_at=monday - timedelta(days=3)))
+        db.add(UnansweredQuestion(question="Həll olunub", created_at=monday - timedelta(days=2), resolved=True))
+        db.add(UnansweredQuestion(question="Çox köhnə", created_at=monday - timedelta(days=9)))
+        db.commit()
+        text = digest.build(db, monday, monday + timedelta(hours=21))
+    assert "🗓 Həftəlik: son 7 gündə həll olunmamış 1 sual yığılıb" in text
+
+
+def test_bot_review_script(api, tmp_path):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import bot_review
+    _seed(at=now() - timedelta(hours=2))
+    with SessionLocal() as db:
+        from models import UnansweredQuestion
+        db.add(UnansweredQuestion(question="[handoff:diger] Dron var?"))
+        db.commit()
+        text = bot_review.build(db, 7)
+    assert "## Həll olunmamış suallar (1)\n\n- [handoff:diger] Dron var?" in text
+    assert "  - Bot: Uzun bot cavabı\n  - Sahibkar: Qısa cavab" in text
+    assert "## Bəyənilməyən qaralamalar (1)" in text and "Gizli Ad" not in text and "994509998877" not in text

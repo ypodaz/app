@@ -916,3 +916,25 @@ def test_new_auto_first_timer_stays_auto_in_next_conversation(api, crm_env):
         db.commit()
         conv2 = conv.id
     assert bot.handle(conv2) == "sent"
+
+
+# --- bot izləmə: bilmədiyi suallar ---
+
+def test_gap_recorded_for_unknown_handoff_only(api, crm_env):
+    _, conv_id = mk_conv(text="İki ölçüdə export olur?")
+    crm_env.gemini(jreply(reply="Komandamız dəqiqləşdirəcək 🙏", handoff=True, handoff_reason="diger"))
+    bot.handle(conv_id)
+    assert one(UnansweredQuestion).question == "[handoff:diger] İki ölçüdə export olur?"
+    _, conv2 = mk_conv(phone="994507776655", text="Sabah 15:00 olar?")
+    crm_env.gemini(jreply(reply="Komandaya ötürürəm", handoff=True, handoff_reason="rezerv"))
+    bot.handle(conv2)
+    assert count(UnansweredQuestion) == 1  # rezerv bilik boşluğu deyil
+
+
+def test_gap_not_duplicated_on_regenerate(api, crm_env):
+    _, conv_id = mk_conv(text="Prompter var?")
+    crm_env.gemini(jreply(reply="Komandamız deyəcək", handoff=True, handoff_reason="bilinmir"),
+                   jreply(reply="Başqa cür: komandamız deyəcək", handoff=True, handoff_reason="bilinmir"))
+    bot.handle(conv_id)
+    bot.handle(conv_id, avoid="Komandamız deyəcək")
+    assert count(UnansweredQuestion) == 1

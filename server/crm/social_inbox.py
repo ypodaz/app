@@ -297,6 +297,9 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
     ai.count_usage(db, "bot", *usage)
     reply = "" if problem else res["reply"]
     item.model_output = {**res, "problem": problem, "regen": regen}
+    if item.kind == "dm" and not avoid:
+        bot.note_gap(db, None, {**res, "handoff": True, "handoff_reason": "filtr"} if problem else res, item.text,
+                     "[IG] ")
     if not reply:
         item.status, item.decided_at = "ignored", now()
         db.commit()

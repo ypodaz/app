@@ -496,3 +496,13 @@ def test_ig_manual_message_without_bot_no_alert(api, net, crm_env, monkeypatch):
     monkeypatch.setattr(social_inbox, "ECHO_WAIT", 0)
     post_ig(api, echo("app1", to="999"))
     assert not any(k == "ig-human:999" for k, _ in crm_env.alerts)
+
+
+def test_dm_gap_recorded_comment_spam_not(api, net, crm_env):
+    from models import UnansweredQuestion
+    crm_env.gemini(jreply("Komandamız dəqiqləşdirəcək 🙏", handoff=True, handoff_reason="diger"),
+                   jreply("", handoff=True, handoff_reason="diger"))
+    post_ig(api, dm(text="Sizdə dron var?"))
+    post_ig(api, comment(text="spam spam"))
+    with SessionLocal() as db:
+        assert [q.question for q in db.query(UnansweredQuestion)] == ["[IG] [handoff:diger] Sizdə dron var?"]

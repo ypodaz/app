@@ -62,6 +62,9 @@ def handle_callback(db: DB, cq: dict) -> str:
     if str(cq.get("data", "")).startswith("x:"):  # Instagram/YouTube qaralamaları
         from crm import social_tg
         return social_tg.handle_callback(db, cq)
+    if str(cq.get("data", "")).startswith("m:"):  # montaj növbəsi: «✅ Təhvil verildi»
+        from crm import aftercare
+        return aftercare.handle_callback(db, cq)
     parts = str(cq.get("data", "")).split(":")
     if len(parts) != 3 or parts[0] != "d" or parts[2] not in ("s", "r", "g") or not parts[1].isdigit():
         return "ignored"

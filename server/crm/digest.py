@@ -1,6 +1,6 @@
 """Gündəlik Telegram hesabatı: Bakı vaxtı 21:00-dan sonra gündə bir dəfə, sahibkara bot fəaliyyətinin xülasəsi."""
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
@@ -8,11 +8,13 @@ from sqlalchemy.orm import Session as DB
 import settings
 from crm import conf, tg
 from db import aware
-from models import BotDraft, LeadEvent, WaConversation, WaMessage
+from models import BotDraft, LeadEvent, UnansweredQuestion, WaConversation, WaMessage
 from views import BAKU
 
 HOUR = 21
 SAMPLES = 3
+GAPS = 8  # hesabatda ən çoxu neçə «bilmədiyi sual»
+WEEK = timedelta(days=7)
 STATUSES = (("sent", "göndərildi"), ("edited", "dəyişdirilib göndərildi"), ("rejected", "rədd"),
             ("pending", "gözləyir"))
 
@@ -27,7 +29,10 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
     msgs = db.scalar(select(func.count()).select_from(WaMessage).where(
         WaMessage.direction == "in", WaMessage.source == "customer", *_in(WaMessage.created_at, since, until)))
     drafts = db.scalars(select(BotDraft).where(*_in(BotDraft.created_at, since, until)).order_by(BotDraft.id)).all()
-    if not (convs or msgs or drafts):
+    gaps = db.scalars(select(UnansweredQuestion).where(*_in(UnansweredQuestion.created_at, since, until))
+                      .order_by(UnansweredQuestion.id)).all()
+    weekly = _weekly(db, until)
+    if not (convs or msgs or drafts or gaps or weekly):
         return None
     lines = [f"📊 Bot hesabatı, {aware(until).astimezone(BAKU):%d.%m}", "",
              f"Yeni söhbət: {convs}", f"Müştəridən mesaj: {msgs}"]
@@ -51,7 +56,27 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
     if edited:
         lines += ["", "Düzəlişlər:"]
         lines += [f"Bot: {d.model_output['reply'][:160]} → Siz: {d.text[:160]}" for d in edited[:SAMPLES]]
+    rejected = [d for d in drafts if d.status == "rejected" and not (d.reason or "").startswith("handoff:")]
+    if rejected:
+        lines += ["", "Bəyənilməyən qaralamalar (rədd / yenidən yaz):"]
+        lines += [f"✖️ {d.text[:200]}" for d in rejected[:SAMPLES]]
+    if gaps:
+        lines += ["", f"❓ Botun bilmədiyi suallar ({len(gaps)}):"]
+        lines += [f"• {g.question[:200]}" for g in gaps[:GAPS]]
+        if len(gaps) > GAPS:
+            lines.append(f"… və daha {len(gaps) - GAPS} (panel → Bot ayarları → Cavabsız suallar)")
+    if weekly:
+        lines += ["", f"🗓 Həftəlik: son 7 gündə həll olunmamış {weekly} sual yığılıb. Claude-a «bot izləmə» yazın: "
+                      "prompta və FAQ-a əlavə edək."]
     return "\n".join(lines)
+
+
+def _weekly(db: DB, until: datetime) -> int:
+    """Bazar ertəsi: son 7 gündə həll olunmamış sualların sayı (başqa günlər 0)."""
+    if aware(until).astimezone(BAKU).weekday() != 0:
+        return 0
+    return db.scalar(select(func.count()).select_from(UnansweredQuestion).where(
+        UnansweredQuestion.resolved.is_(False), *_in(UnansweredQuestion.created_at, until - WEEK, until))) or 0
 
 
 def due(db: DB, t: datetime) -> bool:

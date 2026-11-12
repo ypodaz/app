@@ -154,6 +154,8 @@ class Shoot(Base):
     status: Mapped[str] = mapped_column(String(16), default="confirmed")  # confirmed | completed | cancelled | no_show
     production: Mapped[str] = mapped_column(String(16), default="none")  # none | editing | ready
     delivery_on: Mapped[Optional[date]] = mapped_column(Date)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(TS)  # production «ready» olan an (rəy sorğusu üçün)
+    feedback_asked_at: Mapped[Optional[datetime]] = mapped_column(TS)  # rəy sorğusu kartı Telegram-a gedib
     # qiymət snapshot-ı (qəpik)
     price_base: Mapped[int] = mapped_column(Integer, default=0)
     price_editing: Mapped[int] = mapped_column(Integer, default=0)

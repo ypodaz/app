@@ -403,8 +403,8 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     if problem:  # iki dəfə filtrə düşdü: cavab getmir, söhbət insana keçir
         res = {**res, "handoff": True, "handoff_reason": "filtr", "reply": ""}
     apply_result(db, conv, contact, res)
-    if res["unanswered_question"]:
-        db.add(UnansweredQuestion(conversation_id=conv.id, question=str(res["unanswered_question"])[:1000]))
+    if not avoid:  # «Yenidən yaz»da eyni sual ikinci dəfə yazılmasın
+        note_gap(db, conv.id, res, last_in.text if last_in else "")
     outcome = "draft"
     if res["reply"]:
         outcome = deliver(db, conv, res["reply"], res, reason=f"handoff:{res['handoff_reason']}" if res["handoff"] else None,
@@ -426,6 +426,21 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
                       f"{chat.panel_link(conv.id)}")
     db.commit()
     return outcome
+
+
+GAP_REASONS = ("diger", "bilinmir", "filtr")
+
+
+def note_gap(db: DB, conv_id: int | None, res: dict, customer_text: str, prefix: str = "") -> None:
+    """Botun bilmədiyi sual (gündəlik hesabat və həftəlik prompt/FAQ baxışı üçün): model özü yazıbsa onun mətni,
+    yoxsa handoff «diger/bilinmir» və ya boş cavabda (filtr) müştərinin mesajı «[səbəb]» ilə."""
+    q = res.get("unanswered_question")
+    if not q:
+        reason = res.get("handoff_reason") if res.get("handoff") else None
+        if reason not in GAP_REASONS or not (customer_text or "").strip():
+            return
+        q = f"[{'boş cavab' if reason == 'filtr' else 'handoff:' + reason}] {customer_text.strip()}"
+    db.add(UnansweredQuestion(conversation_id=conv_id, question=(prefix + str(q))[:1000]))
 
 
 def is_new_customer(db: DB, conv: WaConversation, contact: WaContact) -> bool:
