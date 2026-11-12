@@ -128,6 +128,28 @@ def parse(body: dict) -> list[dict]:
     return out
 
 
+def echoes(body: dict) -> list[tuple[str, str]]:
+    """Bizim hesabdan gedən mesajlar (is_echo): (müştərinin IGSID-i, mid). App-dan yazılanı API göndərişindən
+    mid ilə ayırırıq (social_inbox.on_echo)."""
+    out = []
+    for entry in body.get("entry") or []:
+        for m in entry.get("messaging") or []:
+            msg, to = m.get("message") or {}, str((m.get("recipient") or {}).get("id") or "")
+            if msg.get("is_echo") and msg.get("mid") and to and to != str(settings.IG_USER_ID):
+                out.append((to, str(msg["mid"])))
+    return out
+
+
+def username(igsid: str) -> str:
+    """Müştərinin Instagram adı (lead kartı üçün); alınmasa boş."""
+    try:
+        r = httpx.get(f"{GRAPH}/{igsid}", params={"fields": "username"},
+                      headers={"Authorization": f"Bearer {token()}"}, timeout=10)
+        return str(r.json().get("username") or "")[:64] if r.status_code < 400 else ""
+    except Exception:
+        return ""
+
+
 def _post(path: str, **kw) -> dict:
     if not enabled():
         raise IgError("Instagram qoşulmayıb")

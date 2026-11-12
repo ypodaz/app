@@ -250,3 +250,106 @@ def test_disabled_when_env_empty(api, net, crm_env, monkeypatch):
     with SessionLocal() as db:
         assert youtube.poll(db) == [] and conf.get(db, youtube.LAST_KEY) is None
     assert not items() and not net.calls and not crm_env.gemini_calls and not crm_env.http
+
+
+# --- Instagram DM: avtomatik cavab, insan rejimi, nömrədən lead ---
+
+def auto_mode():
+    with SessionLocal() as db:
+        conf.put(db, "ig_dm_mode", "auto")
+        db.commit()
+
+
+def echo(mid, to="555"):
+    return {"object": "instagram", "entry": [{"id": ME, "time": 1, "messaging": [
+        {"sender": {"id": ME}, "recipient": {"id": to}, "timestamp": int(now().timestamp() * 1000),
+         "message": {"mid": mid, "text": "Salam, özüm yazıram", "is_echo": True}}]}]}
+
+
+def test_ig_auto_sends_and_logs(api, net, crm_env):
+    auto_mode()
+    crm_env.gemini(jreply("Salam! Podkast çəkilişi 1 saat 70 AZN-dir."))
+    post_ig(api, dm())
+    [it] = items()
+    assert it.status == "sent" and it.model_output["sent_mid"] == "mid.out1"
+    assert [c[1] for c in net.calls if "graph.instagram.com" in c[1]] == ["https://graph.instagram.com/v24.0/me/messages"]
+    [msg] = crm_env.tg("sendMessage")
+    assert msg["text"].startswith("🤖 Avtomatik cavab getdi") and "reply_markup" not in msg
+
+
+def test_ig_draft_mode_is_default(api, net, crm_env):
+    crm_env.gemini(jreply("Salam!"))
+    post_ig(api, dm())
+    assert items()[0].status == "pending" and not [c for c in net.calls if "graph.instagram.com" in c[1]]
+
+
+def test_ig_auto_handoff_then_drafts(api, net, crm_env):
+    auto_mode()
+    crm_env.gemini(jreply("Bunu komandaya ötürürəm.", handoff=True, handoff_reason="endirim"), jreply("Bəli."))
+    post_ig(api, dm(mid="m1", text="Agentlikik, endirim olar?"))
+    assert items()[0].status == "sent"
+    assert "Əməkdaş lazımdır" in crm_env.tg("sendMessage")[0]["text"]
+    post_ig(api, dm(mid="m2", text="Montaj da var?"))
+    assert items()[1].status == "pending"  # insan rejimi: qaralama
+    assert "reply_markup" in crm_env.tg("sendMessage")[-1]
+
+
+def test_ig_echo_from_app_silences_bot(api, net, crm_env, monkeypatch):
+    monkeypatch.setattr(social_inbox, "ECHO_WAIT", 0)
+    auto_mode()
+    crm_env.gemini(jreply("Salam!"), jreply("Bəli."))
+    post_ig(api, dm(mid="m1", text="Salam"))
+    post_ig(api, echo("mid.out1"))  # botun öz cavabının echo-su: heç nə dəyişmir
+    with SessionLocal() as db:
+        assert not social_inbox.is_human(db, "555")
+    post_ig(api, echo("app1"))  # sahibkar app-dan yazdı
+    with SessionLocal() as db:
+        assert social_inbox.is_human(db, "555")
+    assert any(k == "ig-human:555" for k, _ in crm_env.alerts)
+    post_ig(api, dm(mid="m2", text="Saat neçədə?"))
+    assert items()[1].status == "pending"
+
+
+def test_ig_phone_creates_lead_and_card(api, net, crm_env):
+    from models import Lead, WaContact
+    auto_mode()
+    crm_env.gemini(jreply("Təşəkkürlər, Aysel! Komanda WhatsApp-dan yazacaq.",
+                          lead={"name": "Aysel Məmmədova", "service": "podkast", "cameras": 2}),
+                   jreply("Buyurun."))
+    post_ig(api, dm(mid="m1", text="Adım Aysel, nömrəm 055 123 45 67"))
+    with SessionLocal() as db:
+        [lead] = db.scalars(select(Lead)).all()
+        assert (lead.source, lead.phone, lead.name, lead.service, lead.cameras) == (
+            "instagram", "994551234567", "Aysel Məmmədova", "podkast", 2)
+        assert db.get(WaContact, lead.contact_id).phone == "994551234567"
+        assert "Instagram yazışması: Adım Aysel" in lead.notes
+    cards = [m for m in crm_env.tg("sendMessage") if m["text"].startswith("📥 Instagram-dan yeni müştəri")]
+    assert len(cards) == 1
+    url = cards[0]["reply_markup"]["inline_keyboard"][0][0]["url"]
+    assert url.startswith("https://wa.me/994551234567?text=Salam%2C%20Aysel%21")
+    post_ig(api, dm(mid="m2", text="Cümə günü olar?"))
+    assert len([m for m in crm_env.tg("sendMessage") if m["text"].startswith("📥")]) == 1  # təkrar kart yoxdur
+
+
+def test_whatsapp_links_instagram_lead(api, net, crm_env):
+    from crm import bot
+    from models import Lead, WaContact, WaConversation
+    crm_env.gemini(jreply("Təşəkkürlər!", lead={"name": "Aysel"}))
+    post_ig(api, dm(mid="m1", text="+994 50 111 22 33 yazın mənə"))
+    with SessionLocal() as db:
+        contact = db.scalar(select(WaContact).where(WaContact.phone == "994501112233"))
+        conv = WaConversation(contact_id=contact.id, kapso_conversation_id="k1", mode="bot")
+        db.add(conv)
+        db.flush()
+        lead = bot.apply_result(db, conv, contact, jreply("Salam!"))
+        assert lead.source == "instagram" and conv.lead_id == lead.id
+        assert "Instagram-da yazdıqları" in bot._lead_text(lead)
+        assert db.scalar(select(Lead.id).where(Lead.source == "whatsapp")) is None
+
+
+@pytest.mark.parametrize("text,phone", [
+    ("nömrəm 0551234567", "994551234567"), ("+994 (50) 111-22-33", "994501112233"), ("70 222 33 44", "994702223344"),
+    ("whatsapp: 0099450 111 22 33", "994501112233"), ("+7 912 345 67 89", "79123456789"),
+    ("2 saat, 3 kamera, 150 AZN", None), ("012 555 66 77", None), ("15.11.2026 saat 14:00", None)])
+def test_find_phone(text, phone):
+    assert social_inbox.find_phone([text]) == phone

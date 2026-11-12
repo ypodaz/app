@@ -46,4 +46,8 @@ async def instagram_webhook(request: Request, background: BackgroundTasks):
         raise HTTPException(400, "JSON deyil")
     for item_id in await run_in_threadpool(_store, body):
         background.add_task(social_inbox.draft, item_id)
+    for b in (body if isinstance(body, list) else [body]):
+        if isinstance(b, dict):
+            for thread, mid in instagram.echoes(b):  # sahibkar app-dan yazıbsa bot o söhbətdə susur
+                background.add_task(social_inbox.on_echo, thread, mid)
     return {"ok": True}

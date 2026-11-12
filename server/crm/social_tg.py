@@ -16,7 +16,8 @@ def title(item: SocialItem) -> str:
 
 def _body(item: SocialItem) -> str:
     who = item.author or (f"IGSID {item.thread_id}" if item.kind == "dm" else "naməlum")
-    return f"{title(item)}\n{who}\n\nMüştəri: {item.text[:700]}\n\nQaralama:\n{(item.draft_text or '')[:2000]}"
+    label = "Cavab" if item.status == "sent" else "Qaralama"
+    return f"{title(item)}\n{who}\n\nMüştəri: {item.text[:700]}\n\n{label}:\n{(item.draft_text or '')[:2000]}"
 
 
 def _buttons(item: SocialItem) -> dict:
@@ -32,6 +33,17 @@ def send(item: SocialItem) -> str | None:
     if mid:
         item.tg_message_id = str(mid)
     return str(mid) if mid else None
+
+
+def auto_log(item: SocialItem, head: str = "🤖 Avtomatik cavab getdi") -> None:
+    """Avtomatik göndərilən cavab: düyməsiz qeyd (sahibkar nə yazıldığını görsün)."""
+    _call("sendMessage", {"chat_id": settings.TG_CHAT_ID, "text": f"{head}\n\n{_body(item)}"[:4000]})
+
+
+def lead_card(text: str, wa_url: str) -> None:
+    """Instagram-dan nömrə gələndə: müştəri kartı + WhatsApp-dan yazmaq üçün hazır link."""
+    _call("sendMessage", {"chat_id": settings.TG_CHAT_ID, "text": text[:4000], "disable_web_page_preview": True,
+                          "reply_markup": {"inline_keyboard": [[{"text": "💬 WhatsApp-dan yaz", "url": wa_url}]]}})
 
 
 def close(item: SocialItem, head: str) -> None:

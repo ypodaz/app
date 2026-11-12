@@ -33,6 +33,7 @@ BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
 FOUND_VIA = ("instagram", "tiktok", "youtube", "reklam", "tanis", "google", "diger")
 # Lead cədvəlində sütunu olmayan sahələr qeydlərə (notes) «Etiket: dəyər» sətri kimi yazılır
 NOTE_FIELDS = {"instagram": "Instagram", "found_via": "Haradan tapıb"}
+IG_TALK = "Instagram yazışması"  # IG DM-dən lead yarananda müştərinin son mesajları (social_inbox)
 MAX_REGENERATE = tg.MAX_REGENERATE
 # Telegram xəbərində 🔴 ilə başda çıxan səbəblər: sahibkar dərhal geri zəng etsin
 URGENT_REASONS = {"insan_istedi": "müştəri canlı adamla danışmaq istəyir", "sikayet": "şikayət var"}
@@ -128,7 +129,8 @@ def _lead_text(lead: Lead | None) -> str:
     parts = [("ad", lead.name), ("xidmət", lead.service), ("tarix", lead.preferred_date), ("nəfər", lead.people),
              ("kamera", lead.cameras), ("montaj", None if lead.editing is None else ("bəli" if lead.editing else "xeyr")),
              ("instagram", _note_value(lead, NOTE_FIELDS["instagram"])),
-             ("haradan tapıb", _note_value(lead, NOTE_FIELDS["found_via"]))]
+             ("haradan tapıb", _note_value(lead, NOTE_FIELDS["found_via"])),
+             ("Instagram-da yazdıqları", _note_value(lead, IG_TALK))]
     known = [f"{k}: {v}" for k, v in parts if v not in (None, "")]
     return "; ".join(known + [f"mərhələ: {lead.stage}"]) if known else "hələ heç nə məlum deyil"
 
@@ -230,9 +232,20 @@ def _set_note(lead: Lead, label: str, value: str) -> None:
         lead.notes = (notes.rstrip() + "\n" if notes.strip() else "") + line
 
 
+def instagram_lead(db: DB, contact_id: int) -> Lead | None:
+    """Kontaktın son 30 gündə Instagram-dan gələn, hələ bağlanmamış lead-i."""
+    return db.scalar(select(Lead).where(Lead.contact_id == contact_id, Lead.source == "instagram",
+                                        Lead.stage.not_in(("geldi", "itirildi")),
+                                        Lead.created_at >= now() - timedelta(days=30))
+                     .order_by(Lead.id.desc()).limit(1))
+
+
 def apply_result(db: DB, conv: WaConversation, contact: WaContact, res: dict) -> Lead:
     """Lead yoxdursa yaradır; boş olmayan sahələri yeniləyir; mərhələ yalnız irəli (ən çoxu `beh`)."""
     lead = db.get(Lead, conv.lead_id) if conv.lead_id else None
+    if not lead and (lead := instagram_lead(db, contact.id)):  # Instagram-da nömrəsini verib, indi WhatsApp-a yazır
+        conv.lead_id = lead.id
+        _event(db, lead, "linked", {"conversation_id": conv.id})
     if not lead:
         lead = Lead(contact_id=contact.id, name=contact.name or "", phone=contact.phone or "", source="whatsapp")
         db.add(lead)
