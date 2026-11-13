@@ -424,6 +424,12 @@ class Lead(Base):
     stage: Mapped[str] = mapped_column(String(12), default="yeni")
     notes: Mapped[str] = mapped_column(Text, default="")
     shoot_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shoots.id", ondelete="SET NULL"))
+    # itirildi səbəbi (qiymet | vaxt | cavab_yox | basqa_yer | diger) yalnız sahibkar qoyur; başqa mərhələyə keçəndə silinir
+    lost_reason: Mapped[Optional[str]] = mapped_column(String(12))
+    lost_text: Mapped[Optional[str]] = mapped_column(String(200))
+    # «sonra yazacaq»: vaxtı çatanda sahibkara bir Telegram xatırlatması gedir, sonra boşaldılır
+    remind_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    remind_note: Mapped[Optional[str]] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
 

@@ -19,7 +19,40 @@ export type Lead = {
   id: number; contact_id: number; conversation_id: number | null; name: string; phone: string; service: string | null;
   preferred_date: string | null; people: number | null; cameras: number | null; editing: boolean | null; source: string;
   stage: Stage; notes: string; shoot_id: number | null; created_at: string; updated_at: string;
+  lost_reason: LostReason | null; lost_text: string | null; remind_at: string | null; remind_note: string | null;
 };
+export type LostReason = 'qiymet' | 'vaxt' | 'cavab_yox' | 'basqa_yer' | 'diger';
+export const LOST_REASONS: { key: LostReason; label: string }[] = [
+  { key: 'qiymet', label: 'Qiymət' }, { key: 'vaxt', label: 'Vaxt uyğun deyil' }, { key: 'cavab_yox', label: 'Cavab vermədi' },
+  { key: 'basqa_yer', label: 'Başqa yer seçdi' }, { key: 'diger', label: 'Digər' },
+];
+export const lostLabel = (l: Lead) => {
+  const name = LOST_REASONS.find((r) => r.key === l.lost_reason)?.label;
+  return name ? (l.lost_reason === 'diger' && l.lost_text ? `${name}: ${l.lost_text}` : name) : '';
+};
+/** «🔔 dd.MM» (Bakı) və ya boş. */
+export const remindShort = (l: Lead) => {
+  if (!l.remind_at) return '';
+  const [, m, d] = bakuParts(l.remind_at).date.split('-');
+  return `🔔 ${d}.${m}`;
+};
+
+/** İtirildi üçün səbəb seçimi (sahibkar seçir; səbəbsiz server 422 verir). */
+export function LostPicker({ busy, onConfirm, onCancel }: { busy?: boolean; onConfirm: (reason: LostReason, text: string) => void; onCancel: () => void }) {
+  const [reason, setReason] = useState<LostReason | ''>('');
+  const [text, setText] = useState('');
+  return (
+    <div className="c-lost">
+      <select className="inp" aria-label="İtirilmə səbəbi" value={reason} onChange={(e) => setReason(e.target.value as LostReason | '')}>
+        <option value="">Səbəb seçin</option>
+        {LOST_REASONS.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+      </select>
+      {reason === 'diger' && <input className="inp" aria-label="Səbəb (istəyə görə)" maxLength={200} value={text} onChange={(e) => setText(e.target.value)} placeholder="Qısa izah (istəyə görə)" />}
+      <button type="button" className="btn btn-primary btn-sm" disabled={!reason || busy} onClick={() => reason && onConfirm(reason, text.trim())}>Təsdiq</button>
+      <button type="button" className="btn btn-out btn-sm" disabled={busy} onClick={onCancel}>Ləğv</button>
+    </div>
+  );
+}
 export type ConvMode = 'bot' | 'human' | 'owner' | 'wait'; // owner: sahibkar yazıb; wait: komandaya ötürülüb (server/crm/turns.py)
 export type Contact = { id: number; name: string | null; phone: string | null; excluded: boolean };
 export type Conv = {
@@ -80,6 +113,8 @@ export function LeadPanel({ conv, onChanged }: { conv: ConvOpen; onChanged: () =
         name: f.name.trim() || undefined, phone: f.phone.trim() || undefined, service: f.service || null,
         preferred_date: f.preferred_date.trim() || null, people: f.people === '' ? null : Number(f.people),
         cameras: f.cameras === '' ? null : Number(f.cameras), editing: f.editing, stage: f.stage, notes: f.notes,
+        remind_at: f.remind_date ? toIso(f.remind_date, '09:00') : null,
+        ...(f.stage === 'itirildi' ? { lost_reason: f.lost_reason || undefined, lost_text: f.lost_text.trim() || null } : {}),
       },
     }));
     if (r) { setOk('Yadda saxlandı.'); onChanged(); }
@@ -107,6 +142,18 @@ export function LeadPanel({ conv, onChanged }: { conv: ConvOpen; onChanged: () =
               {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
           </Field>
+          {f.stage === 'itirildi' && (
+            <>
+              <Field label="İtirilmə səbəbi" id="l-lost">
+                <select id="l-lost" className="inp" value={f.lost_reason} onChange={(e) => set('lost_reason', e.target.value as LostReason | '')}>
+                  <option value="">Səbəb seçin</option>
+                  {LOST_REASONS.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+                </select>
+              </Field>
+              {f.lost_reason === 'diger' && <Field label="Səbəb (istəyə görə)" id="l-losttx"><input id="l-losttx" className="inp" maxLength={200} value={f.lost_text} onChange={(e) => set('lost_text', e.target.value)} /></Field>}
+            </>
+          )}
+          <Field label="Sonra yazacaq (xatırlatma)" id="l-remind"><input id="l-remind" className="inp" type="date" value={f.remind_date} onChange={(e) => set('remind_date', e.target.value)} /></Field>
           <Field label="Xidmət" id="l-svc">
             <select id="l-svc" className="inp" value={f.service} onChange={(e) => set('service', e.target.value)}>
               <option value="">Seçilməyib</option>
@@ -137,6 +184,8 @@ function formOf(l: Lead | null) {
     name: l?.name ?? '', phone: l?.phone ?? '', service: l?.service ?? '', preferred_date: l?.preferred_date ?? '',
     people: l?.people == null ? '' : String(l.people), cameras: l?.cameras == null ? '' : String(l.cameras),
     editing: l?.editing ?? false, stage: (l?.stage ?? 'yeni') as Stage, notes: l?.notes ?? '',
+    lost_reason: (l?.lost_reason ?? '') as LostReason | '', lost_text: l?.lost_text ?? '',
+    remind_date: l?.remind_at ? bakuParts(l.remind_at).date : '',
   };
 }
 

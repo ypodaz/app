@@ -1,7 +1,7 @@
 """Saatlıq CRM dövrü: follow-up. Yalnız QARALAMA yaradır (`auto` rejimdə də): müştəriyə avtomatik heç nə getmir.
 
 Şərt: lead `maraqlanir`/`tarix` mərhələsindədir, son müştəri mesajı 20–23 saat əvvəldir, ondan sonra bizdən mesaj
-yoxdur, söhbət `bot` rejimindədir və bu lead üçün follow-up hələ yaradılmayıb.
+yoxdur, söhbət `bot` rejimindədir və bu lead üçün follow-up hələ yaradılmayıb. `remind_at` gələcəkdədirsə heç biri yazmır.
 """
 import asyncio
 import logging
@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 import ai
+import tgtopics
 from ai import AiError
 from crm import aftercare, bot, chat, conf, customer_card, digest, ig_stats, instagram, tg
 from db import SessionLocal, aware, now
@@ -25,6 +26,10 @@ NOTE = ("\n\nBu müştəri təxminən 20 saatdır cavab yazmır. Ona bir qısa, 
         "yeni qiymət və ya vədlər vermə, 1–2 cümlə). Cavab formatı eyni JSON.")
 
 
+def _reminder_pending(lead: Lead, t) -> bool:
+    return bool(lead.remind_at and aware(lead.remind_at) > t)
+
+
 def due_conversations(db: DB) -> list[WaConversation]:
     t = now()
     convs = db.scalars(select(WaConversation).where(
@@ -36,6 +41,8 @@ def due_conversations(db: DB) -> list[WaConversation]:
         contact = db.get(WaContact, c.contact_id)
         if not lead or lead.stage not in ("maraqlanir", "tarix") or contact.excluded:
             continue
+        if _reminder_pending(lead, t):
+            continue  # «sonra yazacaq» qeydi var: iki dəfə yazmayaq
         if db.scalar(select(WaMessage.id).where(WaMessage.conversation_id == c.id, WaMessage.direction == "out",
                                                 WaMessage.created_at > c.last_inbound_at).limit(1)):
             continue  # bizdən artıq yazılıb
@@ -99,6 +106,8 @@ def price_due(db: DB) -> list[WaConversation]:
         lead, contact = db.get(Lead, c.lead_id), db.get(WaContact, c.contact_id)
         if not lead or lead.stage not in ("yeni", "maraqlanir") or contact.excluded:
             continue
+        if _reminder_pending(lead, t):
+            continue
         if contact.bot_muted_until and aware(contact.bot_muted_until) > t:
             continue
         last = chat.last_message(db, c.id)
@@ -140,8 +149,41 @@ def make_price_followup(db: DB, conv: WaConversation) -> BotDraft | None:
     return draft
 
 
+# --- «sonra yazacaq»: vaxtı çatanda sahibkara bir xatırlatma ---
+NIGHT_START, NIGHT_END = 22, 8  # Bakı: bu aralıqda göndərilmir, səhər 08:00-dan sonrakı ilk dövrdə gedir
+
+
+def send_reminders(db: DB, t=None) -> int:
+    t = t or now()
+    hour = aware(t).astimezone(BAKU).hour
+    if hour >= NIGHT_START or hour < NIGHT_END:
+        return 0
+    n = 0
+    for lead in db.scalars(select(Lead).where(Lead.remind_at.is_not(None), Lead.remind_at <= t).order_by(Lead.id)).all():
+        day = aware(lead.remind_at).astimezone(BAKU)
+        text = f"🔔 {lead.name or 'Naməlum'} {day:%d.%m} yazacağını demişdi"
+        if lead.remind_note:
+            text += f" · {lead.remind_note}"
+        payload = {**tgtopics.dest("action"), "text": text}
+        phone = "".join(c for c in (lead.phone or "") if c.isdigit())
+        if phone:
+            payload["reply_markup"] = {"inline_keyboard": [[{"text": "💬 WhatsApp-da aç",
+                                                             "url": f"https://wa.me/{phone}"}]]}
+        lead.remind_at = lead.remind_note = None  # bir dəfə
+        db.add(LeadEvent(lead_id=lead.id, kind="reminded", data={}))
+        db.commit()
+        tg._call("sendMessage", payload)
+        n += 1
+    return n
+
+
 def run(db: DB) -> int:
     n = 0
+    try:
+        send_reminders(db)
+    except Exception:  # xatırlatma xətası dövrü dayandırmasın
+        db.rollback()
+        log.exception("lead xatırlatması")
     for conv in due_conversations(db):
         if bot.skip_reason(db, conv, db.get(WaContact, conv.contact_id)):  # bot söndürülüb, susdurulub və s.
             continue
