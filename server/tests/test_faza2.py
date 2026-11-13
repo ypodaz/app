@@ -173,4 +173,4 @@ def test_extras_from_package_are_paid(api):
                     package_cameras=1, extras=2000)
     assert (p.total, p.paid_extras) == (2000, 2000)
     _, earned = money.cashback_earned(p, from_package=True, first_shoot=False)
-    assert earned == 200
+    assert earned == 0  # paketdən çəkilişə keşbek yazılmır

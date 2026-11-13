@@ -117,13 +117,13 @@ export function CloseShoot({ id }: { id: number }) {
               <AStep text={formatHours(minutes)} label="Faktiki müddət" onDec={() => setDur(Math.max(30, minutes - 30))} onInc={() => setDur(Math.min(600, minutes + 30))} decDisabled={minutes <= 30} incDisabled={minutes >= 600} />
             </div>
             {pkg && (
-              <div className="a-gold"><b>Paketdən {formatHours(minutes)} çıxılır · qalan {formatHours(Math.max(0, pkg.minutes_left - minutes))} / {formatHours(pkg.minutes_total)}</b><span>{pkg.title}</span><span>Paket saatlarına keşbek yazılmır; yalnız pullu əlavələrə (montaj, Reels, əlavə kamera).</span></div>
+              <div className="a-gold"><b>Paketdən {formatHours(minutes)} çıxılır · qalan {formatHours(Math.max(0, pkg.minutes_left - minutes))} / {formatHours(pkg.minutes_total)}</b><span>{pkg.title}</span><span>Paketdən çəkilişə keşbek yazılmır (əlavələr daxil).</span></div>
             )}
           </section>
         )}
         {reels && pkg && (
           <section className="a-g a-rise a-gs" style={rs()}>
-            <div className="a-gold"><b>Paketdən {formatHours(minutes)} çıxılır · qalan {formatHours(Math.max(0, pkg.minutes_left - minutes))} / {formatHours(pkg.minutes_total)}</b><span>{pkg.title}</span><span>Paket saatlarına keşbek yazılmır; yalnız pullu əlavələrə (montaj, Reels, əlavə kamera).</span></div>
+            <div className="a-gold"><b>Paketdən {formatHours(minutes)} çıxılır · qalan {formatHours(Math.max(0, pkg.minutes_left - minutes))} / {formatHours(pkg.minutes_total)}</b><span>{pkg.title}</span><span>Paketdən çəkilişə keşbek yazılmır (əlavələr daxil).</span></div>
           </section>
         )}
         <section className="a-g a-rise a-gs" style={rs()}>
