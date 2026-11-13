@@ -234,8 +234,11 @@ def payment_status(
 
 def cashback_earned(p: Price, *, from_package: bool, first_shoot: bool) -> tuple[str, int]:
     """Çəkiliş bağlananda yazılan keşbek: (ledger kind, məbləğ).
-    Keşbeklə ödənən hissə çıxılmır, endirim çıxılır. Paketdən çəkilişdə yalnız pullu əlavələrə yazılır."""
-    base = max(0, p.paid_extras - p.discount) if from_package else p.total
+    Keşbeklə ödənən hissə çıxılmır, endirim çıxılır. Paketdən çəkilişə (pullu əlavələr daxil) keşbek yazılmır
+    (sahibkar, 2026-11-13)."""
+    if from_package:
+        return "earn", 0
+    base = p.total
     if first_shoot:
         return "earn_first", percent(base, FIRST_SHOOT_PERCENT)
     return "earn", percent(base, CASHBACK_PERCENT)

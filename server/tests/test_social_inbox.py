@@ -303,7 +303,7 @@ def test_ig_auto_handoff_then_drafts(api, net, crm_env):
     assert items()[0].status == "sent"
     assert "Əməkdaş lazımdır" in crm_env.tg("sendMessage")[0]["text"]
     post_ig(api, dm(mid="m2", text="Montaj da var?"))
-    assert items()[1].status == "pending"  # insan rejimi: qaralama
+    assert items()[1].status == "pending"  # wait rejimi: çətin sual qaralama
     assert "reply_markup" in crm_env.tg("sendMessage")[-1]
 
 
@@ -314,10 +314,10 @@ def test_ig_echo_from_app_silences_bot(api, net, crm_env, monkeypatch):
     post_ig(api, dm(mid="m1", text="Salam"))
     post_ig(api, echo("mid.out1"))  # botun öz cavabının echo-su: heç nə dəyişmir
     with SessionLocal() as db:
-        assert not social_inbox.is_human(db, "555")
+        assert social_inbox.ig_mode(db, "555") == "bot"
     post_ig(api, echo("app1"))  # sahibkar app-dan yazdı
     with SessionLocal() as db:
-        assert social_inbox.is_human(db, "555")
+        assert social_inbox.ig_mode(db, "555") == "owner"
     assert any(k == "ig-human:555" for k, _ in crm_env.alerts)
     post_ig(api, dm(mid="m2", text="Saat neçədə?"))
     assert items()[1].status == "pending"
@@ -468,7 +468,7 @@ def test_ig_echo_after_restart_recognized_from_db(api, net, crm_env, monkeypatch
     social_inbox._sent_mids.clear()
     post_ig(api, echo("mid.out1"))
     with SessionLocal() as db:
-        assert not social_inbox.is_human(db, "555")
+        assert social_inbox.ig_mode(db, "555") == "bot"
     assert not any(k == "ig-human:555" for k, _ in crm_env.alerts)
 
 
@@ -621,7 +621,7 @@ def test_ig_comment_direct_error_still_replies_publicly(api, net, crm_env, monke
 def test_ig_comment_direct_even_when_owner_talks(api, net, crm_env):
     # sahibkar bu adamla app-dan yazışsa da komment cavabsız qalmır: Direct + ictimai cavab gedir
     with SessionLocal() as db:
-        social_inbox.set_human(db, "777")
+        social_inbox.owner_wrote(db, "777")
         db.commit()
     crm_env.gemini(jreply("Direct-ə yazdıq 🙏"), jreply("Salam!"))
     body = comment(cid="c8", text="Qiymət?")

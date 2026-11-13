@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
@@ -78,6 +78,18 @@ def _found_via(v):
     return v if v in FOUND_VIA else None  # model şablonu («instagram|tiktok|…») qaytarsa da yazılmır
 
 
+def _date(v):
+    """«YYYY-MM-DD» → həmin gün; model şablonu və ya yanlış yazılış None."""
+    try:
+        return datetime.strptime(str(_null(v) or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+REMIND_HOUR = 9  # «sonra yazacaq» xatırlatması həmin gün Bakı vaxtı 09:00-da
+REMIND_MAX_DAYS = 90
+
+
 def parse_reply(text: str) -> dict:
     """Kod hasarlarını (```json) təmizləyir, JSON-u oxuyur, sahələri yoxlayıb təmiz dict qaytarır."""
     t = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.I)
@@ -111,6 +123,7 @@ def parse_reply(text: str) -> dict:
                  "instagram": _str(lead.get("instagram"), 64), "found_via": _found_via(lead.get("found_via")),
                  "referred_by": _str(lead.get("referred_by"), 120)},
         "stage": _null(data.get("stage")),
+        "remind_at": d.isoformat() if (d := _date(data.get("remind_at"))) else None,
         "unanswered_question": _null(data.get("unanswered_question")),
     }
 
@@ -287,6 +300,13 @@ def apply_result(db: DB, conv: WaConversation, contact: WaContact, res: dict) ->
         if STAGES.index(lead.stage) < STAGES.index(stage) <= STAGES.index(BOT_MAX_STAGE):
             _event(db, lead, "stage", {"from": lead.stage, "to": stage})
             lead.stage = stage
+    day = _date(res.get("remind_at"))
+    today = aware(now()).astimezone(BAKU).date()
+    if day and lead.stage not in ("geldi", "itirildi") and today <= day <= today + timedelta(days=REMIND_MAX_DAYS):
+        at = datetime(day.year, day.month, day.day, REMIND_HOUR, tzinfo=BAKU).astimezone(timezone.utc)  # bazaya UTC
+        if not lead.remind_at or aware(lead.remind_at) != at:
+            _event(db, lead, "remind", {"at": at.isoformat()})
+            lead.remind_at = at
     return lead
 
 

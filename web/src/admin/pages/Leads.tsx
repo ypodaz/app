@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { AdminShell } from '../../shared/ui';
 import { AEmpty } from '../components/a3';
 import { Err } from '../components/common';
-import { STAGES, serviceLabel, whenShort, type Lead, type Stage } from '../components/crm';
+import { LostPicker, STAGES, lostLabel, remindShort, serviceLabel, whenShort, type Lead, type LostReason, type Stage } from '../components/crm';
 import { useAction, useAuth, useLoad } from '../ctx';
 import { bakuParts, bakuToday, weekStart } from '../format';
 import { go, useDesktop } from '../router';
@@ -15,6 +15,7 @@ export function Leads() {
   const list = useLoad<Lead[]>('/leads');
   const act = useAction();
   const [tab, setTab] = useState<Stage>('yeni');
+  const [pick, setPick] = useState<number | null>(null); // İtirildi üçün səbəb gözləyən lead
   const leads = list.data ?? [];
 
   const stats = useMemo(() => {
@@ -24,17 +25,21 @@ export function Leads() {
     return { week, pct: leads.length ? Math.round((won / leads.length) * 100) : 0 };
   }, [leads]);
 
-  async function move(l: Lead, stage: Stage) {
-    const r = await act.run(() => call(`/leads/${l.id}`, { method: 'PATCH', body: { stage } }));
-    if (r) list.reload();
+  async function move(l: Lead, stage: Stage, lost?: { reason: LostReason; text: string }) {
+    if (stage === 'itirildi' && !lost) { setPick(l.id); return; }
+    const body = lost ? { stage, lost_reason: lost.reason, lost_text: lost.text || null } : { stage };
+    const r = await act.run(() => call(`/leads/${l.id}`, { method: 'PATCH', body }));
+    if (r) { setPick(null); list.reload(); }
   }
   const card = (l: Lead) => (
     <article key={l.id} className="c-lc">
       <button type="button" className="c-lcm" disabled={!l.conversation_id} onClick={() => l.conversation_id && go(`inbox/${l.conversation_id}`)}>
         <b>{l.name || (l.phone ? `+${l.phone}` : 'Naməlum')}</b>
         <span>{[serviceLabel(l.service), l.preferred_date].filter(Boolean).join(' · ') || 'Xidmət bəlli deyil'}</span>
-        <em>Son aktivlik: {whenShort(l.updated_at)}</em>
+        <em>Son aktivlik: {whenShort(l.updated_at)}{remindShort(l) && ` · ${remindShort(l)}`}</em>
+        {l.stage === 'itirildi' && lostLabel(l) && <em>Səbəb: {lostLabel(l)}</em>}
       </button>
+      {pick === l.id && <LostPicker busy={act.busy} onConfirm={(reason, text) => move(l, 'itirildi', { reason, text })} onCancel={() => setPick(null)} />}
       <select className="inp c-lcs" aria-label="Mərhələ" value={l.stage} disabled={act.busy} onChange={(e) => move(l, e.target.value as Stage)}>
         {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
       </select>

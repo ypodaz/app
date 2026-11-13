@@ -49,8 +49,8 @@ def test_b4b_kamran_package():
     p = shoot(cameras=2, duration_min=120, editing=True, package_cameras=2)
     assert (p.base, p.extra_camera, p.total) == (0, 0, 100 * A)
     assert m.deposit_expected(p.total, 0, True) == 0
-    kind, amount = m.cashback_earned(p, from_package=True, first_shoot=False)
-    assert (kind, 18 * A + amount) == ("earn", 28 * A)
+    assert m.cashback_earned(p, from_package=True, first_shoot=False) == ("earn", 0)  # paketdə keşbek yoxdur
+    assert m.cashback_earned(p, from_package=True, first_shoot=True) == ("earn", 0)
     assert m.payment_status(total=p.total, cashback_used=0, deposit_amount=0, deposit_received=False,
                             deposit_waived=False, package_minutes=120) \
         == "Paketdən 2 saat · əlavələr 100,00 AZN studiyada"
@@ -188,4 +188,4 @@ def test_discount_on_package_extras():
     p = m.price(kind="shoot", location="studio", cameras=1, duration_min=60, editing=True, package_cameras=1,
                 discount=20 * A)
     assert p.total == 80 * A
-    assert m.cashback_earned(p, from_package=True, first_shoot=False) == ("earn", 8 * A)
+    assert m.cashback_earned(p, from_package=True, first_shoot=False) == ("earn", 0)

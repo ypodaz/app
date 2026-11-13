@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session as DB
 import alerts
 import settings
 import tgtopics
-from crm import bot, chat, conf, friends, kapso, social_tg, tg, todo, turns
+from crm import bot, calendar_sync, chat, conf, friends, kapso, social_tg, tg, todo, turns
 from db import SessionLocal, aware, get_db, now
 from models import WaContact, WaConversation, WaMessage, WebhookEvent
 
@@ -278,6 +278,8 @@ def telegram_webhook(update: dict, background: BackgroundTasks,
         result = todo.list_command(db, msg)
     elif msg and cmd == "/dostlar":  # botun yazmadığı dostlar
         result = friends.list_command(db, msg)
+    elif msg and (result := calendar_sync.phone_reply(db, msg)):  # «telefon nömrəsini yazın» cavabı
+        pass
     elif msg and (result := todo.topic_message(db, msg)):  # 📋 mövzusuna yazılan iş (qaralama məntiqinə düşməsin)
         pass
     elif msg:

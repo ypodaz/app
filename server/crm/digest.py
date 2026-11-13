@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DB
 import tgtopics
 from crm import calendar_ics, calendar_import, conf, tg, turns
 from db import aware
-from models import BotDraft, LeadEvent, Shoot, SocialItem, UnansweredQuestion, WaConversation, WaMessage
+from models import BotDraft, Lead, LeadEvent, Shoot, SocialItem, UnansweredQuestion, WaConversation, WaMessage
 from views import BAKU
 
 HOUR = 21
@@ -36,7 +36,8 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
         SocialItem.ad_id.is_not(None), *_in(SocialItem.created_at, since, until)).group_by(SocialItem.ad_id)).all()
     waiting = turns.waiting_lines(db)
     cal = calendar_lines(db, until)
-    if not (convs or msgs or drafts or gaps or weekly or ads or waiting or cal):
+    leadl = lead_lines(db, since, until)
+    if not (convs or msgs or drafts or gaps or weekly or ads or waiting or cal or leadl):
         return None
     lines = [f"📊 Bot hesabatı, {aware(until).astimezone(BAKU):%d.%m}", "",
              f"Yeni söhbət: {convs}", f"Müştəridən mesaj: {msgs}"]
@@ -59,6 +60,7 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
     stages.pop(None, None)
     if stages:
         lines.append("Mərhələ irəliləyişi: " + ", ".join(f"{k} {v}" for k, v in stages.most_common()))
+    lines += leadl
     edited = [d for d in drafts if d.status == "edited" and (d.model_output or {}).get("reply")]
     if edited:
         lines += ["", "Düzəlişlər:"]
@@ -80,6 +82,25 @@ def build(db: DB, since: datetime, until: datetime) -> str | None:
         lines += ["", f"🗓 Həftəlik: son 7 gündə həll olunmamış {weekly} sual yığılıb. Claude-a «bot izləmə» yazın: "
                       "prompta və FAQ-a əlavə edək."]
     return "\n".join(lines)
+
+
+LOST_LABELS = {"qiymet": "qiymət", "vaxt": "vaxt", "cavab_yox": "cavab yox", "basqa_yer": "başqa yer", "diger": "digər"}
+
+
+def lead_lines(db: DB, since: datetime, until: datetime) -> list[str]:
+    """Bu gün vaxtı çatan «sonra yazacaq» sayı və son 7 gündə itirilmiş leadlər səbəb üzrə (yalnız sıfır deyilsə)."""
+    day_end = aware(since) + timedelta(days=1)
+    due = db.scalar(select(func.count()).select_from(Lead).where(Lead.remind_at.is_not(None), Lead.remind_at < day_end,
+                                                                 Lead.stage.not_in(("geldi", "itirildi")))) or 0
+    lost = Counter(e.data.get("lost_reason") for e in db.scalars(select(LeadEvent).where(
+        LeadEvent.kind == "stage", *_in(LeadEvent.created_at, until - WEEK, until))) if (e.data or {}).get("to") == "itirildi")
+    lines = []
+    if due:
+        lines.append(f"🔔 Bu gün yazacağını demiş müştəri: {due}")
+    if lost:
+        lines.append(f"📉 Son 7 gündə itirilən: {sum(lost.values())} (" + ", ".join(
+            f"{LOST_LABELS.get(k, k or '-')} {v}" for k, v in lost.most_common()) + ")")
+    return lines
 
 
 def calendar_lines(db: DB, until: datetime) -> list[str]:

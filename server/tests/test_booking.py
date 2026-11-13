@@ -112,8 +112,8 @@ def test_kamran_b4b_package(db):
     s = shoot(db, k, starts_at=at(27, 16, month=10), cameras=2, editing=True, package_id=pkg.id)
     assert (s.total, s.deposit_expected) == (100 * A, 0)
     earned = b.close_shoot(db, None, s, duration_min=120, paid_method="cash")
-    assert earned == 10 * A
-    assert b.cashback_balance(db, k.id) == 28 * A
+    assert earned == 0  # paketdən çəkilişə keşbek yazılmır
+    assert b.cashback_balance(db, k.id) == 18 * A
     assert b.package_left(db, pkg) == 10 * 60
 
 

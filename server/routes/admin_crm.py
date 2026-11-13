@@ -1,5 +1,5 @@
 """CRM admin API: WhatsApp gələn qutusu, qaralamalar, leadlər, FAQ, tez cavablar, bot ayarları (Faza 2)."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +11,7 @@ import ai
 import booking
 from auth import current_admin, new_card_code
 from crm import bot, chat, conf, kapso, turns
-from db import get_db
+from db import aware, get_db
 from models import (BotDraft, Client, Faq, Lead, LeadEvent, QuickReply, UnansweredQuestion, WaContact, WaConversation,
                     WaMessage)
 from views import iso, utc
@@ -19,6 +19,7 @@ from views import iso, utc
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
 
 Stage = Literal["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
+LostReason = Literal["qiymet", "vaxt", "cavab_yox", "basqa_yer", "diger"]
 
 
 def get_or_404(db: DB, model, id_: int, what: str):
@@ -44,8 +45,9 @@ def lead_out(db: DB, lead: Lead) -> dict:
     return {"id": lead.id, "contact_id": lead.contact_id, "conversation_id": conv_id, "name": lead.name,
             "phone": lead.phone, "service": lead.service, "preferred_date": lead.preferred_date, "people": lead.people,
             "cameras": lead.cameras, "editing": lead.editing, "source": lead.source, "stage": lead.stage,
-            "notes": lead.notes, "shoot_id": lead.shoot_id, "created_at": iso(lead.created_at),
-            "updated_at": iso(lead.updated_at)}
+            "notes": lead.notes, "shoot_id": lead.shoot_id, "lost_reason": lead.lost_reason,
+            "lost_text": lead.lost_text, "remind_at": iso(lead.remind_at), "remind_note": lead.remind_note,
+            "created_at": iso(lead.created_at), "updated_at": iso(lead.updated_at)}
 
 
 def send_error(e: kapso.KapsoError):
@@ -198,21 +200,46 @@ class LeadPatch(BaseModel):
     editing: bool | None = None
     stage: Stage | None = None
     notes: str | None = Field(default=None, max_length=4000)
+    lost_reason: LostReason | None = None
+    lost_text: str | None = Field(default=None, max_length=200)
+    remind_at: AwareDatetime | None = None  # null: xatırlatmanı sil
+    remind_note: str | None = Field(default=None, max_length=200)
 
 
 @router.patch("/leads/{lead_id}")
 def lead_patch(lead_id: int, body: LeadPatch, db: DB = Depends(get_db)):
     lead = get_or_404(db, Lead, lead_id, "Lead")
+    data = body.model_dump(exclude_unset=True)
+    stage = data.get("stage") or lead.stage
+    if stage == "itirildi":  # yalnız sahibkar qoyur və səbəbsiz olmaz
+        reason = data["lost_reason"] if "lost_reason" in data else lead.lost_reason
+        if not reason:
+            raise HTTPException(422, "İtirildi üçün səbəb seçin: qiymət, vaxt, cavab yox, başqa yer və ya digər")
+        data["lost_reason"] = reason
+        text = data["lost_text"] if "lost_text" in data else lead.lost_text
+        data["lost_text"] = (text or "").strip() or None if reason == "diger" else None
+    else:  # başqa mərhələ: səbəb silinir
+        data["lost_reason"] = data["lost_text"] = None
+    if "remind_at" in data and data["remind_at"] is None:
+        data["remind_note"] = None  # xatırlatma silinəndə qeyd də gedir
     changed = {}
-    for k, v in body.model_dump(exclude_unset=True).items():
+    for k, v in data.items():
         if v is None and k in ("name", "phone", "notes", "stage"):
             continue  # bu sahələr boş ola bilməz
-        if getattr(lead, k) != v:
+        if k == "remind_at":
+            if v is not None:
+                v = v.astimezone(timezone.utc)
+            if (lead.remind_at and aware(lead.remind_at)) != v:
+                changed[k] = [lead.remind_at and aware(lead.remind_at).isoformat(), v and v.isoformat()]
+                setattr(lead, k, v)
+        elif getattr(lead, k) != v:
             changed[k] = [getattr(lead, k), v]
             setattr(lead, k, v)
     if "stage" in changed:
-        db.add(LeadEvent(lead_id=lead.id, kind="stage", data={"from": changed["stage"][0], "to": changed["stage"][1],
-                                                              "by": "admin"}))
+        ev = {"from": changed["stage"][0], "to": changed["stage"][1], "by": "admin"}
+        if lead.stage == "itirildi":
+            ev.update(lost_reason=lead.lost_reason, lost_text=lead.lost_text)
+        db.add(LeadEvent(lead_id=lead.id, kind="stage", data=ev))
     if changed:
         db.add(LeadEvent(lead_id=lead.id, kind="admin_edit", data=changed))
     db.commit()

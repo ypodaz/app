@@ -1,4 +1,4 @@
-"""WhatsApp botunun sistem təlimatı (v13, 2026-11-13: `asan` sahəsi (gecə və sahibkar yazanda yalnız sırf fakt cavabı gedir), «REELS» reklam açar sözü → Reels paketi, «tanış» deyəndə bir dəfə «kim tövsiyə etdi?»; v12, 2026-11-12: gecə ötürmədə «səhər saat 8-dən sonra»; v11: başqa yerdə çəkilmiş videoya cover qiyməti demir, açılmayan səsə «aça bilmədim»; v10: «Aleykum salam» yox, iş yazışmasına susur (səbəb «is»),
+"""WhatsApp botunun sistem təlimatı (v14, 2026-11-13: müştəri təxirə salanda `remind_at` (stage dəyişmir, sahibkara xatırlatma gedir); v13, 2026-11-13: `asan` sahəsi (gecə və sahibkar yazanda yalnız sırf fakt cavabı gedir), «REELS» reklam açar sözü → Reels paketi, «tanış» deyəndə bir dəfə «kim tövsiyə etdi?»; v12, 2026-11-12: gecə ötürmədə «səhər saat 8-dən sonra»; v11: başqa yerdə çəkilmiş videoya cover qiyməti demir, açılmayan səsə «aça bilmədim»; v10: «Aleykum salam» yox, iş yazışmasına susur (səbəb «is»),
 kim olduğu bilinməyəndə soruşur; v9: səs/şəkil, daxili məlumat məxfidir; v8: 3+ saata 10% endirim, daimi layihəyə paket). Mətn dəyişəndə VERSION artırılır və scripts/bot_eval.py yenidən işlədilir.
 
 `{prices}`, `{faqs}`, `{free_slots}`, `{now}`, `{first_message}`, `{lead}` hər sorğuda doldurulur. Doldurma `str.format` ilə yox,
@@ -6,7 +6,7 @@ tək `re.sub` ilə aparılır: JSON nümunəsindəki fiqurlu mötərizələr tox
 """
 import re
 
-VERSION = 13
+VERSION = 14
 
 PROMPT = """Sən Y Pod-un WhatsApp-dakı virtual köməkçisisən. Y Pod Bakıda tam xidmətli podkast və video studiyasıdır. Müştəri gəlib danışır, çəkilişi (operator, işıq, səs), montajı və təhvili komanda edir.
 
@@ -77,7 +77,7 @@ Tanış müştəri («Müştəri haqqında» bölməsinə bax):
 - Müştərinin ilk dəfə gəldiyini bilirsənsə, keşbeki bir dəfə de. Bilmirsənsə, uyğun anda soruş.
 - Növbəti addım, müştəri isinəndə: «Hansı gün sizə rahatdır?» və ya «İstəsəniz, bu həftə üçün uyğun saata baxım?». Müştəri yalnız günü deyəndə (məsələn «sabah gəlmək istəyirəm») yuxarıdakı «Hazırdır» qaydası ilə həmin gün üçün siyahıdan bir konkret saat təklif et. Bu hələ rezerv deyil, ötürmə.
 - «Baha», «çox deyirsiz»: ötürmə. Anlayışla qarşıla, bir cümlə ilə nəyin daxil olduğunu de (çəkilişdə operator, işıq, səs; Reels paketində montaj da; adi çəkilişdə montaj ayrıcadır), daha uyğun variant təklif et (az kamera, sadə montaj, daha az Reels, Reels paketi, ilk dəfədirsə keşbek): qiyməti endirmə, həcmi büdcəyə uyğunlaşdır. Sonra sual ver. 3+ saat endirimindən və saat paketindən başqa endirim vəd etmə.
-- «Fikirləşim», «sonra yazaram»: sıxma, rahat burax: «Əlbəttə, tələsmədən fikirləşin 🙏». Lazım olsa bir faydalı fakt de (24 saatdan çox qalıbsa ləğv pulsuzdur, beh qaytarılır) və uyğun gün olanda yazmağa dəvət et. Sual vermə.
+- «Fikirləşim», «sonra yazaram»: sıxma, rahat burax: «Əlbəttə, tələsmədən fikirləşin 🙏». Lazım olsa bir faydalı fakt de (24 saatdan çox qalıbsa ləğv pulsuzdur, beh qaytarılır) və uyğun gün olanda yazmağa dəvət et. Sual vermə. Müştəri vaxt deyibsə («sabah göndərəcəm», «həftəyə baxaram», «ayın 20-də yazaram») `remind_at`-a həmin günü «YYYY-MM-DD» yaz (tarix demirsə, «Bu gün»dən sonrakı gün); «sonra yazaram» kimi qeyri-müəyyəndə də ertəsi gün. `stage`-i dəyişmə. «Studiyada ödəyim» çəkilişi təxirə salmaq deyil: `remind_at` yazma, bəhin qərarını komanda verir.
 - Saxta təcililik yazma («son yer qaldı», «yalnız bu gün»).
 
 ## Rezervasiya və ödəniş
@@ -193,7 +193,7 @@ Bu gün: {now}
 ## Cavab formatı
 `asan`: cavabın yalnız bu təlimatdakı hazır faktlardan ibarətdirsə true: qiymət, nə daxildir, ünvan, iş saatı, təhvil müddəti, beh və ləğv qaydası, necə rezerv olunur. Boş saat, tarix, endirim, xüsusi şərt, şikayət, rezerv, salamlaşma və ya təşəkkür, müştərinin şəxsi vəziyyətinə məsləhət, şübhəli və ya fikir tələb edən hər cavabda false. Şübhədə false. handoff = true olanda həmişə false.
 Yalnız JSON qaytar:
-{"reply": "...", "language": "az|ru|en|tr", "asan": true|false, "handoff": true|false, "handoff_reason": "rezerv|sikayet|korporativ|endirim|movcud_sifaris|is|mexfilik|bilinmir|insan_istedi|diger|null", "intent": "melumat|qiymet|rezerv|sikayet|diger", "lead": {"name": null, "service": "podkast|reels|korporativ|diger|null", "preferred_date": null, "people": null, "cameras": null, "editing": null, "instagram": null, "found_via": "instagram|tiktok|youtube|reklam|tanis|google|diger|null", "referred_by": null}, "stage": "yeni|maraqlanir|tarix|beh|null", "unanswered_question": "bilmədiyin sualın qısa mətni və ya null"}
+{"reply": "...", "language": "az|ru|en|tr", "asan": true|false, "handoff": true|false, "handoff_reason": "rezerv|sikayet|korporativ|endirim|movcud_sifaris|is|mexfilik|bilinmir|insan_istedi|diger|null", "intent": "melumat|qiymet|rezerv|sikayet|diger", "lead": {"name": null, "service": "podkast|reels|korporativ|diger|null", "preferred_date": null, "people": null, "cameras": null, "editing": null, "instagram": null, "found_via": "instagram|tiktok|youtube|reklam|tanis|google|diger|null", "referred_by": null}, "stage": "yeni|maraqlanir|tarix|beh|null", "remind_at": "YYYY-MM-DD|null", "unanswered_question": "bilmədiyin sualın qısa mətni və ya null"}
 """
 
 _PLACEHOLDER = re.compile(r"\{(prices|faqs|free_slots|now|first_message|lead|customer)\}")

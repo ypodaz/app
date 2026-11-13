@@ -182,9 +182,27 @@ class Shoot(Base):
     refunded_at: Mapped[Optional[datetime]] = mapped_column(TS)
     rescheduled_lt24: Mapped[bool] = mapped_column(default=False)
     reminded_at: Mapped[Optional[datetime]] = mapped_column(TS)  # bir gün əvvəl xatırlatma göndərilib
+    calendar_uid: Mapped[Optional[str]] = mapped_column(String(255), unique=True)  # Apple təqvim hadisəsi (crm/calendar_sync.py)
     created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("admins.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
+
+
+class CalendarLink(Base):
+    """Apple təqvimindəki «… Y Pod» hadisəsinin vəziyyəti (crm/calendar_sync.py). uid = hadisənin UID-si (+ təkrar nömrəsi).
+    state: card (sahibkar kimliyini deməlidir) | asking (telefon cavabı gözlənilir) | linked (çəkilişə bağlıdır) | ignored.
+    starts_at/duration_min: ICS-də axırıncı görünən dəyər (dəyişikliyi tapmaq üçün), missing: ardıcıl neçə oxunuşda yox idi."""
+    __tablename__ = "calendar_links"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    uid: Mapped[str] = mapped_column(String(255), unique=True)
+    state: Mapped[str] = mapped_column(String(8))
+    title: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    starts_at: Mapped[datetime] = mapped_column(TS)
+    duration_min: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
+    missing: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    asked_deleted: Mapped[bool] = mapped_column(default=False, server_default=sa_false())
+    ask_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
 
 
 class Material(Base):
@@ -424,6 +442,12 @@ class Lead(Base):
     stage: Mapped[str] = mapped_column(String(12), default="yeni")
     notes: Mapped[str] = mapped_column(Text, default="")
     shoot_id: Mapped[Optional[int]] = mapped_column(ForeignKey("shoots.id", ondelete="SET NULL"))
+    # itirildi səbəbi (qiymet | vaxt | cavab_yox | basqa_yer | diger) yalnız sahibkar qoyur; başqa mərhələyə keçəndə silinir
+    lost_reason: Mapped[Optional[str]] = mapped_column(String(12))
+    lost_text: Mapped[Optional[str]] = mapped_column(String(200))
+    # «sonra yazacaq»: vaxtı çatanda sahibkara bir Telegram xatırlatması gedir, sonra boşaldılır
+    remind_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    remind_note: Mapped[Optional[str]] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
 
@@ -494,6 +518,7 @@ class SocialItem(Base):
     tg_message_id: Mapped[Optional[str]] = mapped_column(String(32))
     model_output: Mapped[Optional[dict]] = mapped_column(JSON)
     ad_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)  # IG DM reklamdan (click-to-DM) gəlibsə
+    auto_at: Mapped[Optional[datetime]] = mapped_column(TS)  # IG DM: sahibkar toxunmasa bot bu vaxt özü göndərir (crm/ig_turns.py)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     decided_at: Mapped[Optional[datetime]] = mapped_column(TS)
 
