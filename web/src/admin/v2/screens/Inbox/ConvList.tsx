@@ -24,6 +24,18 @@ function subLine(c: Conv, g: Group, now: number, botOn: boolean): { text: string
   return { text: e === 'bot' ? 'Bot söndürülüb · cavab gözləyir' : 'Bot susur · cavab gözləyir' };
 }
 
+const CH = { wa: 'WhatsApp', ig: 'Instagram', yt: 'YouTube' } as const;
+
+/** Avatar + sağ-alt küncdə kanal nişanı: mesajın haradan gəldiyi bilinsin (FableInbox). */
+function ChAvatar({ ch, children }: { ch: keyof typeof CH; children: React.ReactNode }) {
+  return (
+    <span className="ibr__avw">
+      {children}
+      <span className={`ibr__ch ibr__ch--${ch}`} role="img" aria-label={CH[ch]} title={CH[ch]}><IbIcon name={ch} size={10} sw={2} /></span>
+    </span>
+  );
+}
+
 function Row({ c, g, sel, now, botOn, faded }: { c: Conv; g: Group; sel: boolean; now: number; botOn: boolean; faded?: boolean }) {
   const name = nameOf(c);
   const sub = subLine(c, g, now, botOn);
@@ -31,7 +43,7 @@ function Row({ c, g, sel, now, botOn, faded }: { c: Conv; g: Group; sel: boolean
   const time = g === 'you' ? clockOf(c.last_message_at) : c.last_message_at ? fmtWait(now - msOf(c.last_message_at)) : '';
   return (
     <button type="button" className={`ibr${sel ? ' ibr--sel' : ''}${faded ? ' ibr--faded' : ''}`} aria-current={sel ? 'true' : undefined} onClick={() => go(`inbox/${c.id}`)} data-conv={c.id}>
-      {personal(c) ? <span className="av" aria-hidden="true"><V2Icon name="user" /></span> : <Avatar name={name} tone={sel ? 'brand' : 'neutral'} large />}
+      <ChAvatar ch="wa">{personal(c) ? <span className="av av--lg" aria-hidden="true"><V2Icon name="user" /></span> : <Avatar name={name} tone={sel ? 'brand' : 'neutral'} large />}</ChAvatar>
       <span className="ibr__main">
         <span className="ibr__top">
           <span className={`ibr__name${unread ? ' ibr__name--unread' : ''}${personal(c) ? ' mono' : ''}`}>{name}</span>
@@ -67,7 +79,7 @@ function SocialRow({ t, g, sel, now, faded, commentMode }: { t: SocialThread; g:
   const tag = t.channel === 'youtube' ? 'YouTube' : t.kind === 'comment' ? 'Komment' : 'Instagram';
   return (
     <button type="button" className={`ibr${sel ? ' ibr--sel' : ''}${faded ? ' ibr--faded' : ''}`} aria-current={sel ? 'true' : undefined} onClick={() => go(socialPath(t))}>
-      <Avatar name={t.author || tag} tone={sel ? 'brand' : 'neutral'} large />
+      <ChAvatar ch={t.channel === 'youtube' ? 'yt' : 'ig'}><Avatar name={t.author || tag} tone={sel ? 'brand' : 'neutral'} large /></ChAvatar>
       <span className="ibr__main">
         <span className="ibr__top">
           <span className={`ibr__name${g === 'you' ? ' ibr__name--unread' : ''}`}>{socialName(t)}</span>
