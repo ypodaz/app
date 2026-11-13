@@ -93,7 +93,7 @@ def check(res: dict, expect: dict, global_bad: list[str]) -> list[str]:
     return bad
 
 
-def mock_generate(system, contents, tools=None, max_tokens=900):
+def mock_generate(system, contents, tools=None, max_tokens=900, json_mode=False):
     """Saxta model: hər suala eyni qısa cavab (yalnız boru kəmərini yoxlamaq üçün)."""
     out = {"reply": "Salam! Mən Y Pod-un virtual köməkçisiyəm. Podkast çəkilişi 70 AZN-dən başlayır.", "language": "az",
            "handoff": False, "handoff_reason": None, "intent": "qiymet",

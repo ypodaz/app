@@ -197,7 +197,8 @@ def converse(system: str, contents: list[dict]) -> tuple[dict, tuple[int, int], 
     note = ""
     res, problem = None, None
     for _ in range(2):
-        out = ai.generate(system + note, contents, max_tokens=1200)
+        # JSON rejimi: tarixçədəki adi mətnli cavablar modeli JSON-suz yazmağa çəkirdi (IG, 13.11)
+        out = ai.generate(system + note, contents, max_tokens=1200, json_mode=True)
         used[0] += out["usage"][0]
         used[1] += out["usage"][1]
         try:

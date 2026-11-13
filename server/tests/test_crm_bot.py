@@ -6,6 +6,9 @@ from datetime import datetime, timedelta, timezone  # noqa: E402
 import pytest  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
+import json  # noqa: E402
+
+import ai  # noqa: E402
 import booking  # noqa: E402
 import settings  # noqa: E402
 from ai import AiError  # noqa: E402
@@ -987,3 +990,16 @@ def test_work_message_silent_handoff(api, crm_env, mode):
 def test_aleykum_greeting_rejected(bad):
     assert bot.check_filter(bad)
     assert bot.check_filter("Salam, hər vaxtınız xeyir! Necə kömək edə bilərik?") is None
+
+
+def test_converse_asks_gemini_for_json(monkeypatch):
+    """Söhbət tarixçəsində botun cavabı adi mətndir; JSON rejimi olmasa model də adi mətn yazırdı (13.11)."""
+    seen = []
+
+    def fake(system, contents, tools=None, max_tokens=900, json_mode=False):
+        seen.append(json_mode)
+        return {"content": {"parts": [{"text": json.dumps(jreply(), ensure_ascii=False)}]}, "usage": (1, 1)}
+
+    monkeypatch.setattr(ai, "generate", fake)
+    res, _, problem = bot.converse("sistem", [{"role": "user", "parts": [{"text": "reels"}]}])
+    assert seen == [True] and problem is None and res["reply"]
