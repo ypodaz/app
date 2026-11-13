@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AIcon, type AIconName } from '../../admin/components/AIcon';
 import { useAuth } from '../../admin/ctx';
+import { useEmbedded } from '../../admin/v2/embed';
 
 export type AdminTab = 'panel' | 'calendar' | 'clients' | 'packages' | 'materials' | 'campaigns' | 'report' | 'inbox' | 'leads' | 'people' | 'social';
 
@@ -41,15 +42,17 @@ type Props = {
 
 export function AdminShell({ active, title, sub, actions, detail, detailClose, hrefFor = (t) => `#${t}`, bare, full, children }: Props) {
   const { signOut, call } = useAuth();
+  const embedded = useEmbedded(); // v2 qabığı içində: yan panel/alt menyu v2-nindir
   // «Yazışmalar» nişanı: qaralaması gözləyən söhbətlərin sayı (60 saniyədə bir yenilənir).
   const [pending, setPending] = useState(0);
   useEffect(() => {
+    if (embedded) return;
     let live = true;
     const load = () => { call<{ pending: number }>('/inbox/badge').then((r) => live && setPending(r.pending)).catch(() => {}); };
     load();
     const t = window.setInterval(() => { if (!document.hidden) load(); }, 60000);
     return () => { live = false; window.clearInterval(t); };
-  }, [call]);
+  }, [call, embedded]);
   const badge = (k: AdminTab) => (k === 'inbox' && pending > 0 ? <em className="c-badge" aria-label={`${pending} qaralama gözləyir`}>{pending}</em> : null);
   const [more, setMore] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
@@ -63,6 +66,41 @@ export function AdminShell({ active, title, sub, actions, detail, detailClose, h
     return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
   }, [more]);
   const moreOn = MORE.some((i) => i.key === active);
+
+  if (embedded) {
+    return (
+      <div className={`adm a-embed${full ? ' a-full' : ''}`}>
+        <div className="a-body">
+          <main className="a-main">
+            <div className="a-inner">
+              {!bare && (
+                <header className="a-head">
+                  <div className="a-head-t">
+                    <h1 className="a-h1">{title}</h1>
+                    {sub && <div className="a-sub">{sub}</div>}
+                  </div>
+                  {actions && <div className="a-acts">{actions}</div>}
+                </header>
+              )}
+              {children}
+            </div>
+          </main>
+          {detail && (
+            <>
+              {detailClose && <a className="a-scrim" href={detailClose} aria-label="Paneli bağla" tabIndex={-1} />}
+              <aside className="a-detail" aria-label="Çəkiliş detalı">
+                <div className="a-dh">
+                  <h2>Çəkiliş</h2>
+                  {detailClose && <a className="a-bg a-bg-i" href={detailClose} aria-label="Paneli bağla"><AIcon name="x" size={18} /></a>}
+                </div>
+                {detail}
+              </aside>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`adm a-shell${full ? ' a-full' : ''}`}>

@@ -1,0 +1,45 @@
+:root{
+  /* surfaces */ --bg:#F4F4F5; --surface:#FFFFFF; --surface-2:#FAFAFA; --sidebar:#0E0E0E; --sidebar-active:#1F1F1F;
+  /* text */ --text:#18181B; --text-2:#52525B; --text-3:#71717A; --on-dark:#F5F5F5; --on-dark-2:#B3B3B3; --on-dark-3:#8A8A8A;
+  /* lines */ --hairline:rgba(0,0,0,.06); --border:rgba(0,0,0,.12); --hairline-dark:rgba(255,255,255,.08);
+  /* action */ --primary:#171717; --primary-hover:#2E2E2E; --on-primary:#FFFFFF; --danger-text:#B91C1C;
+  /* brand = now / AI / selected only */ --brand:#6D28D9; --brand-hover:#5B21B6; --brand-mid:#7C3AED; --brand-soft:#A78BFA;
+  --brand-on-dark:#C4B5FD; --brand-tint:#F1ECFE; --brand-tint-2:#EDE6FE; --brand-ink:#4C1D95; --brand-ink-2:#3B0764;
+  /* status: bg / text (+border) */
+  --st-done-bg:#DCFCE7; --st-done:#14532D; --st-confirmed-bg:#DBEAFE; --st-confirmed:#1E3A8A;
+  --st-now-bg:#EDE6FE; --st-now:#3B0764; --st-now-border:#7C3AED;
+  --st-deposit-bg:#FFFBEB; --st-deposit:#78350F; --st-deposit-border:#B45309; /* 1px dashed */
+  --st-cancel-bg:#FEE2E2; --st-cancel:#991B1B; --st-edit-bg:#CCFBF1; --st-edit:#134E4A;
+  --st-blocked: repeating-linear-gradient(135deg,#E4E4E7 0 6px,#F4F4F5 6px 12px); --st-blocked-text:#3F3F46;
+  --ok:#15803D; --warn-bg:#FFFBEB; --warn:#92400E;
+  /* type */ --font:"Onest",system-ui,sans-serif; --mono:"Geist Mono",ui-monospace,monospace;
+  --fs-meta:12px; --fs-sm:13px; --fs-body:14px; --fs-h3:16px; --fs-h2:18px; --fs-h1:28px; --fs-hero:36px;
+  --fw-regular:400; --fw-medium:500; --fw-semibold:600; /* never 700+ */
+  /* space (4px base) */ --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+  /* radius */ --r-chip:6px; --r-control:8px; --r-input:10px; --r-item:12px; --r-card:16px; --r-section:20px; --r-pill:999px;
+  /* control heights */ --h-row-btn:30px; --h-btn-sm:32px; --h-btn:36px; --h-btn-lg:40px; --h-nav:36px; --h-touch:44px; --h-touch-lg:48px;
+  /* layout */ --sidebar-w:220px; --page-pad:24px 32px; --section-gap:16px; --row-min:52px;
+  /* elevation: sections have none; only floating things */ --shadow-float:0 8px 24px rgba(0,0,0,.12);
+  --shadow-dialog:0 0 0 1px rgba(0,0,0,.06),0 24px 48px rgba(0,0,0,.18); --scrim:rgba(9,9,11,.35);
+  /* motion */ --ease-out:cubic-bezier(.23,1,.32,1); --ease-sheet:cubic-bezier(.32,.72,0,1);
+  --t-press:120ms; --t-hover:150ms; --t-menu:200ms; --t-dialog:220ms; --t-sheet:500ms;
+  /* switch */ --switch-on:#171717; --switch-on-ai:#6D28D9; --switch-off:#D4D4D8; --o-disabled:.55;
+  /* z */ --z-sticky:200; --z-dialog:400; --z-toast:500; --z-tooltip:600;
+}
+
+/* ---- Y Pod Admin v2: baza (yalnız .v2 kökü və onun içi) ---- */
+html.v2-html, body.v2-body { background: var(--bg); }
+.v2 { min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--text); font-family: var(--font); font-size: var(--fs-body); line-height: 1.4; -webkit-font-smoothing: antialiased; font-synthesis: none; }
+.v2 *, .v2 *::before, .v2 *::after { box-sizing: border-box; }
+.v2 h1, .v2 h2, .v2 h3, .v2 p { margin: 0; }
+.v2 button, .v2 input, .v2 select, .v2 textarea { font: inherit; color: inherit; }
+.v2 button { cursor: pointer; }
+.v2 a { color: var(--brand); text-decoration: none; }
+.v2 a:hover { color: var(--brand-hover); }
+.v2 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.v2 :focus-visible { outline: 2px solid var(--brand-mid); outline-offset: 2px; }
+.v2 kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.v2 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); border: 0; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .v2 *, .v2 *::before, .v2 *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
