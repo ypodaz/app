@@ -7,7 +7,7 @@ Hər funksiya commit etmir, route bir əməliyyatı bir tranzaksiyada bağlayır
 import calendar
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DB
 
 import money
@@ -46,9 +46,15 @@ def _baku_date(dt: datetime) -> date:
     return aware(dt).astimezone(BAKU).date()
 
 
+# Təqvim arxivindən köçürülən keçmiş çəkilişlər (scripts/import_calendar.py) keşbek qaydalarında sayılmır:
+# keşbek bu gündən sonrakı yeni çəkilişlərlə hesablanır (sahibkar, 2026-11-13).
+ARCHIVE_SOURCE = "calendar-archive"
+NOT_ARCHIVE = or_(Shoot.source_note.is_(None), Shoot.source_note != ARCHIVE_SOURCE)
+
+
 def shoots_done(db: DB, client_id: int, exclude_id: int | None = None) -> int:
-    """Müştərinin bağlanmış (completed) çəkilişlərinin sayı."""
-    q = select(func.count(Shoot.id)).where(Shoot.client_id == client_id, Shoot.status == "completed")
+    """Müştərinin bağlanmış (completed) çəkilişlərinin sayı (təqvim arxivindən köçürülənlər sayılmır)."""
+    q = select(func.count(Shoot.id)).where(Shoot.client_id == client_id, Shoot.status == "completed", NOT_ARCHIVE)
     if exclude_id is not None:
         q = q.where(Shoot.id != exclude_id)
     return db.scalar(q)
@@ -250,7 +256,7 @@ def is_first_shoot(db: DB, client: Client, s: Shoot) -> bool:
         return False
     earlier = db.scalar(select(func.count()).select_from(Shoot).where(
         Shoot.client_id == client.id, Shoot.status == "completed", Shoot.id != s.id,
-        Shoot.starts_at >= since))
+        Shoot.starts_at >= since, NOT_ARCHIVE))
     return not earlier
 
 

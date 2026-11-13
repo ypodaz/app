@@ -240,3 +240,16 @@ def test_cashback_guard_after_lock_uses_fresh_balance(db):
     shoot(db, c, starts_at=at(8, 12), **kw)
     with pytest.raises(b.Rejected):
         shoot(db, c, starts_at=at(7, 12), **kw)
+
+
+def test_calendar_archive_shoots_do_not_count_for_cashback(db):
+    # təqvim arxivindən köçürülən keçmiş çəkilişlər keşbekin açılmasına və «ilk çəkiliş»ə təsir etmir
+    c = client(db, "Arxiv", activated=at(1, 10, month=10))
+    for i in range(3):
+        db.add(Shoot(client_id=c.id, starts_at=at(2 + i, 12, month=10), duration_min=60, kind="shoot", tag="podcast",
+                     location="studio", cameras=1, status="completed", source_note=b.ARCHIVE_SOURCE))
+    db.flush()
+    assert b.shoots_done(db, c.id) == 0
+    s = shoot(db, c)
+    assert b.close_shoot(db, None, s, duration_min=60, paid_method="cash") == 28 * A  # ilk çəkiliş: 40%
+    assert b.shoots_done(db, c.id) == 1
