@@ -36,7 +36,7 @@ export function groupOf(c: Conv, botOn: boolean): Group {
 const ms = (iso: string | null) => (iso ? new Date(iso).getTime() : 0);
 
 /** «Sizi gözləyir» sırası (03 §Q8): ən çox gözləyən «Komandaya ötürülüb» → qaralaması olan → qalanı (şəxsi/bot susur). */
-function rank(c: Conv, botOn: boolean): number {
+export function rank(c: Conv, botOn: boolean): number {
   const e = effMode(c, botOn);
   if (e === 'wait') return 0;
   if (e === 'owner' && c.pending_drafts > 0) return 1;

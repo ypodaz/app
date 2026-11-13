@@ -1,30 +1,50 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePoll, type Conv } from '../../../components/crm';
 import { useLoad } from '../../../ctx';
-import { go, useMedia } from '../../../router';
+import { go, useMedia, useRoute } from '../../../router';
 import { useShellData } from '../../data/ShellData';
+import { socialPath, type Kanal, type SocialList, type SocialThread } from '../../data/social';
 import { EmptyState } from '../../ui';
 import { Chat } from './Chat';
 import { ConvList } from './ConvList';
 import { groupOf, sortGroup, typing } from './logic';
+import { DmChat, PostView } from './SocialChat';
 import './inbox.css';
 
-/** Inbox (02-inbox.md): siyahı · söhbət · İnsan paneli. Route: /inbox, /inbox/<id>. */
-export function Inbox({ id }: { id?: number }) {
+const KANAL_KEY = 'ypod.v2.inbox.kanal';
+const KANALS: Kanal[] = ['hamisi', 'whatsapp', 'instagram', 'komment'];
+const readKanal = (): Kanal => { try { const v = localStorage.getItem(KANAL_KEY); return KANALS.includes(v as Kanal) ? (v as Kanal) : 'hamisi'; } catch { return 'hamisi'; } };
+
+export type SocialSel = Pick<SocialThread, 'kind' | 'channel' | 'thread_id'>;
+
+/** Inbox (02-inbox.md): siyahı · söhbət · İnsan paneli. Route: /inbox, /inbox/<id>, /inbox/ig/<thread>, /inbox/komment/<kanal>/<post>. */
+export function Inbox({ id, social }: { id?: number; social?: SocialSel }) {
   const sd = useShellData();
   const botOn = sd.raw?.botEnabled !== false;
+  const { query } = useRoute();
   const list = useLoad<Conv[]>('/inbox'); // GET /inbox/{id} söhbəti oxunmuş edir — önizləmə üçün çağırılmır
-  usePoll(list.reload, 20_000);
+  const soc = useLoad<SocialList>('/social-inbox');
+  const reloadAll = () => { list.reload(); soc.reload(); };
+  usePoll(reloadAll, 20_000);
   const wide = useMedia('(min-width:1100px)');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const search = useRef<HTMLInputElement>(null);
-  const order = useRef<number[]>([]);
+  const order = useRef<string[]>([]);
+
+  // Kanal filtri: URL ?kanal= üstündür, sonra bu brauzerdə yadda qalan seçim (02 #3).
+  const qk = query.get('kanal') as Kanal | null;
+  const [kanal, setKanalState] = useState<Kanal>(() => (qk && KANALS.includes(qk) ? qk : readKanal()));
+  useEffect(() => { if (qk && KANALS.includes(qk)) setKanalState(qk); }, [qk]);
+  const setKanal = (k: Kanal) => { setKanalState(k); try { localStorage.setItem(KANAL_KEY, k); } catch { /* yaddaş bağlıdır */ } };
+
+  const current = id ? `inbox/${id}` : social ? socialPath(social) : '';
+  const open = !!current;
 
   // Standart seçim (02): geniş ekranda /inbox açılanda «Sizi gözləyir»in 1-ci sətri açılır.
   const convs = list.data;
-  const firstId = convs ? sortGroup(convs.filter((c) => groupOf(c, botOn) === 'you'), 'you', botOn)[0]?.id : undefined;
-  useEffect(() => { if (wide && !id && firstId) location.replace(`#/inbox/${firstId}`); }, [wide, id, firstId]);
+  const firstId = convs && (kanal === 'hamisi' || kanal === 'whatsapp') ? sortGroup(convs.filter((c) => groupOf(c, botOn) === 'you'), 'you', botOn)[0]?.id : undefined;
+  useEffect(() => { if (wide && !open && firstId) location.replace(`#/inbox/${firstId}`); }, [wide, open, firstId]);
 
   // J/K: növbəti/əvvəlki söhbət; /: axtarış.
   const keyRef = useRef<(e: KeyboardEvent) => void>();
@@ -35,18 +55,23 @@ export function Inbox({ id }: { id?: number }) {
     if (k !== 'j' && k !== 'k') return;
     const o = order.current;
     if (!o.length) return;
-    const i = id ? o.indexOf(id) : -1;
+    const i = current ? o.indexOf(current) : -1;
     const next = k === 'j' ? o[Math.min(o.length - 1, i + 1)] : o[Math.max(0, i - 1)];
-    if (next && next !== id) go(`inbox/${next}`);
+    if (next && next !== current) go(next);
   };
   useEffect(() => { const on = (e: KeyboardEvent) => keyRef.current?.(e); window.addEventListener('keydown', on); return () => window.removeEventListener('keydown', on); }, []);
 
   return (
-    <div className={`ib${id ? ' ib--chat' : ''}`}>
-      <ConvList convs={convs} error={list.err} onRetry={list.reload} botOn={botOn} now={now} sel={id} searchRef={search} onOrder={(o) => { order.current = o; }} />
+    <div className={`ib${open ? ' ib--chat' : ''}`}>
+      <ConvList convs={convs} social={soc.data?.threads} commentMode={soc.data?.comment_mode} kanal={kanal} onKanal={setKanal}
+        error={list.err} onRetry={reloadAll} botOn={botOn} now={now} sel={current} searchRef={search} onOrder={(o) => { order.current = o; }} />
       {id
         ? <Chat key={id} id={id} botOn={botOn} onChanged={list.reload} onBack={() => go('inbox')} />
-        : <div className="ib__cw ib__cw--empty"><EmptyState title="Söhbət seçin" reason="Soldakı siyahıdan müştərini açın." /></div>}
+        : social?.kind === 'dm'
+          ? <DmChat key={current} thread={social.thread_id} onChanged={soc.reload} onBack={() => go('inbox')} />
+          : social
+            ? <PostView key={current} channel={social.channel} thread={social.thread_id} onChanged={soc.reload} onBack={() => go('inbox')} />
+            : <div className="ib__cw ib__cw--empty"><EmptyState title="Söhbət seçin" reason="Soldakı siyahıdan müştərini açın." /></div>}
     </div>
   );
 }

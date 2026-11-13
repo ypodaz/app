@@ -227,3 +227,32 @@ def private_reply(comment_id: str, text: str) -> tuple[str, str]:
 
 def reply_comment(comment_id: str, text: str) -> str:
     return str(_post(f"/{comment_id}/replies", data={"message": text}).get("id") or "")
+
+
+def hide_comment(comment_id: str) -> None:
+    """Kommenti Instagram-da gizlədir (yazan özü və dostları görməyə davam edir)."""
+    _post(f"/{comment_id}", data={"hide": "true"})
+
+
+_media_cache: dict[str, tuple[float, dict]] = {}
+
+
+def media(media_id: str) -> dict:
+    """Postun keçidi və qısa məlumatı (admin Inbox-dakı post kartı). 10 dəqiqə keşlənir; xətada {}."""
+    hit = _media_cache.get(media_id)
+    if hit and hit[0] > now().timestamp():
+        return hit[1]
+    out: dict = {}
+    if enabled() and media_id:
+        try:
+            r = httpx.get(f"{GRAPH}/{media_id}", timeout=10, headers={"Authorization": f"Bearer {token()}"},
+                          params={"fields": "permalink,caption,media_type,timestamp,like_count,comments_count"})
+            if r.status_code < 400:
+                d = r.json()
+                out = {"permalink": d.get("permalink"), "caption": (d.get("caption") or "")[:300],
+                       "media_type": d.get("media_type"), "timestamp": d.get("timestamp"),
+                       "like_count": d.get("like_count"), "comments_count": d.get("comments_count")}
+        except Exception:
+            out = {}
+    _media_cache[media_id] = (now().timestamp() + (600 if out else 60), out)
+    return out

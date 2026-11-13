@@ -64,10 +64,14 @@ type DraftProps = {
   online: boolean;
   onSend: (text: string, edited: boolean) => void;
   onReject: () => void;
+  /** Instagram/YouTube: «Yenidən yaz» (Telegram-dakı 🔄 ilə eyni). */
+  onRegenerate?: () => void;
+  /** Üst sətirdə «Siz baxana qədər gözləyir» yerinə göstərilən mətn (məs. Instagram taymeri). */
+  note?: string;
 };
 
 /** AI qaralama kartı (02 #19–#24, 03 E4–E6a). */
-export const DraftCard = ({ draft, mode, windowOpen, online, onSend, onReject }: DraftProps) => {
+export const DraftCard = ({ draft, mode, windowOpen, online, onSend, onReject, onRegenerate, note }: DraftProps) => {
   const [text, setText] = useState(draft.text);
   const [edit, setEdit] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -81,7 +85,7 @@ export const DraftCard = ({ draft, mode, windowOpen, online, onSend, onReject }:
       <div className="ibd__card">
         <div className="ibd__top">
           {/* TODO [API] «Siz yazdınız» qaralamasının taymeri («N dəq sonra bot özü göndərəcək», «Özü göndərməsin»): draft_out auto_at qaytarmır, ona görə yalnız «Komandaya ötürülüb» sətri göstərilir. */}
-          {mode === 'wait' ? <span className="ibd__wait">Siz baxana qədər gözləyir</span> : <span />}
+          {note ? <span className="ibd__wait">{note}</span> : mode === 'wait' ? <span className="ibd__wait">Siz baxana qədər gözləyir</span> : <span />}
           <span className="ibd__ai">AI qaralaması{edit ? ' · redaktə edə bilərsiniz' : ''}</span>
         </div>
         <textarea ref={area} className="ibd__ta" rows={3} readOnly={!edit} aria-label="Qaralama mətni" value={text}
@@ -91,6 +95,7 @@ export const DraftCard = ({ draft, mode, windowOpen, online, onSend, onReject }:
       <div className="ibd__acts">
         <Button variant="primary" size="md" kbd="↵" disabled={!can} onClick={send}>İndi göndər</Button>
         {!edit && <Button variant="text" size="md" onClick={() => setEdit(true)}>Redaktə et</Button>}
+        {onRegenerate && !edit && <Button variant="text" size="md" disabled={!online} onClick={onRegenerate}>Yenidən yaz</Button>}
         <Button variant="text" size="md" onClick={onReject}>Rədd et</Button>
         <span className="ibc__hint ibd__slash"><kbd className="mono">/</kbd> hazır cavab</span>
       </div>

@@ -5,6 +5,7 @@ import { addDays, bakuToday, range } from '../../format';
 import type { Block, Dashboard, Shoot } from '../../types';
 import { useToast } from '../ui';
 import { buildQueue, chatWaiting, type QueueItem } from './queue';
+import { socialGroup, type SocialList } from './social';
 
 const POLL_MS = 60_000;
 const RETRY_MS = 30_000;
@@ -58,6 +59,7 @@ export function ShellDataProvider({ children }: { children: ReactNode }) {
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
   const [snoozed, setSnoozed] = useState<Record<string, number>>(readSnooze);
   const timers = useRef(new Set<number>());
+  const [socialWaiting, setSocialWaiting] = useState(0);
 
   const fetchMain = useCallback(async () => {
     const today = bakuToday();
@@ -70,6 +72,8 @@ export function ShellDataProvider({ children }: { children: ReactNode }) {
         call<{ bot_enabled: boolean }>('/bot/settings').catch(() => null),
       ]);
       setRaw({ dash, shoots, blocks, convs, botEnabled: bot ? bot.bot_enabled : null });
+      // Instagram/YouTube (nav nişanı): alınmasa yalnız WhatsApp sayılır
+      call<SocialList>('/social-inbox').then((l) => setSocialWaiting(l.threads.filter((t) => socialGroup(t) === 'you').length)).catch(() => {});
       setError(''); setLastOk(Date.now());
     } catch (e) { setError(errMsg(e)); }
   }, [call]);
@@ -137,7 +141,7 @@ export function ShellDataProvider({ children }: { children: ReactNode }) {
   }, [raw, all]);
   const items = useMemo(() => all.filter((i) => !hidden.has(i.key) && !((snoozed[i.key] ?? 0) > now)), [all, hidden, snoozed, now]);
   const queueCount = useMemo(() => items.filter((i) => !leaving.has(i.key)).length, [items, leaving]);
-  const inboxCount = useMemo(() => (raw ? raw.convs.filter((c) => chatWaiting(c, botOn, true)).length : 0), [raw, botOn]);
+  const inboxCount = useMemo(() => (raw ? raw.convs.filter((c) => chatWaiting(c, botOn, true)).length : 0) + socialWaiting, [raw, botOn, socialWaiting]);
 
   const value = useMemo<Ctx>(() => ({ now, raw, error, lastOk, items, leaving, queueCount, inboxCount, leadCount, revenue, reload, dismiss, restore, snooze, sendLater }),
     [now, raw, error, lastOk, items, leaving, queueCount, inboxCount, leadCount, revenue, reload, dismiss, restore, snooze, sendLater]);

@@ -162,6 +162,27 @@
 .v2 .ibp__facts dt { color: var(--text-2); }
 .v2 .ibp__facts dd { margin: 0; text-align: right; }
 
+/* ---- Instagram / YouTube (kanal filtri, komment görünüşü) ---- */
+.v2 .ib__kanal { padding: 4px 20px 6px; }
+.v2 .ib__kanal .seg { display: flex; width: 100%; }
+.v2 .ib__kanal .seg__b { flex: 1 1 auto; min-width: 0; padding-left: 4px; padding-right: 4px; gap: 4px; font-size: 13px; justify-content: center; white-space: nowrap; }
+.v2 .ibr__tag { flex: none; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 999px; background: var(--bg); color: var(--text-2); }
+.v2 .ibk__list { gap: 12px; }
+.v2 .ibk__mode { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; color: var(--text); }
+.v2 .ibk__mode small { flex-basis: 100%; color: var(--text-2); font-size: 12px; }
+.v2 .ibk__post { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 14px; font-size: 13px; color: var(--text-2); }
+.v2 .ibk__post b { color: var(--text); font-weight: var(--fw-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2 .ibk__pl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); }
+.v2 .ibk { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 14px; background: var(--surface); }
+.v2 .ibk--done { opacity: .8; }
+.v2 .ibk__top { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.v2 .ibk__time { margin-left: auto; font-size: 12px; color: var(--text-3); }
+.v2 .ibk__text { margin: 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.v2 .ibk__reply { margin: 0; font-size: 13px; color: var(--brand-ink-2); overflow-wrap: anywhere; }
+.v2 .ibk__st { margin: 0; font-size: 12px; color: var(--text-2); }
+.v2 .ibk__link { flex: none; margin-left: auto; font-size: 13px; color: var(--brand); text-decoration: none; }
+.v2 .ibk__link:hover { text-decoration: underline; }
+
 /* ---- Ölçülər ---- */
 @media (min-width: 1100px) {
   .v2 .ib { grid-template-columns: 340px minmax(0, 1fr); }
@@ -172,7 +193,7 @@
 }
 @media (min-width: 1380px) {
   .v2 .ib { grid-template-columns: 340px minmax(0, 1fr); }
-  .v2 .ib__cw:not(.ib__cw--empty) { grid-template-columns: minmax(0, 1fr) 300px; }
+  .v2 .ib__cw:not(.ib__cw--empty):not(.ib__cw--solo) { grid-template-columns: minmax(0, 1fr) 300px; }
   .v2 .ib__side { display: flex; }
 }
 @media (max-width: 1099px) {

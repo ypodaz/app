@@ -129,6 +129,23 @@ const ibWrapped: typeof fetch = async (input, init) => {
       drafts: t.draft ? [{ id: 900 + c.id, conversation_id: c.id, text: t.draft, status: 'pending', reason: null, model_output: { handoff: !!t.reason, handoff_reason: t.reason ?? null }, created_at: ibMin(20) }] : [],
       lead: t.lead ? { ...t.lead, contact_id: c.contact.id, conversation_id: c.id } : null, window_expires_at: c.window_expires_at, window_open: !q.has('closed') });
   }
+  // Instagram DM və kommentlər (routes/admin_social_inbox.py), uydurma adlar
+  const soItem = (id: number, kind: 'dm' | 'comment', channel: 'instagram' | 'youtube', thread: string, author: string, text: string, draft: string | null, status = 'pending', min = 30) =>
+    ({ id, channel, kind, thread_id: thread, author, text, draft_text: draft, status, auto: status === 'sent', by_owner: false, hidden: false, regen: 0, auto_at: null, created_at: ibMin(min), decided_at: status === 'pending' ? null : ibMin(min - 1) });
+  if (p === '/social-inbox' && method === 'GET') return ibJson({ comment_mode: 'draft', threads: [
+    { key: 'dm:instagram:111', channel: 'instagram', kind: 'dm', thread_id: '111', author: 'numune.m', last_text: 'Reels paketinə nə daxildir?', last_in: true, last_at: ibMin(12), customer_at: ibMin(12), pending: 1, drafted: 1, total: 3, mode: 'owner', window_open: true },
+    { key: 'comment:instagram:m1', channel: 'instagram', kind: 'comment', thread_id: 'm1', author: 'izleyici.a', last_text: 'Qiymət neçədir?', last_in: true, last_at: ibMin(40), customer_at: ibMin(40), pending: 2, drafted: 1, total: 5, mode: null, window_open: null },
+    { key: 'comment:youtube:v1', channel: 'youtube', kind: 'comment', thread_id: 'v1', author: 'Nümunə İzləyici', last_text: 'Çox gözəl alınıb', last_in: false, last_at: ibMin(300), customer_at: ibMin(320), pending: 0, drafted: 0, total: 1, mode: null, window_open: null },
+  ] });
+  if (p === '/social-inbox/dm/111' && method === 'GET') return ibJson({ thread_id: '111', author: 'numune.m', mode: 'owner', window_open: true, window_expires_at: ibMin(-600),
+    messages: [{ key: 'i1', role: 'in', text: 'Salam, studiya harada yerləşir?', at: ibMin(90) }, { key: 'o1', role: 'bot', text: 'Salam! Ünvanımız: Nümunə küç. 1, Bakı.', at: ibMin(89) }, { key: 'i2', role: 'in', text: 'Reels paketinə nə daxildir?', at: ibMin(12) }],
+    pending: [soItem(3, 'dm', 'instagram', '111', 'numune.m', 'Reels paketinə nə daxildir?', '1 saat çəkiliş və 5 hazır Reels, montaj daxil. İstəsəniz, uyğun gün və saata baxaq?', 'pending', 12)] });
+  if (p === '/social-inbox/post/instagram/m1' && method === 'GET') return ibJson({ channel: 'instagram', thread_id: 'm1', comment_mode: 'draft',
+    post: { permalink: 'https://www.instagram.com/', caption: 'Reels: Kamera qarşısında həyəcan', timestamp: ibMin(3000), like_count: 84, comments_count: 5 },
+    items: [soItem(12, 'comment', 'instagram', 'm1', 'izleyici.a', 'Qiymət neçədir?', 'Ətraflı məlumatı Direct-ə yazdıq 🙏', 'pending', 40), soItem(11, 'comment', 'instagram', 'm1', 'izleyici.b', 'Harada yerləşir?', null, 'pending', 70), soItem(10, 'comment', 'instagram', 'm1', 'izleyici.c', 'Çox gözəl', 'Təşəkkür edirik 😊', 'sent', 400)] });
+  if (p === '/social-inbox/post/youtube/v1' && method === 'GET') return ibJson({ channel: 'youtube', thread_id: 'v1', comment_mode: 'draft', post: { permalink: 'https://www.youtube.com/' },
+    items: [soItem(20, 'comment', 'youtube', 'v1', 'Nümunə İzləyici', 'Çox gözəl alınıb', 'Təşəkkür edirik 🙏', 'sent', 320)] });
+  if (p.startsWith('/social-inbox/') && method === 'POST') return ibJson({ ok: true });
   return ibNext(input, init);
 };
 Object.defineProperty(window, 'fetch', { configurable: true, get: () => ibWrapped, set: (f: typeof fetch) => { ibNext = f; } });

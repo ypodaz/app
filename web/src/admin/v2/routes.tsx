@@ -29,7 +29,12 @@ function Page() {
     case 'bu-gun': return <Today />;
 
     // ---- Inbox (02) ----
-    case 'inbox': return <Inbox id={num || undefined} />; // TODO [API] kanal filtrləri və /inbox/komment/…: Instagram DM/komment üçün admin endpoint yoxdur
+    case 'inbox': {
+      // /inbox/<id> WhatsApp · /inbox/ig/<thread> Instagram DM · /inbox/komment/<instagram|youtube>/<post>
+      if (b === 'ig' && c) return <Inbox social={{ kind: 'dm', channel: 'instagram', thread_id: decodeURIComponent(c) }} />;
+      if (b === 'komment' && (c === 'instagram' || c === 'youtube') && path[3]) return <Inbox social={{ kind: 'comment', channel: c, thread_id: decodeURIComponent(path[3]) }} />;
+      return <Inbox id={num || undefined} />;
+    }
 
     // ---- Çəkilişlər (10–15) ----
     case 'cekilisler': return <CekilisRoute path={path} query={query} />;

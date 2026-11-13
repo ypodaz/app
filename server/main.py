@@ -14,7 +14,7 @@ import settings
 import subscriptions
 from auth import ensure_admin
 from db import SessionLocal
-from routes import admin, admin_crm, admin_growth, admin_people, admin_shoots, admin_social, admin_subscriptions, ai as ai_routes, calendar_feed, client, public, webhooks
+from routes import admin, admin_crm, admin_growth, admin_people, admin_shoots, admin_social, admin_social_inbox, admin_subscriptions, ai as ai_routes, calendar_feed, client, public, webhooks
 from routes import social as social_hooks
 from crm import calendar_sync, turns, worker as crm_worker, youtube
 from social import worker as social_worker
@@ -65,6 +65,7 @@ app.include_router(admin_social.router)
 app.include_router(admin_crm.router)
 app.include_router(admin_people.router)
 app.include_router(admin_subscriptions.router)
+app.include_router(admin_social_inbox.router)
 app.include_router(calendar_feed.router)
 app.include_router(calendar_feed.admin_router)
 app.include_router(ai_routes.router)
