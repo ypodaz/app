@@ -15,7 +15,7 @@ export function shootLabel(s: Pick<Shoot, 'kind' | 'tag' | 'cameras'>): string {
   return s.cameras > 0 && s.kind !== 'reels_pack' ? `${base} · ${s.cameras} kamera` : base;
 }
 
-/** "Nərmin Quliyeva" → "Nərmin Q." */
+/** "Nümunə Müştəri" → "Nümunə M." */
 export function shortName(full: string | null): string {
   const w = (full ?? '').trim().split(/\s+/).filter(Boolean);
   return w.length > 1 ? `${w[0]} ${w[1][0].toLocaleUpperCase('az')}.` : w[0] ?? '';
