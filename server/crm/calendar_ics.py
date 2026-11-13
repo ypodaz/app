@@ -113,3 +113,34 @@ def titled(start: datetime, end: datetime) -> list[tuple[datetime, datetime, str
         log.warning("ICS başlıqları emal edilmədi (%s)", type(e).__name__)
         return []
     return sorted(out)
+
+
+def detailed(start: datetime, end: datetime) -> list[dict] | None:
+    """Y Pod təqviminin [start, end) ilə kəsişən vaxtlı hadisələri, çəkilişi avtomatik yaratmaq üçün (crm/calendar_sync.py):
+    uid (təkrarlanan hadisədə + təkrar nömrəsi), start, end, title, desc. Yükləmə və ya emal alınmasa None
+    (boş siyahıdan fərqli: «hadisə yoxdur» demək deyil). Başlıq və təsvir loglanmır."""
+    cal = _load("main")
+    if cal is None:
+        return None
+    out = []
+    try:
+        for ev in recurring_ical_events.of(cal).between(start, end):
+            a, b = ev.start, ev.end
+            if not isinstance(a, datetime) or str(ev.get("STATUS", "")).upper() == "CANCELLED":
+                continue
+            a = _dt(a)
+            b = _dt(b) if isinstance(b, datetime) else a
+            uid = str(ev.get("UID", "")).strip()
+            if not uid:
+                continue
+            rid = ev.get("RECURRENCE-ID")
+            if rid is not None:
+                uid += "#" + (_dt(rid.dt).isoformat() if isinstance(rid.dt, datetime) else str(rid.dt))
+            elif ev.get("RRULE") is not None:
+                uid += "#" + a.isoformat()
+            out.append({"uid": uid[:255], "start": a, "end": b, "title": " ".join(str(ev.get("SUMMARY", "")).split()),
+                        "desc": " ".join(str(ev.get("DESCRIPTION", "")).split())})
+    except Exception as e:  # noqa: BLE001
+        log.warning("ICS hadisələri emal edilmədi (%s)", type(e).__name__)
+        return None
+    return sorted(out, key=lambda e: e["start"])
