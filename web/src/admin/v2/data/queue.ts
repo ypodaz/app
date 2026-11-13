@@ -1,5 +1,5 @@
 import { formatMoney } from '../../../shared/ui';
-import type { Conv } from '../../components/crm';
+import type { Conv, Park } from '../../components/crm';
 import { contactName } from '../../components/crm';
 import { bakuParts, bakuToday, addDays, endMs } from '../../format';
 import type { Shoot } from '../../types';
@@ -28,9 +28,19 @@ export type QueueItem = {
   shoot?: Shoot;
 };
 
+/** Kənara qoyulma hələ qüvvədədirmi: qaralama yoxdur və müştəri sonradan yazmayıb.
+ *  Müştəri yenə yazanda (və ya bot qaralama hazırlayanda) söhbət öz bölməsinə qayıdır. */
+export function parkOf(c: Pick<Conv, 'park' | 'pending_drafts' | 'last_message' | 'last_message_at'>): Park['to'] | null {
+  const p = c.park;
+  if (!p || c.pending_drafts > 0) return null;
+  const newerIn = c.last_message?.direction === 'in' && new Date(c.last_message_at ?? 0).getTime() > new Date(p.at).getTime();
+  return newerIn ? null : p.to;
+}
+
 /** Bot ümumi söndürülübsə bütün cavabsız mesajlar sahibkara düşür (01 «Bot söndürülüb»). */
 export function chatWaiting(c: Conv, botOn: boolean, withExcluded = false): boolean {
   if (c.contact.excluded && !withExcluded) return false;
+  if (parkOf(c)) return false;
   const lastIn = c.last_message?.direction === 'in';
   switch (c.mode) {
     case 'wait': return true; // bot komandaya ötürüb

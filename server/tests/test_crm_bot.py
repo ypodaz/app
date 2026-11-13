@@ -1069,3 +1069,22 @@ def test_converse_asks_gemini_for_json(monkeypatch):
     monkeypatch.setattr(ai, "generate", fake)
     res, _, problem = bot.converse("sistem", [{"role": "user", "parts": [{"text": "reels"}]}])
     assert seen == [True] and problem is None and res["reply"]
+
+
+def test_inbox_park_theirs_archive_and_back(api, crm_env):
+    """«Cavab gözləyirəm» / «Arxivə at»: qaralama rədd, «wait» → owner, müştəriyə mesaj yoxdur; null geri qaytarır."""
+    adm = bearer(admin_token(api))
+    _, conv_id = mk_conv(mode="wait")
+    with SessionLocal() as db:
+        db.add(BotDraft(conversation_id=conv_id, text="q"))
+        conf.put(db, f"wait_since:{conv_id}", now().isoformat())
+        db.commit()
+    r = api.post(f"/api/admin/inbox/{conv_id}/park", json={"to": "theirs"}, headers=adm).json()
+    assert r["mode"] == "owner" and r["park"]["to"] == "theirs" and r["park"]["at"]
+    (item,) = api.get("/api/admin/inbox", headers=adm).json()
+    assert item["park"]["to"] == "theirs" and item["pending_drafts"] == 0 and item["wait_since"] is None
+    assert api.post(f"/api/admin/inbox/{conv_id}/park", json={"to": "archive"}, headers=adm).json()["park"]["to"] == "archive"
+    assert api.get(f"/api/admin/inbox/{conv_id}", headers=adm).json()["park"]["to"] == "archive"
+    assert api.post(f"/api/admin/inbox/{conv_id}/park", json={"to": None}, headers=adm).json()["park"] is None
+    assert api.post(f"/api/admin/inbox/{conv_id}/park", json={"to": "x"}, headers=adm).status_code == 422
+    assert crm_env.kapso() == []

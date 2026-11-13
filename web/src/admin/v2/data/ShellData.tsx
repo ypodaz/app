@@ -141,7 +141,7 @@ export function ShellDataProvider({ children }: { children: ReactNode }) {
   }, [raw, all]);
   const items = useMemo(() => all.filter((i) => !hidden.has(i.key) && !((snoozed[i.key] ?? 0) > now)), [all, hidden, snoozed, now]);
   const queueCount = useMemo(() => items.filter((i) => !leaving.has(i.key)).length, [items, leaving]);
-  const inboxCount = useMemo(() => (raw ? raw.convs.filter((c) => chatWaiting(c, botOn, true)).length : 0) + socialWaiting, [raw, botOn, socialWaiting]);
+  const inboxCount = useMemo(() => (raw ? raw.convs.filter((c) => chatWaiting(c, botOn)).length : 0) + socialWaiting, [raw, botOn, socialWaiting]);
 
   const value = useMemo<Ctx>(() => ({ now, raw, error, lastOk, items, leaving, queueCount, inboxCount, leadCount, revenue, reload, dismiss, restore, snooze, sendLater }),
     [now, raw, error, lastOk, items, leaving, queueCount, inboxCount, leadCount, revenue, reload, dismiss, restore, snooze, sendLater]);

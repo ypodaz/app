@@ -5,7 +5,7 @@ import { bakuParts } from '../../../format';
 import { socialName, type SocialItem, type SocialMode } from '../../data/social';
 import { fmtWait, msOf } from '../../data/time';
 import { Avatar, Button, ErrorBox, LoadingRows, Segmented, useOnline, useToast, V2Icon } from '../../ui';
-import { DraftCard, FreeComposer } from './Composer';
+import { DraftCard, FreeComposer, FriendSwitch } from './Composer';
 import { dayLabel, MODE_META } from './logic';
 import { ModeChip } from './ModeMenu';
 
@@ -36,7 +36,7 @@ const UNDO_MS = 5000; // 99 G2
 type DmMsg = { key: string; role: 'in' | 'bot' | 'you'; text: string; at: string };
 type DmOpen = {
   thread_id: string; author: string; mode: SocialMode; window_open: boolean; window_expires_at: string | null; lead_id: number | null;
-  messages: DmMsg[]; pending: SocialItem[];
+  messages: DmMsg[]; pending: SocialItem[]; friend?: boolean;
 };
 type PostOpen = {
   channel: 'instagram' | 'youtube'; thread_id: string; comment_mode: 'auto' | 'draft'; items: SocialItem[];
@@ -79,6 +79,8 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
   const [menu, setMenu] = useState(false);
   const [modeOv, setModeOv] = useState<SocialMode | null>(null);
   useEffect(() => { setModeOv(null); }, [data?.mode]);
+  const [friendOv, setFriendOv] = useState<boolean | null>(null);
+  useEffect(() => { setFriendOv(null); }, [data?.friend]);
   const endRef = useRef<HTMLDivElement>(null);
   const n = data?.messages.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [n]);
@@ -118,6 +120,16 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
     } catch (e) { setSendErr(errMsg(e)); return false; } finally { setBusy(false); }
   }
 
+  /** «Dostdur · bot yazmır» (03 T9): WhatsApp-dakı açarla eyni; Telegram «Dost» düyməsi ilə bir yerə yazılır. */
+  async function setFriend(v: boolean) {
+    setFriendOv(v);
+    try {
+      await call(`/social-inbox/dm/${encodeURIComponent(thread)}/friend`, { method: 'POST', body: { friend: v } });
+      refresh();
+      toast.show(v ? 'Dostdur · bot yazmır · «Dostlar» bölməsinə keçdi' : 'Bot yenə yazır');
+    } catch (e) { setFriendOv(null); toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void setFriend(v) }); }
+  }
+
   async function pickMode(m: SocialMode) {
     if (!data) return;
     const prev = modeOv ?? data.mode;
@@ -143,6 +155,7 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
 
   const mode = modeOv ?? data.mode;
   const meta = MODE_META[mode];
+  const friend = friendOv ?? data.friend ?? false;
   const autoMin = draftItem?.auto_at ? Math.max(1, Math.ceil((msOf(draftItem.auto_at) - Date.now()) / 60_000)) : 0;
   const note = autoMin ? `${autoMin} dəq sonra bot özü göndərəcək` : mode === 'wait' ? 'Siz baxana qədər gözləyir' : 'Siz göndərənə qədər gözləyir';
   const noDraftPending = data.pending.some((i) => !i.draft_text);
@@ -152,9 +165,12 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
       <section className="ib__chat" aria-label="Söhbət">
         <Head name={name} meta={data.author ? 'Instagram DM · ada basın, profil açılır' : 'Instagram DM'} href={igProfile(data.author)} onBack={onBack}>
           <LeadButton itemId={data.pending[0]?.id ?? lastId(data)} leadId={data.lead_id} who={name} onDone={refresh} />
-          <ModeChip current={mode} friend={false} modes={IG_MODES} open={menu} setOpen={setMenu} disabled={!online} onPick={(m) => void pickMode(m as SocialMode)} />
+          <ModeChip current={mode} friend={friend} modes={IG_MODES} open={menu} setOpen={setMenu} disabled={!online} onPick={(m) => void pickMode(m as SocialMode)} />
         </Head>
-        <div className={`ibs ibs--${mode}`} role="status"><b>{meta.label}</b><span> · {meta.hint}</span></div>
+        <div className={`ibs ibs--${friend ? 'park' : mode}`}>
+          <span className="ibs__txt" role="status">{friend ? <><b>Dost</b><span> · bot bu söhbətə yazmır</span></> : <><b>{meta.label}</b><span> · {meta.hint}</span></>}</span>
+          <span className="ibs__acts"><FriendSwitch on={friend} disabled={!online} onChange={(v) => void setFriend(v)} /></span>
+        </div>
         {!data.window_open && <div className="ib__warn" role="status">24 saat keçib · müştəri yazmayınca Instagram cavaba icazə vermir</div>}
         <div className="ibt" tabIndex={-1}>
           {data.messages.map((m, i) => {
@@ -179,11 +195,11 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
         </div>
         <div className="ibf-wrap">
           {sendErr && <ErrorBox title="Mesaj getmədi" detail={sendErr} />}
-          {draftItem
+          {draftItem && !friend
             ? <DraftCard draft={asDraft(draftItem)} mode={mode} note={note} windowOpen={data.window_open} online={online}
                 onSend={sendDraft} onReject={() => void act('reject')} onRegenerate={draftItem.regen < 3 ? () => void act('regenerate') : undefined} />
             : <>
-                {mode === 'bot' && <div className="ibb"><div className="ibb__t"><b>Bot bu söhbəti aparır.</b><span>Siz yazsanız, bot yalnız qaralama hazırlayacaq</span></div></div>}
+                {mode === 'bot' && !friend && <div className="ibb"><div className="ibb__t"><b>Bot bu söhbəti aparır.</b><span>Siz yazsanız, bot yalnız qaralama hazırlayacaq</span></div></div>}
                 <FreeComposer windowOpen={data.window_open} online={online} busy={busy} onSend={sendFree} />
               </>}
         </div>
@@ -210,8 +226,9 @@ function PendingComment({ i, online, onDone }: { i: SocialItem; online: boolean;
   async function act(path: 'send' | 'reject' | 'regenerate' | 'hide') {
     setBusy(true);
     try {
-      await call(`/social-inbox/items/${i.id}/${path}`, { method: 'POST', body: path === 'send' ? { text: text.trim() } : undefined });
-      toast.show(path === 'send' ? 'Cavab dərc olundu' : path === 'regenerate' ? 'Yenidən yazılır · bir neçə saniyəyə gələcək' : path === 'hide' ? 'Komment gizlədildi' : 'Rədd edildi');
+      const r = await call<{ gone?: boolean }>(`/social-inbox/items/${i.id}/${path}`, { method: 'POST', body: path === 'send' ? { text: text.trim() } : undefined });
+      toast.show(r?.gone ? 'Komment Instagram-da silinib · siyahıdan çıxarıldı'
+        : path === 'send' ? 'Cavab dərc olundu' : path === 'regenerate' ? 'Yenidən yazılır · bir neçə saniyəyə gələcək' : path === 'hide' ? 'Komment gizlədildi' : 'Rədd edildi');
       onDone();
     } catch (e) { toast.show(`Alınmadı: ${errMsg(e)}`, { error: true }); } finally { setBusy(false); }
   }

@@ -217,3 +217,29 @@ def test_dm_lead_gets_phone_later(api, net):
         lead = social_inbox.capture_lead(db, db.get(SocialItem, phone_item), {})
         assert lead.id == r["lead_id"] and lead.phone.endswith("501234567")
         assert db.query(Lead).count() == 1
+
+
+def test_hide_deleted_comment_closes_item(api, net):
+    """Komment Instagram-da silinibsə (kod 100/33) «Gizlət» xəta vermir: element siyahıdan çıxır."""
+    tok = bearer(admin_token(api))
+    iid = mk(kind="comment", thread="media9", parent_id="c9")
+    net.ig_error = {"message": "Object does not exist", "code": 100, "error_subcode": 33}
+    r = api.post(f"{BASE}/items/{iid}/hide", headers=tok)
+    assert r.status_code == 200 and r.json()["gone"] is True and r.json()["status"] == "ignored"
+    net.ig_error = {"message": "Rate limit", "code": 4}
+    other = mk(kind="comment", thread="media9", parent_id="c10")
+    assert api.post(f"{BASE}/items/{other}/hide", headers=tok).status_code == 502
+    assert get(other).status == "pending"
+
+
+def test_dm_friend_toggle(api, net):
+    """IG DM-də «Dostdur · bot yazmır»: siyahıda və söhbətdə görünür, gözləyən qaralama rədd olunur."""
+    tok = bearer(admin_token(api))
+    iid = mk(thread="777")
+    assert api.post(f"{BASE}/dm/888/friend", json={"friend": True}, headers=tok).status_code == 404
+    assert api.post(f"{BASE}/dm/777/friend", json={"friend": True}, headers=tok).json() == {"friend": True}
+    assert get(iid).status == "rejected"
+    rows = {t["key"]: t for t in api.get(BASE, headers=tok).json()["threads"]}
+    assert rows["dm:instagram:777"]["friend"] is True and rows["dm:instagram:777"]["pending"] == 0
+    assert api.get(f"{BASE}/dm/777", headers=tok).json()["friend"] is True
+    assert api.post(f"{BASE}/dm/777/friend", json={"friend": False}, headers=tok).json() == {"friend": False}

@@ -46,7 +46,8 @@ def net(crm_env, monkeypatch):
             if "oauth2.googleapis.com" in url:
                 return Resp(200, {"access_token": "yt-access", "expires_in": 3600})
             if "graph.instagram.com" in url and n.ig_error:
-                return Resp(400, {"error": {"message": n.ig_error}})
+                err = n.ig_error if isinstance(n.ig_error, dict) else {"message": n.ig_error}
+                return Resp(400, {"error": err})
             return Resp(200, {"id": "out1", "message_id": "mid.out1"})
         return base_post(url, **kw)
 

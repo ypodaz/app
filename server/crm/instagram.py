@@ -30,7 +30,14 @@ _state = {"alerted": False}
 
 
 class IgError(Exception):
-    pass
+    def __init__(self, msg: str, code: int | None = None, subcode: int | None = None):
+        super().__init__(msg)
+        self.code, self.subcode = code, subcode
+
+    @property
+    def gone(self) -> bool:
+        """Obyekt Instagram-da yoxdur (məs. komment silinib): kod 100, alt kod 33."""
+        return self.code == 100 and self.subcode == 33
 
 
 def enabled() -> bool:
@@ -210,7 +217,8 @@ def _post(path: str, **kw) -> dict:
     except Exception as e:  # şəbəkə və ya JSON xətası
         raise IgError(f"Instagram cavab vermədi ({type(e).__name__})") from e
     if r.status_code >= 400 or "error" in data:
-        raise IgError(str((data.get("error") or {}).get("message") or f"HTTP {r.status_code}")[:300])
+        err = data.get("error") or {}
+        raise IgError(str(err.get("message") or f"HTTP {r.status_code}")[:300], err.get("code"), err.get("error_subcode"))
     return data
 
 

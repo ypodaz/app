@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { stageName, usePoll, type ConvMode, type ConvOpen, type Msg } from '../../../components/crm';
+import { stageName, usePoll, type ConvMode, type ConvOpen, type Msg, type Park } from '../../../components/crm';
+import { parkOf } from '../../data/queue';
 import { errMsg, useAuth, useLoad } from '../../../ctx';
 import { bakuParts } from '../../../format';
 import { msOf } from '../../data/time';
@@ -60,6 +61,7 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const [menu, setMenu] = useState(false);
   const [modeOv, setModeOv] = useState<ConvMode | null>(null);
   const [exclOv, setExclOv] = useState<boolean | null>(null);
+  const [parkOv, setParkOv] = useState<Park['to'] | null | undefined>(undefined); // undefined: serverdəki kimi
   const [writing, setWriting] = useState(false); // «Cavabı mən yazım»
   const [busy, setBusy] = useState(false);
   const [hiddenDraft, setHiddenDraft] = useState<number | null>(null); // 5 s gecikmədə gizlədilən qaralama
@@ -79,6 +81,9 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const excluded = exclOv ?? data?.contact.excluded ?? false;
   const mode = data ? effMode({ mode: modeOv ?? data.mode, contact: { excluded } }, botOn) : 'bot';
   const draft = data ? [...data.drafts].filter((d) => d.status === 'pending' && d.id !== hiddenDraft).pop() : undefined;
+  const lastMsg = data?.messages[data.messages.length - 1] ?? null;
+  const parked = parkOv !== undefined ? parkOv : data ? parkOf({ park: data.park, pending_drafts: data.drafts.filter((d) => d.status === 'pending').length,
+    last_message: lastMsg, last_message_at: lastMsg?.created_at ?? null }) : null;
 
   async function apiMode(m: ConvMode) { await call(`/inbox/${id}/mode`, { method: 'POST', body: { mode: m } }); }
 
@@ -109,6 +114,22 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
     } catch (e) {
       setExclOv(null); setModeOv(null);
       toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void setFriend(v) });
+    }
+  }
+
+  /** «Cavab gözləyirəm» / «Arxivə at» / «Geri qaytar»: söhbət «Sizi gözləyir»dən çıxır, müştəriyə heç nə getmir. */
+  async function park(to: Park['to'] | null) {
+    const prev = parked;
+    setParkOv(to);
+    try {
+      await call(`/inbox/${id}/park`, { method: 'POST', body: { to } });
+      if (to && (modeOv ?? data?.mode) === 'wait') setModeOv('owner');
+      refresh();
+      const msg = to === 'theirs' ? '«Müştəridən cavab gözləyirik»ə keçdi' : to === 'archive' ? 'Arxivə atıldı · müştəri yazanda geri qayıdır' : 'Geri qaytarıldı';
+      toast.show(msg, to ? { undo: () => { setParkOv(prev); void call(`/inbox/${id}/park`, { method: 'POST', body: { to: prev } }).then(refresh); } } : undefined);
+    } catch (e) {
+      setParkOv(undefined);
+      toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void park(to) });
     }
   }
 
@@ -195,9 +216,23 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
     <div className="ib__cw">
       <section className="ib__chat" aria-label="Söhbət">
         {head}
-        <div className={`ibs ibs--${mode}`} role="status">
-          <b>{meta.label}</b><span> · {meta.hint}</span>{mode === 'bot' && sinceMin > 0 && <span> · müştəri <span className="mono">{sinceMin}</span> dəq əvvəl yazdı</span>}
-          {!botOn && data.mode === 'bot' && !excluded && <span className="ibs__x"> · Bot söndürülüb: bütün mesajlar sizə düşür</span>}
+        <div className={`ibs ibs--${parked ? 'park' : mode}`}>
+          <span className="ibs__txt" role="status">
+            {parked
+              ? <><b>{parked === 'archive' ? 'Arxivdə' : 'Müştəridən cavab gözləyirik'}</b><span> · müştəri yazanda «Sizi gözləyir»ə qayıdır</span></>
+              : <><b>{meta.label}</b><span> · {meta.hint}</span>{mode === 'bot' && sinceMin > 0 && <span> · müştəri <span className="mono">{sinceMin}</span> dəq əvvəl yazdı</span>}
+                {!botOn && data.mode === 'bot' && !excluded && <span className="ibs__x"> · Bot söndürülüb: bütün mesajlar sizə düşür</span>}</>}
+          </span>
+          {!excluded && (
+            <span className="ibs__acts">
+              {parked
+                ? <button type="button" className="ibs__btn" onClick={() => void park(null)}>Geri qaytar</button>
+                : <>
+                  <button type="button" className="ibs__btn" title="Zənglə danışdınız və ya cavab gözləyirsiniz" onClick={() => void park('theirs')}>Cavab gözləyirəm</button>
+                  <button type="button" className="ibs__btn" title="Söhbət bitib: siyahıdan gizlənir" onClick={() => void park('archive')}>Arxivə at</button>
+                </>}
+            </span>
+          )}
         </div>
         {!data.window_open && <div className="ib__warn" role="status">24 saat keçib · müştəri yazmayınca sərbəst mətn göndərilmir</div>}
         <div className="ibt" tabIndex={-1}>

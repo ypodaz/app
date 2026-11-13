@@ -78,7 +78,7 @@ type IbMsg = ReturnType<typeof msg>;
 const ibM = (id: number, dir: 'in' | 'out', text: string, agoMin: number, source = 'customer', type = 'text'): IbMsg => ({ ...msg(id, dir, text, agoMin, source), type });
 const ibConv = (id: number, name: string | null, phone: string, mode: string, last: IbMsg, drafts: number, stage: string | null, unread = 0, excluded = false) => ({
   id, contact: { id, name, phone, excluded }, last_message: last, unread, mode, pending_drafts: drafts, lead_stage: stage,
-  last_message_at: last.created_at, window_expires_at: iso(Date.now() + 18 * H),
+  last_message_at: last.created_at, window_expires_at: iso(Date.now() + 18 * H), park: null as { to: string; at: string } | null,
 });
 const ibThreads: Record<number, { conv: ReturnType<typeof ibConv>; messages: IbMsg[]; draft?: string; reason?: string; lead?: Record<string, unknown> | null }> = {};
 function ibAdd(conv: ReturnType<typeof ibConv>, messages: IbMsg[], draft?: string, reason?: string, lead: Record<string, unknown> | null = null) { ibThreads[conv.id] = { conv, messages, draft, reason, lead }; }
@@ -105,6 +105,9 @@ const ibLead = (stage: string, extra: Record<string, unknown> = {}) => ({ id: 1,
   ibAdd(ibConv(20, 'Nümunə Müştəri J', '994500000020', 'owner', o[0], 0, 'tarix'), o, undefined, undefined, ibLead('tarix'));
   const o2 = [ibM(211, 'out', 'Qiymət təklifini göndərdim.', 2900, 'panel')];
   ibAdd(ibConv(21, 'Nümunə Müştəri K', '994500000021', 'human', o2[0], 0, 'beh', 0, true), o2, undefined, undefined, ibLead('beh'));
+  const ar = [ibM(221, 'in', '[sənəd]', 600, 'customer', 'document')];
+  ibAdd(ibConv(22, 'Nümunə Çap', '994500000022', 'human', ar[0], 0, null), ar);
+  ibThreads[22].conv.park = { to: 'archive', at: ibMin(500) };
 }
 
 const ibRealFetch = window.fetch.bind(window);
@@ -120,6 +123,8 @@ const ibWrapped: typeof fetch = async (input, init) => {
   if (q.has('fail')) return new Response('{}', { status: 500 });
   if (p === '/inbox' && method === 'GET') return q.has('empty') ? ibJson([]) : ibJson(Object.values(ibThreads).map((t) => t.conv));
   if (p === '/quick-replies') return ibJson([{ id: 1, title: 'Qiymətlər', text: 'Studiyada 1 saat: 1 kamera 70, 2 kamera 120, 3 kamera 170 AZN.' }, { id: 2, title: 'Ünvan', text: 'Ünvanımız: Nümunə küç. 1, Bakı.' }]);
+  const pk = p.match(/^\/inbox\/(\d+)\/park$/);
+  if (pk && method === 'POST') { const t = ibThreads[Number(pk[1])]; const to = JSON.parse(String(init?.body ?? '{}')).to; t.conv.park = to ? { to, at: iso(Date.now()) } : null; if (to) { t.draft = undefined; t.conv.pending_drafts = 0; if (t.conv.mode === 'wait') t.conv.mode = 'owner'; } return ibJson({ id: t.conv.id, mode: t.conv.mode, park: t.conv.park }); }
   const m = p.match(/^\/inbox\/(\d+)$/);
   if (m && method === 'GET') {
     const t = ibThreads[Number(m[1])];
@@ -127,7 +132,7 @@ const ibWrapped: typeof fetch = async (input, init) => {
     const c = t.conv;
     return ibJson({ id: c.id, mode: c.mode, unread: 0, contact: { ...c.contact, bot_muted_until: null }, messages: t.messages,
       drafts: t.draft ? [{ id: 900 + c.id, conversation_id: c.id, text: t.draft, status: 'pending', reason: null, model_output: { handoff: !!t.reason, handoff_reason: t.reason ?? null }, created_at: ibMin(20) }] : [],
-      lead: t.lead ? { ...t.lead, contact_id: c.contact.id, conversation_id: c.id } : null, window_expires_at: c.window_expires_at, window_open: !q.has('closed') });
+      lead: t.lead ? { ...t.lead, contact_id: c.contact.id, conversation_id: c.id } : null, park: c.park, window_expires_at: c.window_expires_at, window_open: !q.has('closed') });
   }
   // Instagram DM və kommentlər (routes/admin_social_inbox.py), uydurma adlar
   const soItem = (id: number, kind: 'dm' | 'comment', channel: 'instagram' | 'youtube', thread: string, author: string, text: string, draft: string | null, status = 'pending', min = 30) =>
@@ -135,6 +140,7 @@ const ibWrapped: typeof fetch = async (input, init) => {
   if (p === '/social-inbox' && method === 'GET') return ibJson({ comment_mode: 'draft', threads: [
     { key: 'dm:instagram:111', channel: 'instagram', kind: 'dm', thread_id: '111', author: 'numune.m', last_text: 'Reels paketinə nə daxildir?', last_in: true, last_at: ibMin(12), customer_at: ibMin(12), pending: 1, drafted: 1, total: 3, mode: 'owner', window_open: true },
     { key: 'comment:instagram:m1', channel: 'instagram', kind: 'comment', thread_id: 'm1', author: 'izleyici.a', last_text: 'Qiymət neçədir?', last_in: true, last_at: ibMin(40), customer_at: ibMin(40), pending: 2, drafted: 1, total: 5, mode: null, window_open: null },
+    { key: 'dm:instagram:222', channel: 'instagram', kind: 'dm', thread_id: '222', author: 'dost.numune', last_text: 'Axşam görüşək?', last_in: true, last_at: ibMin(25), customer_at: ibMin(25), pending: 0, drafted: 0, total: 4, mode: 'bot', window_open: true, friend: true },
     { key: 'comment:youtube:v1', channel: 'youtube', kind: 'comment', thread_id: 'v1', author: 'Nümunə İzləyici', last_text: 'Çox gözəl alınıb', last_in: false, last_at: ibMin(300), customer_at: ibMin(320), pending: 0, drafted: 0, total: 1, mode: null, window_open: null },
   ] });
   if (p === '/social-inbox/dm/111' && method === 'GET') return ibJson({ thread_id: '111', author: 'numune.m', mode: 'owner', window_open: true, window_expires_at: ibMin(-600),

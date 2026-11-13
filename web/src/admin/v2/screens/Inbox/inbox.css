@@ -83,7 +83,12 @@
 .v2 .ibm__ok { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--brand); display: flex; }
 
 /* status zolağı */
-.v2 .ibs { padding: 8px 20px; font-size: 12px; background: var(--bg); color: var(--text-2); }
+.v2 .ibs { padding: 8px 20px; font-size: 12px; background: var(--bg); color: var(--text-2); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.v2 .ibs__txt { flex: 1 1 220px; min-width: 0; }
+.v2 .ibs__acts { display: flex; gap: 6px; flex: none; }
+.v2 .ibs__btn { font: inherit; font-weight: var(--fw-medium); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; min-height: 28px; cursor: pointer; }
+.v2 .ibs__btn:hover { border-color: var(--text-3); }
+.v2 .ibs__btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .v2 .ibs b { font-weight: var(--fw-semibold); }
 .v2 .ibs--wait { background: var(--warn-bg); color: var(--warn); }
 .v2 .ibs--bot { background: #F8F5FF; color: var(--brand-ink); }

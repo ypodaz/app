@@ -5,6 +5,8 @@ export type SocialThread = {
   key: string; channel: 'instagram' | 'youtube'; kind: 'dm' | 'comment'; thread_id: string; author: string;
   last_text: string; last_in: boolean; last_at: string | null; customer_at: string | null;
   pending: number; drafted: number; total: number; mode: SocialMode | null; window_open: boolean | null;
+  /** IG DM: «Dostdur · bot yazmır» (friends.is_ig_friend). */
+  friend?: boolean;
 };
 export type SocialList = { threads: SocialThread[]; comment_mode: 'auto' | 'draft' };
 
@@ -14,10 +16,11 @@ export type SocialItem = {
   hidden: boolean; regen: number; lead_id?: number | null; auto_at: string | null; created_at: string; decided_at: string | null;
 };
 
-export type SocialGroup = 'you' | 'bot' | 'theirs';
+export type SocialGroup = 'you' | 'bot' | 'theirs' | 'friends';
 
 /** 03 §Q8: cavabsız (gözləyən) hər şey «Sizi gözləyir»; cavablanmış komment postu «Bot aparır»da soluq durur. */
 export function socialGroup(t: SocialThread): SocialGroup {
+  if (t.friend) return 'friends';
   if (t.pending > 0) return 'you';
   if (t.kind === 'comment' || t.mode === 'bot') return 'bot';
   return t.last_in ? 'you' : 'theirs';

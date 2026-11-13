@@ -60,7 +60,10 @@ export type Conv = {
   id: number; contact: Contact; last_message: Msg | null; unread: number; mode: ConvMode;
   pending_drafts: number; lead_stage: Stage | null; last_message_at: string | null; window_expires_at: string | null;
   draft_auto_at?: string | null; wait_since?: string | null;
+  /** Sahibkar söhbəti kənara qoyub (server: /inbox/{id}/park). */
+  park?: Park | null;
 };
+export type Park = { to: 'theirs' | 'archive'; at: string };
 export type ClientCard = {
   id: number; full_name: string; cashback: number; shoots_done: number;
   shoots: { id: number; starts_at: string; status: string; tag: string; kind: string; total: number }[];
@@ -69,7 +72,7 @@ export type LeadEventRow = { kind: string; data: Record<string, unknown> | null;
 export type ConvOpen = {
   id: number; mode: ConvMode; unread: number; contact: Contact & { bot_muted_until: string | null };
   messages: Msg[]; drafts: Draft[]; lead: Lead | null; window_expires_at: string | null; window_open: boolean;
-  client?: ClientCard | null; wait_since?: string | null; events?: LeadEventRow[];
+  client?: ClientCard | null; wait_since?: string | null; park?: Park | null; events?: LeadEventRow[];
 };
 
 export const STAGES: { key: Stage; label: string }[] = [

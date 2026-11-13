@@ -88,8 +88,19 @@ def inbox(mode: Literal["bot", "human"] | None = None, q: str | None = None, db:
                         BotDraft.conversation_id == c.id, BotDraft.status == "pending")),
                     "lead_stage": lead.stage if lead else None, "last_message_at": iso(c.last_message_at),
                     "window_expires_at": iso(c.window_expires_at), "draft_auto_at": iso(auto_at),
-                    "wait_since": (conf.get(db, f"wait_since:{c.id}") or None) if c.mode == "wait" else None})
+                    "wait_since": (conf.get(db, f"wait_since:{c.id}") or None) if c.mode == "wait" else None,
+                    "park": _park(db, c.id)})
     return out
+
+
+PARK_TO = ("theirs", "archive")
+
+
+def _park(db: DB, conv_id: int) -> dict | None:
+    """Sahibkar söhbəti kənara qoyub: «theirs» (müştəri cavabını gözləyir) və ya «archive» (söhbət bitib).
+    Siyahı müştərinin sonrakı mesajı ilə müqayisə edir: müştəri yenə yazanda söhbət öz bölməsinə qayıdır."""
+    to, _, at = (conf.get(db, f"park:{conv_id}") or "").partition("|")
+    return {"to": to, "at": at} if to in PARK_TO and at else None
 
 
 def _client_card(db: DB, ct: WaContact, lead: Lead | None) -> dict | None:
@@ -124,6 +135,7 @@ def inbox_open(conv_id: int, db: DB = Depends(get_db)):
             "lead": lead_out(db, lead) if lead else None, "window_expires_at": iso(c.window_expires_at),
             "window_open": chat.window_open(c), "client": _client_card(db, ct, lead),
             "wait_since": (conf.get(db, f"wait_since:{c.id}") or None) if c.mode == "wait" else None,
+            "park": _park(db, c.id),
             "events": [{"kind": e.kind, "data": e.data, "at": iso(e.created_at)} for e in db.scalars(
                 select(LeadEvent).where(LeadEvent.lead_id == lead.id).order_by(LeadEvent.id.desc()).limit(20))]
             if lead else []}
@@ -164,6 +176,27 @@ def inbox_mode(conv_id: int, body: ModeIn, db: DB = Depends(get_db)):
         turns._clear_wait(db, c.id)
     db.commit()
     return {"id": c.id, "mode": c.mode}
+
+
+class ParkIn(BaseModel):
+    to: Literal["theirs", "archive"] | None = None
+
+
+@router.post("/inbox/{conv_id}/park")
+def inbox_park(conv_id: int, body: ParkIn, db: DB = Depends(get_db)):
+    """«Cavab gözləyirəm» (theirs) və «Arxivə at» (archive): söhbət «Sizi gözləyir»dən çıxır, müştəriyə mesaj getmir.
+    Gözləyən qaralamalar rədd olunur; «Komandaya ötürülüb» isə «Siz yazdınız» olur (30 dəq xatırlatma dayanır). to=null: geri qaytar."""
+    c = get_or_404(db, WaConversation, conv_id, "Söhbət")
+    if body.to:
+        chat.reject_pending(db, c.id, "sahibkar söhbəti kənara qoydu")
+        if c.mode == "wait":
+            c.mode = "owner"
+            turns._clear_wait(db, c.id)
+        conf.put(db, f"park:{c.id}", f"{body.to}|{now().isoformat()}")
+    else:
+        conf.put(db, f"park:{c.id}", "")
+    db.commit()
+    return {"id": c.id, "mode": c.mode, "park": _park(db, c.id)}
 
 
 # --- qaralamalar ---

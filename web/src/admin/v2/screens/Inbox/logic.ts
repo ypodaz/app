@@ -1,10 +1,11 @@
 import type { Conv, ConvMode, Msg } from '../../../components/crm';
 import { addDays, bakuParts, bakuToday } from '../../../format';
+import { parkOf } from '../../data/queue';
 import { ddmm, maskPhone } from '../../data/time';
 import type { ChipTone } from '../../ui';
 
-/** 03 §Q8 qrupları: «Sizi gözləyir» · «Bot aparır» · «Müştəridən cavab gözləyirik». */
-export type Group = 'you' | 'bot' | 'theirs';
+/** 03 §Q8 qrupları: «Sizi gözləyir» · «Bot aparır» · «Müştəridən cavab gözləyirik» · «Dostlar» · «Arxiv». */
+export type Group = 'you' | 'bot' | 'theirs' | 'friends' | 'archive';
 
 /** Server rejimləri (crm/turns.py): bot · owner (Siz yazdınız) · wait (Komandaya ötürülüb) · human (Bot susur). */
 export const MODE_META: Record<ConvMode, { label: string; hint: string; tone: ChipTone }> = {
@@ -27,6 +28,9 @@ export function effMode(c: ModeSrc, botOn: boolean): ConvMode {
 export const lastIn = (c: Conv) => c.last_message?.direction === 'in';
 
 export function groupOf(c: Conv, botOn: boolean): Group {
+  if (c.contact.excluded) return 'friends'; // 03 T9: dost «Sizi gözləyir»ə düşmür
+  const p = parkOf(c);
+  if (p) return p;
   const e = effMode(c, botOn);
   if (e === 'wait') return 'you';
   if (e === 'bot') return 'bot';

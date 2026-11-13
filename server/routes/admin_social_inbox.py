@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 from auth import current_admin
-from crm import conf, instagram, social_inbox, social_tg
+from crm import conf, friends, instagram, social_inbox, social_tg
 from crm.tg import MAX_REGENERATE
 from db import aware, get_db, now
 from models import SocialItem
@@ -85,6 +85,7 @@ def social_list(db: DB = Depends(get_db)):
                     "last_at": iso(max(times)), "customer_at": iso(shown.created_at), "pending": len(pending),
                     "drafted": sum(1 for i in pending if i.draft_text), "total": len(items),
                     "mode": social_inbox.ig_mode(db, thread) if kind == "dm" else None,
+                    "friend": kind == "dm" and friends.is_ig_friend(db, thread),
                     "window_open": _window_open(items) if kind == "dm" else None})
     out.sort(key=lambda r: r["last_at"] or "", reverse=True)
     if lookups < NAME_LOOKUPS:
@@ -126,7 +127,7 @@ def dm_open(thread: str, db: DB = Depends(get_db)):
             msgs.append({"key": f"h{n}", "role": "in" if role == "user" else "you", "text": text, "at": _ts(t)})
     msgs.sort(key=lambda m: m["at"] or "")
     return {"thread_id": thread, "author": _author(items), "mode": social_inbox.ig_mode(db, thread),
-            "lead_id": social_inbox.item_lead_id(db, items[-1]),
+            "lead_id": social_inbox.item_lead_id(db, items[-1]), "friend": friends.is_ig_friend(db, thread),
             "window_open": _window_open(items), "window_expires_at": iso(aware(items[-1].created_at) + instagram.WINDOW),
             "messages": msgs, "pending": [item_out(i) for i in items if i.status == "pending"]}
 
@@ -221,6 +222,18 @@ def item_regenerate(item_id: int, tasks: BackgroundTasks, db: DB = Depends(get_d
     return item_out(item)
 
 
+def _gone(db: DB, item: SocialItem) -> dict:
+    """Komment Instagram-da artıq yoxdur (yazan silib): xəta əvəzinə siyahıdan çıxarılır."""
+    item.model_output = {**(item.model_output or {}), "gone": True}
+    was_pending = item.status == "pending"
+    if was_pending:
+        item.status, item.decided_at = "ignored", now()
+    db.commit()
+    if was_pending:
+        social_tg.close(item, "🗑 Komment Instagram-da silinib")
+    return {**item_out(item), "gone": True}
+
+
 @router.post("/items/{item_id}/hide")
 def item_hide(item_id: int, db: DB = Depends(get_db)):
     """Instagram kommentini gizlədir; cavabsız idisə «ignored» olur."""
@@ -230,7 +243,9 @@ def item_hide(item_id: int, db: DB = Depends(get_db)):
     try:
         instagram.hide_comment(item.external_id)
     except instagram.IgError as e:
-        raise HTTPException(502, f"Gizlədilmədi: {str(e)[:300]}") from e
+        if not e.gone:
+            raise HTTPException(502, f"Gizlədilmədi: {str(e)[:300]}") from e
+        return _gone(db, item)
     item.model_output = {**(item.model_output or {}), "hidden": True}
     was_pending = item.status == "pending"
     if was_pending:
@@ -296,6 +311,21 @@ def comment_mode(body: CommentModeIn, db: DB = Depends(get_db)):
 
 class ModeIn(BaseModel):
     mode: Literal["bot", "owner", "wait"]
+
+
+class FriendIn(BaseModel):
+    friend: bool
+
+
+@router.post("/dm/{thread}/friend")
+def dm_friend(thread: str, body: FriendIn, db: DB = Depends(get_db)):
+    """«Dostdur · bot yazmır» (03 T9): Telegram «Dost» düyməsi ilə eyni; dost olanda gözləyən qaralamalar rədd olunur."""
+    if not _thread_items(db, "instagram", "dm", thread):
+        raise HTTPException(404, "Söhbət tapılmadı")
+    with social_inbox._thread_lock(thread):
+        friends.set_ig(db, thread, body.friend)
+        db.commit()
+    return {"friend": friends.is_ig_friend(db, thread)}
 
 
 @router.post("/dm/{thread}/mode")

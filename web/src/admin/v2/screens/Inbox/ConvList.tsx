@@ -115,10 +115,14 @@ type Props = {
 
 const CLOSED_KEY = 'ypod.v2.inbox.closed';
 type Closed = Record<Group, boolean>;
+// «Dostlar» və «Arxiv» standart yığılıdır (sahibkar açmayınca görünmür)
 const readClosed = (): Closed => {
-  try { const v = JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '{}'); return { you: !!v.you, bot: !!v.bot, theirs: !!v.theirs }; }
-  catch { return { you: false, bot: false, theirs: false }; }
+  try {
+    const v = JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '{}');
+    return { you: !!v.you, bot: !!v.bot, theirs: !!v.theirs, friends: v.friends !== false, archive: v.archive !== false };
+  } catch { return { you: false, bot: false, theirs: false, friends: true, archive: true }; }
 };
+const ALL_OPEN: Closed = { you: false, bot: false, theirs: false, friends: false, archive: false };
 
 /** Bölmə başlığı: basanda yığılır/açılır, seçim bu brauzerdə yadda qalır. */
 function GroupHead({ g, label, n, closed, onToggle, children }: { g: Group; label: string; n: number; closed: boolean; onToggle: (g: Group) => void; children?: React.ReactNode }) {
@@ -151,9 +155,9 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
     const hit = (c: Conv) => !s || nameOf(c).toLowerCase().includes(s) || (c.contact.name ?? '').toLowerCase().includes(s)
       || (digits.length >= 3 && (c.contact.phone ?? '').replace(/\D/g, '').includes(digits)) || (c.last_message?.text ?? '').toLowerCase().includes(s);
     const hitS = (t: SocialThread) => !s || t.author.toLowerCase().includes(s.replace(/^@/, '')) || t.last_text.toLowerCase().includes(s);
-    const wa: Record<Group, Conv[]> = { you: [], bot: [], theirs: [] };
+    const wa: Record<Group, Conv[]> = { you: [], bot: [], theirs: [], friends: [], archive: [] };
     if (kanal === 'hamisi' || kanal === 'whatsapp') for (const c of convs ?? []) if (hit(c)) wa[groupOf(c, botOn)].push(c);
-    const so: Record<Group, Entry[]> = { you: [], bot: [], theirs: [] };
+    const so: Record<Group, Entry[]> = { you: [], bot: [], theirs: [], friends: [], archive: [] };
     for (const t of social ?? []) {
       if (!inKanal(t, kanal) || !hitS(t)) continue;
       const g = socialGroup(t);
@@ -168,14 +172,17 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
       you,
       bot: [...wa.bot.map(waE), ...so.bot].sort(byTimeDesc),
       theirs: [...wa.theirs.map(waE), ...so.theirs].sort(byTimeDesc),
+      friends: [...wa.friends.map(waE), ...so.friends].sort(byTimeDesc),
+      archive: wa.archive.map(waE).sort(byTimeDesc),
     };
   }, [convs, social, kanal, q, botOn]);
 
   // Axtarışda bütün bölmələr açıq görünür (tapılan gizli qalmasın)
-  const closed: Closed = q.trim() ? { you: false, bot: false, theirs: false } : closedSt;
+  const closed: Closed = q.trim() ? ALL_OPEN : closedSt;
   const botShown = more || q.trim() ? groups.bot : groups.bot.slice(0, 2);
-  const order = useMemo(() => [...(closed.you ? [] : groups.you), ...(closed.bot ? [] : botShown), ...(closed.theirs ? [] : groups.theirs)].map((e) => e.path),
-    [groups, botShown, closed.you, closed.bot, closed.theirs]);
+  const order = useMemo(() => [...(closed.you ? [] : groups.you), ...(closed.bot ? [] : botShown), ...(closed.theirs ? [] : groups.theirs),
+    ...(closed.friends ? [] : groups.friends), ...(closed.archive ? [] : groups.archive)].map((e) => e.path),
+  [groups, botShown, closed]);
   const orderKey = order.join(',');
   useEffect(() => onOrder(order), [orderKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -183,7 +190,7 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
   const total = (convs?.length ?? 0) + (social?.length ?? 0);
   const longest = groups.you.reduce((m, e) => Math.max(m, e.at ? now - msOf(e.at) : 0), 0);
   const searching = q.trim().length > 0;
-  const empty = !groups.you.length && !groups.bot.length && !groups.theirs.length;
+  const empty = !groups.you.length && !groups.bot.length && !groups.theirs.length && !groups.friends.length && !groups.archive.length;
   const none = loaded && searching && empty;
   const pendingComments = (social ?? []).filter((t) => t.kind === 'comment').reduce((n, t) => n + t.pending, 0);
   const row = (e: Entry, g: Group, faded?: boolean) => e.t === 'wa'
@@ -249,6 +256,24 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
               <>
                 <GroupHead g="theirs" label="Müştəridən cavab gözləyirik" n={groups.theirs.length} closed={closed.theirs} onToggle={toggle} />
                 {!closed.theirs && groups.theirs.map((e) => row(e, 'theirs', true))}
+              </>
+            )}
+
+            {groups.friends.length > 0 && (
+              <>
+                <GroupHead g="friends" label="Dostlar" n={groups.friends.length} closed={closed.friends} onToggle={toggle}>
+                  <span className="ibg__hint">· bot yazmır</span>
+                </GroupHead>
+                {!closed.friends && groups.friends.map((e) => row(e, 'friends', true))}
+              </>
+            )}
+
+            {groups.archive.length > 0 && (
+              <>
+                <GroupHead g="archive" label="Arxiv" n={groups.archive.length} closed={closed.archive} onToggle={toggle}>
+                  <span className="ibg__hint">· müştəri yazanda geri qayıdır</span>
+                </GroupHead>
+                {!closed.archive && groups.archive.map((e) => row(e, 'archive', true))}
               </>
             )}
           </>
