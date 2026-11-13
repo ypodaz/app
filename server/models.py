@@ -389,6 +389,7 @@ class KnownContact(Base):
     phone: Mapped[str] = mapped_column(String(32), primary_key=True)  # crm.contacts.normalize formatı: 994501112233
     kind: Mapped[str] = mapped_column(String(16))  # customer | personal
     first_name: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    full_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
 
 
@@ -561,3 +562,36 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     done_at: Mapped[Optional[datetime]] = mapped_column(TS)
     tg_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+
+
+class Subscription(Base):
+    """Aylıq abunə: müştəri (kind=client, çəkilişlər 0 AZN, keşbek yoxdur) və ya sub-icarəçi (kind=rent, çəkiliş müştərisi deyil).
+    pay_day 1–28 və ya 0 = ayın son günü."""
+    __tablename__ = "subscriptions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(16))  # client | rent
+    amount: Mapped[int] = mapped_column(Integer)  # qəpik, aylıq
+    pay_day: Mapped[int] = mapped_column(Integer)
+    visits_per_month: Mapped[Optional[int]] = mapped_column(Integer)
+    starts_on: Mapped[date] = mapped_column(Date)
+    active: Mapped[bool] = mapped_column(default=True, server_default=sa_true())
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
+class SubscriptionPayment(Base):
+    """Abunənin bir ayı: pending → paid | skipped. Pul paid_at-ın düşdüyü ayın «Kassa»-sına yazılır."""
+    __tablename__ = "subscription_payments"
+    __table_args__ = (UniqueConstraint("subscription_id", "period", name="uq_subscription_period"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id", ondelete="CASCADE"), index=True)
+    period: Mapped[str] = mapped_column(String(7))  # YYYY-MM
+    amount: Mapped[int] = mapped_column(Integer)  # qəpik
+    status: Mapped[str] = mapped_column(String(12), default="pending", server_default="pending")  # pending | paid | skipped
+    due_on: Mapped[date] = mapped_column(Date)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(TS)
+    asked_at: Mapped[Optional[datetime]] = mapped_column(TS)  # Telegram kartı göndərilib
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)

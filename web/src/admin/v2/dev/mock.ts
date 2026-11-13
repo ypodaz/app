@@ -209,6 +209,12 @@ function tenzimlemeRoute(path: string, method: string): unknown {
     const pk = (id: number, owner: string, total: number, left: number, endsIn: number) => ({ id, title: `${total / 60} saatlıq paket`, owner_client_id: id, owner_name: owner, minutes_total: total, minutes_left: left, cameras: 2, starts_on: day(-60).slice(0, 10), ends_on: day(endsIn).slice(0, 10), price_paid: 45000, members: [] });
     return [pk(1, 'Nümunə Müştəri A', 600, 90, 9), pk(2, 'Nümunə Müştəri B', 1200, 800, 90), pk(3, 'Nümunə Müştəri C', 300, 240, 40), pk(4, 'Nümunə Müştəri D', 300, 0, -10)];
   }
+  if (p === '/subscriptions' && method === 'GET') {
+    const m = baku_month();
+    const sub = (id: number, name: string, kind: string, amount: number, payDay: number, status: string) => ({ id, client_id: id, client_name: name, title: kind === 'rent' ? 'Sub-icarə' : 'Aylıq abunə', kind, amount, pay_day: payDay, active: true, visits_per_month: kind === 'rent' ? null : 4, starts_on: `${m}-01`, note: null, payments: [{ id: id * 10, period: m, status, amount, due_on: `${m}-20`, paid_at: status === 'paid' ? iso(Date.now() - 2 * H) : null }] });
+    return [sub(1, 'Nümunə Müştəri A', 'client', 20000, 20, 'pending'), sub(2, 'Nümunə İcarəçi', 'rent', 40000, 0, 'paid')];
+  }
+  if (p === '/subscriptions' || /^\/subscriptions\/payments\/\d+\/(paid|unpaid|skip)$/.test(p)) return { ok: true };
   if (p === '/clients') return [cl(1, 'Nümunə Müştəri A'), cl(2, 'Nümunə Müştəri B'), cl(3, 'Nümunə Müştəri C')];
   if (p === '/campaigns' && method === 'GET') return camps;
   const cm = p.match(/^\/campaigns\/(\d+)$/);

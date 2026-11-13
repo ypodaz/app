@@ -88,6 +88,9 @@ def handle_callback(db: DB, cq: dict) -> str:
     if str(cq.get("data", "")).startswith("k:"):  # Apple təqvimi: kimdir / geri al / ləğv et
         from crm import calendar_sync
         return calendar_sync.handle_callback(db, cq)
+    if str(cq.get("data", "")).startswith("a:"):  # aylıq abunə: «✅ Ödədi» / «⏳ Sonra» / «🚫 Bu ay yox»
+        import subscriptions
+        return subscriptions.handle_callback(db, cq)
     if str(cq.get("data", "")).startswith("t:"):  # to-do: «☑️ Bitdi»
         from crm import todo
         return todo.handle_callback(db, cq)

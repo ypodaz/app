@@ -139,7 +139,7 @@ def _create(db: DB, link: CalendarLink, client: Client) -> tuple[Shoot, list[dic
     stated = (info["price"] or 0) * money.AZN
     if 0 < stated < s.total:
         s.discount, s.discount_note = s.total - stated, "Təqvim başlığındakı qiymət"
-        booking._apply_price(s, booking._price(s, None))
+        booking._apply_price(s, booking._price(db, s, None))
         s.deposit_expected = money.deposit_expected(s.total, s.cashback_used, False)
     s.calendar_uid = link.uid
     booking.waive_deposit(db, None, s)

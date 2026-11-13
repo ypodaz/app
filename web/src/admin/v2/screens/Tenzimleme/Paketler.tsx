@@ -3,9 +3,9 @@ import { formatMoney } from '../../../../shared/ui';
 import { useAction, useAuth, useLoad } from '../../../ctx';
 import { bakuToday } from '../../../format';
 import { go, useRoute } from '../../../router';
-import type { ClientRow, Package } from '../../../types';
+import type { ClientRow, Package, Subscription } from '../../../types';
 import { PageHeader } from '../../shell/PageHeader';
-import { Avatar, Button, Card, Dialog, EmptyState, ErrorBox, Field, LoadingRows, Segmented, TextInput, V2Icon, useOnline, useToast } from '../../ui';
+import { Avatar, Button, Card, Chip, Dialog, EmptyState, ErrorBox, Field, LoadingRows, Segmented, TextInput, UnitInput, V2Icon, useOnline, useToast } from '../../ui';
 import { ChangeNote } from '../../ui';
 import { Chosen, ClientPickDialog, ClientResults, Fld, Gate, daysBetween, dmy, hrs, pct, useClients } from './kit';
 import './tenzimleme.css';
@@ -165,6 +165,115 @@ function Members({ p, onChanged }: { p: Package; onChanged: () => void }) {
   );
 }
 
+const payDayText = (d: number) => (d === 0 ? 'ayın son günü' : `hər ayın ${d}-i`);
+const SUB_TITLE = { client: 'Aylıq abunə', rent: 'Sub-icarə' } as const;
+
+/** «+ Abunə»: müştəri abunəsi (çəkilişlər 0 AZN, keşbek yoxdur) və ya sub-icarəçi (çəkiliş müştərisi deyil). */
+function SubDialog({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const { call } = useAuth();
+  const toast = useToast();
+  const online = useOnline();
+  const act = useAction();
+  const [owner, setOwner] = useState<Owner | null>(null);
+  const [q, setQ] = useState('');
+  const [kind, setKind] = useState<'client' | 'rent'>('client');
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState('');
+  const [payDay, setPayDay] = useState(20);
+  const [start, setStart] = useState(bakuToday());
+  const { list, err, retry } = useClients(open && !owner);
+  useEffect(() => {
+    if (!open) return;
+    setOwner(null); setQ(''); setKind('client'); setTitle(''); setAmount(''); setPayDay(20); setStart(bakuToday()); act.setErr('');
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const azn = Number(amount.replace(',', '.'));
+  const valid = !!owner && Number.isFinite(azn) && azn > 0;
+  async function submit() {
+    if (!owner || !valid) return;
+    const name = title.trim() || SUB_TITLE[kind];
+    const r = await act.run(() => call('/subscriptions', { method: 'POST', body: { client_id: owner.id, title: name, kind, amount: Math.round(azn * 100), pay_day: payDay, starts_on: start } }));
+    if (r !== undefined) { onClose(); onDone(); toast.show(`Abunə əlavə edildi · ${owner.full_name}`); }
+  }
+  return (
+    <Dialog open={open} onClose={onClose} title="Abunə əlavə et" subtitle="Aylıq ödəniş"
+      footer={<><Button variant="text" onClick={onClose}>Ləğv et</Button><Button variant="primary" disabled={!valid || !online || act.busy} onClick={submit}>Əlavə et</Button></>}>
+      <Field label="Müştəri">
+        {(id) => owner ? (
+          <div className="tz-pickbox"><Chosen name={owner.full_name} onRemove={() => setOwner(null)} /></div>
+        ) : (
+          <div className="tz-pick">
+            <div className="tz-pickbox"><V2Icon name="search" /><input id={id} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ad, telefon, şirkət" autoFocus /></div>
+            {q.trim() && <ClientResults list={list} err={err} retry={retry} q={q} onPick={(c: ClientRow) => { setOwner({ id: c.id, full_name: c.full_name }); setQ(''); }} />}
+          </div>
+        )}
+      </Field>
+      <Fld label="Növ"><Segmented label="Abunə növü" options={[{ value: 'client', label: 'Müştəri' }, { value: 'rent', label: 'İcarəçi' }]} value={kind} onChange={(v) => setKind(v as 'client' | 'rent')} /></Fld>
+      <Field label="Ad" hint="Boş qalsa növə görə yazılır">{(id) => <TextInput id={id} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={SUB_TITLE[kind]} />}</Field>
+      <div className="tz-row2">
+        <Field label="Aylıq məbləğ">{(id) => <UnitInput id={id} unit="AZN" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="200" />}</Field>
+        <Field label="Ödəniş günü">
+          {(id) => <select id={id} className="input" value={payDay} onChange={(e) => setPayDay(Number(e.target.value))}>
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+            <option value={0}>Ayın son günü</option>
+          </select>}
+        </Field>
+      </div>
+      <Field label="Başlama tarixi">{(id) => <TextInput id={id} type="date" value={start} onChange={(e) => setStart(e.target.value)} />}</Field>
+      {kind === 'client' && <p className="tz-muted">Abunəli müştərinin çəkilişləri 0 AZN olur, keşbek yazılmır.</p>}
+      {act.err && <ErrorBox title="Alınmadı" detail={act.err} />}
+      <ChangeNote changes={['Ödəniş günü Telegram-da xatırlatma gəlir']} unchanged={['Paketlər', 'Çəkilişlər']} />
+    </Dialog>
+  );
+}
+
+/** Aylıq abunələr: bu ayın ödənişi (Ödənib / Gözləyir / Bu ay yox). Pul «Ödənildi» basılan ayın Kassa-sına düşür. */
+function Subscriptions() {
+  const { call } = useAuth();
+  const online = useOnline();
+  const act = useAction();
+  const toast = useToast();
+  const list = useLoad<Subscription[]>('/subscriptions');
+  const [add, setAdd] = useState(false);
+  const month = bakuToday().slice(0, 7);
+  async function pay(id: number, what: 'paid' | 'unpaid', name: string) {
+    const r = await act.run(() => call(`/subscriptions/payments/${id}/${what}`, { method: 'POST', body: {} }));
+    if (r !== undefined) { list.reload(); toast.show(what === 'paid' ? `Ödənildi · ${name}` : `Geri alındı · ${name}`); }
+  }
+  const cols = 'minmax(0,1.6fr) minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.2fr)';
+  return (
+    <Card title={<>Aylıq abunələr{list.data && <span className="tz-count">{list.data.filter((s) => s.active).length}</span>}</>}
+      aside={<Button size="row" icon={<V2Icon name="plus" size={14} />} disabled={!online} onClick={() => setAdd(true)}>Abunə</Button>}>
+      {/* TODO [API] Abunənin redaktəsi/dayandırılması (PATCH /subscriptions/{id}) bu ekranda yoxdur; xatırlatma Telegram-dadır. */}
+      <Gate q={list} title="Abunələr yüklənmədi">
+        {(rows) => rows.length === 0 ? (
+          <EmptyState title="Abunə yoxdur" reason="Aylıq ödəyən müştəri və ya sub-icarəçi əlavə edin." action={<Button disabled={!online} onClick={() => setAdd(true)}>Abunə əlavə et</Button>} />
+        ) : (
+          <>
+            <div className="tz-th tz-wide" style={{ '--cols': cols } as React.CSSProperties}><span>Müştəri</span><span>Məbləğ</span><span>Bu ay</span><span style={{ textAlign: 'right' }}>Əməl</span></div>
+            {rows.map((s) => {
+              const p = s.payments.find((x) => x.period === month);
+              return (
+                <div key={s.id} className="tz-tr tz-wide" style={{ '--cols': cols } as React.CSSProperties}>
+                  <div className="tz-c"><span className="tz-who"><Avatar name={s.client_name} /><span style={{ minWidth: 0 }}><a href={`#/insanlar/${s.client_id}`} style={{ color: 'var(--text)' }}>{s.client_name}</a><span className="tz-sub">{s.title}{s.kind === 'rent' ? ' · icarəçi' : ''}{!s.active ? ' · dayandırılıb' : ''}</span></span></span></div>
+                  <div className="tz-c mono">{formatMoney(s.amount)} · {payDayText(s.pay_day)}</div>
+                  <div className="tz-c">{p ? <Chip tone={p.status === 'paid' ? 'done' : p.status === 'pending' ? 'deposit' : 'neutral'}>{p.status === 'paid' ? 'Ödənib' : p.status === 'pending' ? 'Gözləyir' : 'Bu ay yox'}</Chip> : <span className="tz-faint">—</span>}</div>
+                  <div className="tz-c tz-actions tz-actions--end">
+                    {p?.status === 'pending' && <Button size="row" disabled={!online || act.busy} onClick={() => pay(p.id, 'paid', s.client_name)}>Ödənildi</Button>}
+                    {p?.status === 'paid' && <Button size="row" variant="text" disabled={!online || act.busy} onClick={() => pay(p.id, 'unpaid', s.client_name)}>Geri al</Button>}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </Gate>
+      {act.err && <ErrorBox title="Alınmadı" detail={act.err} />}
+      <SubDialog open={add} onClose={() => setAdd(false)} onDone={list.reload} />
+    </Card>
+  );
+}
+
 /** Paketlər və qiymətlər (30-paketler.md). Routes: /tenzimleme/paketler, /tenzimleme/paketler/yeni, ?paket-sat=1, köhnə /packages. */
 export function Paketler() {
   const { path, query } = useRoute();
@@ -256,6 +365,8 @@ export function Paketler() {
             {th}{ended.map(row)}
           </Card>
         )}
+
+        <Subscriptions />
       </div>
       <SellDialog open={sell} onClose={closeSell} onDone={pk.reload} grid={grid} owner0={owner0} packages={pk.data ?? []} />
     </>

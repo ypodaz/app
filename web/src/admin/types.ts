@@ -45,6 +45,13 @@ export type Package = {
   cameras: number; starts_on: string; ends_on: string; price_paid: number; members: Member[];
 };
 
+/** Aylıq abunə (server/routes/admin_subscriptions.py): pay_day 0 = ayın son günü, məbləğ qəpiklə. */
+export type SubscriptionPayment = { id: number; period: string; status: 'pending' | 'paid' | 'skipped'; amount: number; due_on: string; paid_at: string | null };
+export type Subscription = {
+  id: number; client_id: number; client_name: string; title: string; kind: 'client' | 'rent'; amount: number; pay_day: number; active: boolean;
+  visits_per_month: number | null; starts_on: string; note: string | null; payments: SubscriptionPayment[];
+};
+
 export type LedgerRow = { id: number; kind: 'earn' | 'earn_first' | 'spend' | 'spend_return' | 'manual' | 'profile_bonus' | 'referral' | 'birthday'; amount: number; note: string; shoot_id: number | null; created_at: string };
 export type ClientDetail = Client & {
   notes: string | null; deposit_required: boolean; cashback_balance: number;
