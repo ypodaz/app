@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 from auth import current_admin
-from crm import conf, events, friends, instagram, social_inbox, social_tg
+from crm import conf, events, friends, instagram, social_inbox, social_tg, typing_state
 from crm.tg import MAX_REGENERATE
 from db import aware, get_db, now
 from models import SocialItem
@@ -127,7 +127,7 @@ def dm_open(thread: str, db: DB = Depends(get_db)):
         if (role == "user" and t < start) or (role == "model" and text.strip() not in ours):
             msgs.append({"key": f"h{n}", "role": "in" if role == "user" else "you", "text": text, "at": _ts(t)})
     msgs.sort(key=lambda m: m["at"] or "")
-    return {"thread_id": thread, "author": _author(items), "mode": social_inbox.ig_mode(db, thread),
+    return {"thread_id": thread, "author": _author(items), "bot_typing": typing_state.is_typing(f"ig:{thread}"), "mode": social_inbox.ig_mode(db, thread),
             "lead_id": social_inbox.item_lead_id(db, items[-1]), "friend": friends.is_ig_friend(db, thread),
             "park": _park(db, thread), "thread_events": events.listing(db, events.IG, thread), "window_open": _window_open(items), "window_expires_at": iso(aware(items[-1].created_at) + instagram.WINDOW),
             "messages": msgs, "pending": [item_out(i) for i in items if i.status == "pending"]}

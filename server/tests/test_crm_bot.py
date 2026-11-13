@@ -1107,3 +1107,11 @@ def test_inbox_park_theirs_archive_and_back(api, crm_env):
     assert api.post(f"/api/admin/inbox/{conv_id}/park", json={"to": None}, headers=adm).json()["park"] is None
     assert api.post(f"/api/admin/inbox/{conv_id}/park", json={"to": "x"}, headers=adm).status_code == 422
     assert crm_env.kapso() == []
+
+
+def test_polish_replaces_bookish_phrases():
+    from crm.bot import polish
+    assert polish("2 kamera ilə 240 AZN təşkil edir.") == "2 kamera ilə 240 AZN-dir."
+    assert polish("Podkast planlaşdırırsınız, yoxsa Reels?") == "Podkast fikirləşirsiniz, yoxsa Reels?"
+    assert polish("Qalan məbləğ studiyada ödənilir.") == "Qalan hissə studiyada ödənilir."
+    assert polish("Salam! 1 saatı 70 AZN-dir.") == "Salam! 1 saatı 70 AZN-dir."

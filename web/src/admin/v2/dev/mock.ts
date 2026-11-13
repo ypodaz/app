@@ -207,7 +207,7 @@ function insanlarMock(path: string, p: string, method: string): unknown {
     const prevMonth = new URLSearchParams(path.split('?')[1] ?? '').get('month') !== baku_month();
     const k = prevMonth ? 1.1 : 1;
     return { month: new URLSearchParams(path.split('?')[1] ?? '').get('month'), cash: { deposits: Math.round(120000 * k), at_studio: Math.round(310000 * k), packages: 56000, refunds: 5000, net: Math.round(481000 * k) },
-      shoots: { completed: 31, cancelled: 2, no_show: 1, upcoming: 6, minutes: 3720, revenue: 486000, discounts: 12000, retained: 5000, by_kind: { shoot: { count: 20, minutes: 2400, total: 320000 }, reels_pack: { count: 8, minutes: 960, total: 110000 }, studio_rent: { count: 3, minutes: 360, total: 56000 } } },
+      shoots: { completed: 31, cancelled: 2, no_show: 1, upcoming: 6, minutes: 3720, revenue: 486000, discounts: 12000, retained: 5000, by_kind: { shoot: { count: 20, minutes: 2400, total: 320000 }, reels_pack: { count: 8, minutes: 960, total: 110000 }, single_reel: { count: 4, minutes: 240, total: 28000 }, studio_rent: { count: 3, minutes: 360, total: 56000 } } },
       packages_sold: 2, cashback: { earned: 38000, manual: 2800, bonuses: 4000, spent: 9000, liability: 210000 },
       growth: { new_clients: 9, by_source: { instagram: 5, referral: 3, unknown: 1 }, referrals: 3, repeat_rate: 38, avg_check: 15700, avg_client_value: 31000, bonuses: { profile_bonus: 1000, referral: 3000, birthday: 0 }, campaigns: { count: 2, recipients: 60, opened: 41, booked_14d: 4 } } };
   }

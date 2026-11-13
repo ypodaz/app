@@ -12,7 +12,7 @@ type ByKind = { count: number; minutes: number; total: number };
 type ReportData = {
   month: string;
   cash: { deposits: number; at_studio: number; packages: number; refunds: number; net: number };
-  shoots: { completed: number; cancelled: number; no_show: number; upcoming: number; minutes: number; revenue: number; discounts: number; retained: number; by_kind: Partial<Record<'shoot' | 'reels_pack' | 'studio_rent', ByKind>> };
+  shoots: { completed: number; cancelled: number; no_show: number; upcoming: number; minutes: number; revenue: number; discounts: number; retained: number; by_kind: Partial<Record<'shoot' | 'reels_pack' | 'single_reel' | 'studio_rent', ByKind>> };
   packages_sold: number;
   cashback: { earned: number; manual: number; spent: number; liability: number; bonuses?: number };
   growth?: {
@@ -23,7 +23,7 @@ type ReportData = {
 };
 
 const MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun', 'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr'];
-const KINDS: [keyof ReportData['shoots']['by_kind'], string][] = [['shoot', 'Çəkiliş'], ['reels_pack', 'Reels paketi'], ['studio_rent', 'Studiya icarəsi']];
+const KINDS: [keyof ReportData['shoots']['by_kind'], string][] = [['shoot', 'Çəkiliş'], ['reels_pack', 'Reels paketi'], ['single_reel', 'Tək Reels'], ['studio_rent', 'Studiya icarəsi']];
 
 function shiftMonth(m: string, n: number): string {
   const [y, mo] = m.split('-').map(Number);

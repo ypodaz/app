@@ -9,7 +9,7 @@ import './tenzimleme.css';
 
 export const KIND: Record<CampaignKind, string> = { manual: 'Əl ilə', winback: 'Geri qaytarma', cashback: 'Keşbek xatırlatma', birthday: 'Ad günü', review: 'Rəy sorğusu' };
 const MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avqust', 'sentyabr', 'oktyabr', 'noyabr', 'dekabr'];
-const SERVICES: Record<string, string> = { podcast: 'Podcast', reels: 'Reels', other: 'Digər', reels_pack: 'Reels paketi', studio_rent: 'Studiya icarəsi' };
+const SERVICES: Record<string, string> = { podcast: 'Podcast', reels: 'Reels', other: 'Digər', reels_pack: 'Reels paketi', single_reel: 'Tək Reels', studio_rent: 'Studiya icarəsi' };
 const PRESETS: Record<string, string> = { package_candidates: 'Paketə keçid namizədləri', podcast_no_reels: 'Podcast çəkib, Reels yox' };
 const when = (iso: string) => `${dmy(bakuParts(iso).date)}, ${bakuParts(iso).time}`;
 

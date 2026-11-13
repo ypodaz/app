@@ -72,7 +72,7 @@ export type LeadEventRow = { kind: string; data: Record<string, unknown> | null;
 /** Söhbət tarixçəsi sətri (müştəriyə görünmür): daxili qeyd (note) və ya sistem sətri (system). */
 export type ThreadEvent = { id: number; kind: 'note' | 'system'; text: string; meta: { code?: string; author?: string } | null; created_at: string };
 export type ConvOpen = {
-  id: number; mode: ConvMode; unread: number; contact: Contact & { bot_muted_until: string | null };
+  id: number; mode: ConvMode; unread: number; bot_typing?: boolean; contact: Contact & { bot_muted_until: string | null };
   messages: Msg[]; drafts: Draft[]; lead: Lead | null; window_expires_at: string | null; window_open: boolean;
   client?: ClientCard | null; wait_since?: string | null; park?: Park | null; events?: LeadEventRow[]; thread_events?: ThreadEvent[];
 };

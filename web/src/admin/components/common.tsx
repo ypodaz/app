@@ -6,7 +6,7 @@ export const TAG: Record<string, string> = { podcast: 'Podcast', reels: 'Reels',
 
 /** "Çəkiliş · Podcast" / "Reels paketi" / "Studiya icarəsi" */
 export function serviceName(s: Pick<Shoot, 'kind' | 'tag'>): string {
-  return s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : `Çəkiliş · ${TAG[s.tag]}`;
+  return s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'single_reel' ? 'Tək Reels' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : `Çəkiliş · ${TAG[s.tag]}`;
 }
 
 export function Err({ msg }: { msg: string }) {
@@ -31,6 +31,7 @@ export function depositPending(s: Shoot): boolean {
 export function shootDesc(s: Shoot): string {
   if (s.kind === 'studio_rent') return 'Studiya icarəsi';
   if (s.kind === 'reels_pack') return `Reels paketi · ${s.location === 'studio' ? 'Studiyada' : 'Məkanda'}`;
+  if (s.kind === 'single_reel') return 'Tək Reels · Studiyada';
   return [serviceName(s), s.location === 'studio' ? 'Studiyada' : 'Məkanda', `${s.cameras} kamera`, s.editing && 'montaj', s.package_id && 'paketdən']
     .filter(Boolean).join(' · ');
 }

@@ -15,7 +15,7 @@ import ai
 import alerts
 import tgtopics
 from ai import WD, AiError
-from crm import bot_prompt, chat, conf, contacts, customer_card, events, kapso, slots, tg, turns, voice
+from crm import bot_prompt, chat, conf, contacts, customer_card, events, kapso, slots, tg, turns, typing_state, voice
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -29,6 +29,15 @@ FORBIDDEN = ("icarə", "kirayə", "ən yaxşı")
 # Türk sözləri azərbaycanca cavabda qadağandır; müştəri türkcə yazıbsa (language=tr) yoxlanmır.
 FORBIDDEN_NON_TR = ("ekip", "kesin", " için")
 LANGS = ("az", "ru", "en", "tr")
+# Model qaydaya baxmayaraq kitab dili işlədir (v15 sınağında 86-dan 2–4 ssenari): göndərməzdən əvvəl danışıq dilinə çevrilir
+POLISH = (
+    (re.compile(r"(\d+(?:[.,]\d+)?\s*AZN)\s+təşkil edir"), r"\1-dir"),
+    (re.compile(r"təşkil edir"), "edir"),
+    (re.compile(r"planlaşdırırsınız"), "fikirləşirsiniz"),
+    (re.compile(r"Planlaşdırırsınız"), "Fikirləşirsiniz"),
+    (re.compile(r"([Qq])alan məbləğ"), r"\1alan hissə"),
+    (re.compile(r"məbləğ"), "qiymət"),
+)
 SERVICES = ("podkast", "reels", "korporativ", "diger")
 STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
 BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
@@ -130,6 +139,13 @@ def parse_reply(text: str) -> dict:
     }
 
 
+def polish(reply: str) -> str:
+    """Qadağan kitab ifadələrini danışıq dilinə çevirir («340 AZN təşkil edir» → «340 AZN-dir»)."""
+    for rx, to in POLISH:
+        reply = rx.sub(to, reply)
+    return reply
+
+
 def check_filter(reply: str, language: str | None = None) -> str | None:
     """Müştəriyə getməzdən əvvəl: kart nömrəsi ehtimalı, qadağan söz, uzunluq. Pozuntunun səbəbini qaytarır."""
     if re.search(r"\d{12,}", re.sub(r"[\s\-]", "", reply)):
@@ -205,6 +221,7 @@ def converse(system: str, contents: list[dict]) -> tuple[dict, tuple[int, int], 
         used[1] += out["usage"][1]
         try:
             res = parse_reply(ai.text_of(out["content"]))
+            res["reply"] = polish(res["reply"])
         except BotFormatError as e:
             res, problem = None, f"cavab JSON deyil ({e})"
         else:
@@ -451,7 +468,8 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
             system += (f"\nSAHİBKARIN GÖSTƏRİŞİ: «{instruction[:500]}». Yeni cavabda buna əməl et; faktlar, qiymətlər "
                        "və yuxarıdakı qaydalar yenə keçərlidir.")
     try:
-        res, usage, problem = converse(system, contents_from(_history(db, conv)))
+        with typing_state.generating(f"wa:{conv.id}"):
+            res, usage, problem = converse(system, contents_from(_history(db, conv)))
     except AiError as e:
         conv.mode = "human"
         db.commit()

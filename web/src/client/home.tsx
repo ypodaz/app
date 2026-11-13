@@ -22,7 +22,7 @@ const lower = (s: string) => s.toLocaleLowerCase('az');
 const pad = (n: number) => String(n).padStart(2, '0');
 const TAG: Record<string, string> = { podcast: 'Podcast', reels: 'Reels', other: 'Çəkiliş' };
 
-const kindLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : TAG[s.tag] ?? s.tag);
+const kindLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'single_reel' ? 'Tək Reels' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : TAG[s.tag] ?? s.tag);
 function setupLabel(s: Shoot) {
   const extras = [s.editing ? 'montaj' : '', s.reels_count ? `${s.reels_count} Reels` : ''].filter(Boolean);
   return `${s.cameras} kamera${extras.length ? ' + ' + extras.join(' + ') : ''}`;

@@ -16,7 +16,7 @@ import growth
 import money
 import subscriptions
 from auth import current_admin
-from crm import chat, events
+from crm import chat, events, today_stats
 from db import get_db, now
 from models import Admin, Block, CashbackLedger, Client, ConversationEvent, Material, Package, PackageMember, PushSubscription, Shoot, SubscriptionPayment, WaContact, WaConversation
 from routes.admin import blank_to_none, client_full, client_out
@@ -623,7 +623,8 @@ def dashboard(db: DB = Depends(get_db)):
     awaiting = db.scalars(select(Shoot.id).where(Shoot.status == "completed", Shoot.editing.is_(True),
                                                  Shoot.production != "ready")).all()
     return {"deposit_pending": shoots_out(db, list(pending)), "today": shoots_out(db, list(today)),
-            "unclosed_count": len(unclosed), "awaiting_material_count": len(awaiting), "app_usage": app_usage(db)}
+            "unclosed_count": len(unclosed), "awaiting_material_count": len(awaiting), "app_usage": app_usage(db),
+            "bot_handled_today": today_stats.bot_handled_today(db)}
 
 
 def app_usage(db: DB) -> dict:

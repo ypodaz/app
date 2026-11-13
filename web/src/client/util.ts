@@ -79,7 +79,7 @@ export type Shoot = {
 };
 
 const TAG: Record<string, string> = { podcast: 'Podcast', reels: 'Reels', other: 'Digər' };
-export const serviceLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : `Çəkiliş · ${TAG[s.tag] ?? s.tag}`);
+export const serviceLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'single_reel' ? 'Tək Reels' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : `Çəkiliş · ${TAG[s.tag] ?? s.tag}`);
 export const placeLabel = (s: Shoot) => (s.location === 'studio' ? 'Studiyada' : s.address ? `Sizin məkanda · ${s.address}` : 'Sizin məkanda');
 export const editLabel = (s: Shoot) =>
   s.kind === 'studio_rent' ? '' : s.kind === 'reels_pack' ? `${s.reels_count} Reels` : s.editing ? (s.reels_count ? `Montaj + ${s.reels_count} Reels` : 'Var · Reels yoxdur') : 'Yoxdur';

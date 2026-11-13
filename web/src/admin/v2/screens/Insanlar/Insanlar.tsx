@@ -145,7 +145,7 @@ export function Insanlar({ tab, view }: { tab: InsanTab; view: 'cedvel' | 'lovhe
         )}
         {tab === 'hamisi' && <PeopleView q={q} onReset={() => setQ('')} />}
       </section>
-      <NewContactDialog open={add} initialName={q.trim()} onClose={() => setAdd(false)} onCreated={(c) => { setAdd(false); clients.reload(); go(`insanlar/${c.id}`); }} />
+      <NewContactDialog open={add} initialName={/\d{3}/.test(q) ? '' : q.trim()} initialPhone={/\d{3}/.test(q) ? q.trim() : ''} onClose={() => setAdd(false)} onCreated={(c) => { setAdd(false); clients.reload(); go(`insanlar/${c.id}`); }} />
     </>
   );
 }

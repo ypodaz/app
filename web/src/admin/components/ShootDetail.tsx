@@ -38,6 +38,7 @@ export function ShootDetail({ id }: { id: number }) {
   const off = s.status === 'cancelled';
   const lines: [string, number][] = s.kind === 'reels_pack'
     ? [['Reels paketi', s.price_base]]
+    : s.kind === 'single_reel' ? [['Tək Reels', s.price_base]]
     : s.kind === 'studio_rent' ? [[`Studiya icarəsi · ${formatHours(s.duration_min)}`, s.price_base]]
     : [[s.package_id ? 'Paketdən saatlar' : `${s.cameras} kameralı ${formatHours(s.duration_min)} çəkiliş`, s.price_base], ['Əlavə kamera', s.price_extra_camera], ['Montaj', s.price_editing], [`Podcastdan Reels · ${s.reels_count} əd.`, s.price_reels]];
   const d = bakuParts(s.starts_at).date;

@@ -187,7 +187,7 @@ export function Today() {
             );
           }) : <MobileList items={items} leaving={leaving} rowAction={rowAction} primaryRef={primaryRef} online={online} />}
           {desk && raw && !emptyQueue && current && (
-            <div className="q-foot"><span>{/* TODO [API] «Bitirdiniz: N · bot özü apardı: N söhbət» sayğacları: bu günün görülən işləri serverdə hesablanmır. */}</span>
+            <div className="q-foot"><span>{(raw.dash.bot_handled_today ?? 0) > 0 && `bot özü apardı: ${raw.dash.bot_handled_today} söhbət`}</span>
               <span>Bağlanma: {current.client_name} · <span className="mono">{fmtLeft(endMs(current.starts_at, current.duration_min) - now)}</span> sonra</span></div>
           )}
         </Card>

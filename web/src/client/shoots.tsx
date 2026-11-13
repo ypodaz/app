@@ -20,7 +20,7 @@ export const StatusChip = ({ s }: { s: Shoot }) => {
   return <span className={`nstat nstat-${c.tone}`}><i aria-hidden="true" />{c.label}</span>;
 };
 
-export const kindLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : s.tag === 'podcast' ? 'Podcast' : s.tag === 'reels' ? 'Reels' : 'Çəkiliş');
+export const kindLabel = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'single_reel' ? 'Tək Reels' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : s.tag === 'podcast' ? 'Podcast' : s.tag === 'reels' ? 'Reels' : 'Çəkiliş');
 const setup = (s: Shoot) => {
   const extras = [s.editing ? 'montaj' : '', s.reels_count ? `${s.reels_count} Reels` : ''].filter(Boolean);
   return `${s.cameras} kamera${extras.length ? ' + ' + extras.join(' + ') : ''}`;

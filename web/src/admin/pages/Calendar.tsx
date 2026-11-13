@@ -26,7 +26,7 @@ const shortName = (n: string | null) => {
   return w.length > 1 ? `${w[0]} ${w[w.length - 1][0].toUpperCase()}.` : w[0] ?? '';
 };
 /** Çəkilişin növü: "Podcast" / "Reels" / "Studiya icarəsi". */
-const tagName = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : TAG[s.tag]);
+const tagName = (s: Shoot) => (s.kind === 'reels_pack' ? 'Reels' : s.kind === 'single_reel' ? 'Tək Reels' : s.kind === 'studio_rent' ? 'Studiya icarəsi' : TAG[s.tag]);
 const place = (s: Shoot) => (s.location === 'studio' ? 'Studiyada' : 'Məkanda');
 /** ISO həftə nömrəsi. */
 function isoWeek(date: string): number {

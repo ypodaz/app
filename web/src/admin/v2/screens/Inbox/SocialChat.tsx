@@ -38,7 +38,7 @@ const UNDO_MS = 5000; // 99 G2
 
 type DmMsg = { key: string; role: 'in' | 'bot' | 'you'; text: string; at: string };
 type DmOpen = {
-  thread_id: string; author: string; mode: SocialMode; window_open: boolean; window_expires_at: string | null; lead_id: number | null;
+  thread_id: string; author: string; bot_typing?: boolean; mode: SocialMode; window_open: boolean; window_expires_at: string | null; lead_id: number | null;
   messages: DmMsg[]; pending: SocialItem[]; friend?: boolean; thread_events?: ThreadEvent[]; park?: { to: 'theirs' | 'archive'; at: string } | null;
 };
 type PostOpen = {
@@ -76,6 +76,7 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
   const conv = useLoad<DmOpen>(`/social-inbox/dm/${encodeURIComponent(thread)}`);
   usePoll(conv.reload, 10_000);
   const data = conv.data?.thread_id === thread ? conv.data : null;
+  usePoll(() => { if (data?.bot_typing) conv.reload(); }, 4_000); // «Bot yazır…» yalnız yazarkən tez yenilənir
   const [hidden, setHidden] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [sendErr, setSendErr] = useState('');
@@ -246,6 +247,7 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
               </Fragment>
             );
           })}
+          {data.bot_typing && <div className="ibt__sys" role="status">Bot yazır…</div>}
           {noDraftPending && !draftItem && <div className="ibt__sys">Bot bu mesaja qaralama yaza bilmədi · özünüz cavab yazın</div>}
           <div ref={endRef} />
         </div>

@@ -61,7 +61,7 @@ export type ClientDetail = Client & {
 };
 
 export type AppUsage = { clients: number; joined: number; home_screen: number; push_on: number; active_7d: number };
-export type Dashboard = { deposit_pending: Shoot[]; today: Shoot[]; unclosed_count: number; awaiting_material_count: number; app_usage: AppUsage };
+export type Dashboard = { deposit_pending: Shoot[]; today: Shoot[]; unclosed_count: number; awaiting_material_count: number; app_usage: AppUsage; bot_handled_today?: number };
 
 export type Conflict =
   | { type: 'shoot'; id: number; client_id: number; starts_at: string; duration_min: number }

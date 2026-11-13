@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import AiError
-from crm import bot, conf, contacts, events, friends, instagram, social_tg, turns, voice, youtube
+from crm import bot, conf, contacts, events, friends, instagram, social_tg, turns, typing_state, voice, youtube
 from db import SessionLocal, aware, now
 from models import Lead, SocialItem, WaContact
 
@@ -460,7 +460,8 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
                    "ifadələr. Faktlar və qaydalar eyni qalır.")
     regen, from_id = (item.model_output or {}).get("regen", 0), (item.model_output or {}).get("from_id")
     try:
-        res, usage, problem = bot.converse(system, bot.contents_from(_history(db, item)))
+        with typing_state.generating(f"ig:{item.thread_id}"):
+            res, usage, problem = bot.converse(system, bot.contents_from(_history(db, item)))
     except AiError as e:
         item.status, item.model_output, item.decided_at = "ignored", {"error": str(e)[:300], "regen": regen}, now()
         db.commit()

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import booking
 from auth import current_admin, new_card_code
-from crm import bot, chat, conf, events, kapso, turns
+from crm import bot, chat, conf, events, friends, kapso, turns, typing_state
 from db import aware, get_db, now
 from models import (BotDraft, Client, Faq, Lead, LeadEvent, QuickReply, UnansweredQuestion, WaContact, WaConversation,
                     Shoot, WaMessage)
@@ -128,7 +128,7 @@ def inbox_open(conv_id: int, db: DB = Depends(get_db)):
                       .order_by(WaMessage.created_at, WaMessage.id)).all()
     drafts = db.scalars(select(BotDraft).where(BotDraft.conversation_id == c.id).order_by(BotDraft.id)).all()
     lead = db.get(Lead, c.lead_id) if c.lead_id else None
-    return {"id": c.id, "mode": c.mode, "unread": c.unread,
+    return {"id": c.id, "mode": c.mode, "unread": c.unread, "bot_typing": typing_state.is_typing(f"wa:{c.id}"),
             "contact": {"id": ct.id, "name": ct.name, "phone": ct.phone, "excluded": ct.excluded,
                         "bot_muted_until": iso(ct.bot_muted_until)},
             "messages": [msg_out(m) for m in msgs], "drafts": [draft_out(d) for d in drafts],
@@ -267,10 +267,7 @@ class ExcludeIn(BaseModel):
 @router.post("/contacts/{contact_id}/exclude")
 def contact_exclude(contact_id: int, body: ExcludeIn, db: DB = Depends(get_db)):
     ct = get_or_404(db, WaContact, contact_id, "Kontakt")
-    if ct.excluded != body.excluded:
-        for cid in db.scalars(select(WaConversation.id).where(WaConversation.contact_id == ct.id)):
-            events.friend_changed(db, events.WA, cid, body.excluded)
-    ct.excluded = body.excluded
+    friends.set_wa(db, ct, body.excluded)  # «Dostdur» düyməsi ilə eyni: qaralamalar rədd, hadisə, human→bot
     db.commit()
     return {"id": ct.id, "excluded": ct.excluded}
 

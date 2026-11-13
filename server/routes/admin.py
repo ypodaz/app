@@ -144,9 +144,20 @@ def list_clients(db: DB = Depends(get_db)):
     } for c in clients]
 
 
+def reject_dup_phone(db: DB, phone: str) -> None:
+    """Son 9 rəqəmi eyni olan müştəri varsa 409 + mövcud kartın id-si (POST /clients və /contacts)."""
+    tail = re.sub(r"\D", "", phone)[-9:]
+    for c in db.scalars(select(Client).where(Client.phone != "")):
+        if re.sub(r"\D", "", c.phone)[-9:] == tail:
+            raise HTTPException(409, {"message": f"Bu nömrə artıq «{c.full_name}» kartındadır", "client_id": c.id})
+
+
 @router.post("/clients")
 def add_client(body: ClientIn, db: DB = Depends(get_db)):
-    c = Client(full_name=clean_name(body.full_name), phone=clean_phone(body.phone), card_code=new_card_code())
+    phone = clean_phone(body.phone)
+    if len(re.sub(r"\D", "", phone)) >= 7:  # telefon könüllüdür; yalnız real nömrə təkrarlananda rədd
+        reject_dup_phone(db, phone)
+    c = Client(full_name=clean_name(body.full_name), phone=phone, card_code=new_card_code())
     db.add(c)
     db.commit()
     return client_out(c)
@@ -166,9 +177,7 @@ def add_contact(body: ContactIn, db: DB = Depends(get_db)):
     tail = re.sub(r"\D", "", phone)[-9:]
     if len(tail) < 7:
         raise HTTPException(422, "Telefon nömrəsi düzgün deyil")
-    for c in db.scalars(select(Client).where(Client.phone != "")):
-        if re.sub(r"\D", "", c.phone)[-9:] == tail:
-            raise HTTPException(409, {"message": f"Bu nömrə artıq «{c.full_name}» kartındadır", "client_id": c.id})
+    reject_dup_phone(db, phone)
     c = Client(full_name=name, phone=phone, notes=body.note.strip(), card_code=new_card_code())
     db.add(c)
     db.commit()

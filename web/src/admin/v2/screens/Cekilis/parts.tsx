@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ApiError } from '../../../../shared/api';
 import { useAction, useAuth, useLoad } from '../../../ctx';
 import { initials, parseAzn } from '../../../format';
 import type { Client } from '../../../types';
@@ -61,19 +62,30 @@ export function ClientPicker({ onPick, onCancel, initialQuery = '' }: { onPick: 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const act = useAction();
+  const [dup, setDup] = useState<number | null>(null);
   const s = q.trim().toLowerCase();
   const digits = s.replace(/\D/g, '');
   const list = (data ?? []).filter((c) => !s || c.full_name.toLowerCase().includes(s) || (digits.length >= 3 && c.phone.replace(/\D/g, '').includes(digits))).slice(0, 30);
   async function create() {
-    const c = await act.run(() => call<Client>('/clients', { body: { full_name: name.trim(), phone } }));
+    setDup(null);
+    const c = await act.run(async () => {
+      try { return await call<Client>('/clients', { body: { full_name: name.trim(), phone } }); }
+      catch (e) {  // 409: eyni nömrə artıq kartdadır → mövcud müştərini seçməyi təklif et
+        const d = e instanceof ApiError && e.status === 409 ? (e.data as { client_id?: number } | undefined) : undefined;
+        if (d?.client_id) setDup(d.client_id);
+        throw e;
+      }
+    });
     if (c) { reload(); onPick(c); }
   }
+  const dupClient = dup ? (data ?? []).find((c) => c.id === dup) : undefined;
   if (adding) {
     return (
       <div className="ck-pick">
         <Field label="Ad və soyad">{(id) => <TextInput id={id} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" placeholder="məs. Nümunə Müştəri" autoFocus />}</Field>
         <Field label="Telefon" hint="Dəvət linki bu nömrəyə WhatsApp ilə göndəriləcək.">{(id) => <TextInput id={id} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="055 000 00 00" />}</Field>
         {act.err && <span className="field__err" role="alert">{act.err}</span>}
+        {dupClient && <div><Button size="sm" variant="secondary" onClick={() => onPick(dupClient)}>Mövcud müştərini seç: {dupClient.full_name}</Button></div>}
         <div className="ck-row-end">
           <Button variant="text" onClick={() => setAdding(false)}>Siyahıya qayıt</Button>
           <Button disabled={name.trim().length < 2 || act.busy} onClick={create}>Yarat və seç</Button>

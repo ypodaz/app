@@ -1,3 +1,4 @@
+import itertools
 import os
 import sys
 from datetime import timedelta
@@ -44,7 +45,11 @@ def admin_token(api):
     return r.json()["token"]
 
 
-def invite_link(api, adm, name="Aysel Məmmədova", phone="055 530 35 32"):
+_phones = itertools.count(1)
+
+
+def invite_link(api, adm, name="Aysel Məmmədova", phone=None):
+    phone = phone or f"055 530 {next(_phones):04d}"  # POST /clients təkrar nömrəni rədd edir: hər çağırışa ayrı nömrə
     cid = api.post("/api/admin/clients", json={"full_name": name, "phone": phone}, headers=bearer(adm)).json()["id"]
     r = api.post(f"/api/admin/clients/{cid}/invite", headers=bearer(adm)).json()
     return cid, r
@@ -56,7 +61,7 @@ def token_of(url):
 
 def test_invite_redeem_and_me(api):
     adm = admin_token(api)
-    _, inv = invite_link(api, adm)
+    _, inv = invite_link(api, adm, phone="055 530 35 32")
     assert inv["url"].startswith(settings.APP_URL + "?i=")
     assert inv["whatsapp_url"].startswith("https://wa.me/994555303532?text=")
     r = api.post("/api/auth/redeem", json={"token": token_of(inv["url"])})

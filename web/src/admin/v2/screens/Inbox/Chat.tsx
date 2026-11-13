@@ -59,6 +59,7 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const conv = useLoad<ConvOpen>(`/inbox/${id}`);
   usePoll(conv.reload, 10_000);
   const data = conv.data?.id === id ? conv.data : null;
+  usePoll(() => { if (data?.bot_typing) conv.reload(); }, 4_000); // «Bot yazır…» yalnız yazarkən tez yenilənir
 
   const [menu, setMenu] = useState(false);
   const [more, setMore] = useState(false); // ⋯ menyusu
@@ -260,7 +261,6 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const reason = mode === 'wait' ? [...data.drafts].reverse().find((d) => d.model_output?.handoff_reason)?.model_output?.handoff_reason : null;
   const tevents = data.thread_events ?? [];
   const reasonLogged = tevents.some((e) => e.meta?.code === 'handoff_reason'); // yeni söhbətlərdə səbəb sistem sətridir
-  // TODO [API] «Bot yazır» göstəricisi: bot cavab hazırlayarkən vəziyyət serverdə açıq deyil, gizlədilib.
   const noteTab = tabSel === 'note' && !mobile;
   const showFree = !draft && (mode !== 'bot' || writing);
   const timeline = mergeTimeline(data.messages, (m) => m.created_at, tevents);
@@ -300,6 +300,7 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
               </Fragment>
             );
           })}
+          {data.bot_typing && <div className="ibt__sys" role="status">Bot yazır…</div>}
           {reason && !reasonLogged && <div className="ibt__sys ibt__sys--why">Bot niyə ötürdü: {reason}</div>}
           <div ref={endRef} />
         </div>

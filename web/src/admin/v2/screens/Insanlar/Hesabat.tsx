@@ -11,7 +11,7 @@ type ByKind = { count: number; minutes: number; total: number };
 type ReportData = {
   month: string;
   cash: { deposits: number; at_studio: number; packages: number; refunds: number; net: number };
-  shoots: { completed: number; cancelled: number; no_show: number; upcoming: number; minutes: number; revenue: number; discounts: number; retained: number; by_kind: Partial<Record<'shoot' | 'reels_pack' | 'studio_rent', ByKind>> };
+  shoots: { completed: number; cancelled: number; no_show: number; upcoming: number; minutes: number; revenue: number; discounts: number; retained: number; by_kind: Partial<Record<'shoot' | 'reels_pack' | 'single_reel' | 'studio_rent', ByKind>> };
   packages_sold: number;
   compare?: { days: number; net: number; prev_net: number };
   cashback: { earned: number; manual: number; spent: number; liability: number; bonuses?: number };
@@ -23,7 +23,7 @@ type ReportData = {
 };
 
 const MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun', 'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr'];
-const KINDS: [keyof ReportData['shoots']['by_kind'], string][] = [['shoot', 'Çəkiliş'], ['reels_pack', 'Reels paketi'], ['studio_rent', 'Müştəri özü çəkir']];
+const KINDS: [keyof ReportData['shoots']['by_kind'], string][] = [['shoot', 'Çəkiliş'], ['reels_pack', 'Reels paketi'], ['single_reel', 'Tək Reels'], ['studio_rent', 'Müştəri özü çəkir']];
 const BONUS: [keyof NonNullable<ReportData['growth']>['bonuses'], string][] = [['profile_bonus', 'Profil bonusu'], ['referral', 'Dəvət bonusu'], ['birthday', 'Ad günü hədiyyəsi']];
 const srcName = (k: string) => (k === 'unknown' ? 'Bilinmir' : SOURCES.find(([s]) => s === k)?.[1] ?? k);
 
