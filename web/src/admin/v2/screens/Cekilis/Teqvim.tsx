@@ -15,7 +15,6 @@ import { ShootPanel, type PanelDialog } from './ShootPanel';
 import { DAY_MAX, DAY_MIN, EV, Ic, SRC_LABEL, freeCopyText, freeOfDay, monthName, needsMe, nextStep, personName, rangeTxt, refresh, srcOf, visibleInCalendar, waitingSort, weekRangeText } from './bits';
 
 const PX = 44;
-const HOURS = Array.from({ length: (DAY_MAX - DAY_MIN) / 60 + 1 }, (_, i) => 8 + i);
 type View = 'gun' | 'hefte' | 'ay';
 const VIEW_LABEL: Record<View, string> = { gun: 'Gün', hefte: 'Həftə', ay: 'Ay' };
 
@@ -165,7 +164,11 @@ function TimeGrid({ days, today, shoots, blocks, now, selectedId, full, onSelect
   onSelect: (id: number) => void; onBlock: (b: Block) => void; onCell: (c: Cell) => void; onDay: (d: string) => void;
 }) {
   const nowP = bakuParts(new Date(now).toISOString());
-  const H = (DAY_MAX - DAY_MIN) / 60 * PX;
+  // 22:00-dan gec bitən çəkiliş şəbəkədən çıxmasın: son saat həftənin ən gec bitişinə qədər uzanır (ən çox 24:00)
+  const lastEnd = Math.max(DAY_MAX, ...days.flatMap((d) => shootsOn(shoots, d).map((s) => minutesOf(hh(s.starts_at)) + s.duration_min)));
+  const endMin = Math.min(24 * 60, Math.ceil(lastEnd / 60) * 60);
+  const hours = Array.from({ length: (endMin - DAY_MIN) / 60 + 1 }, (_, i) => 8 + i);
+  const H = (endMin - DAY_MIN) / 60 * PX;
   const y = (min: number) => ((min - DAY_MIN) / 60) * PX;
   return (
     <div className="ck-grid" style={{ ['--n' as string]: days.length }}>
@@ -178,7 +181,7 @@ function TimeGrid({ days, today, shoots, blocks, now, selectedId, full, onSelect
         ))}
       </div>
       <div className="ck-grid__body" style={{ height: H }}>
-        <div className="ck-grid__hours" aria-hidden="true">{HOURS.map((h) => <span key={h} className="mono" style={{ top: (h - 8) * PX }}>{String(h).padStart(2, '0')}</span>)}</div>
+        <div className="ck-grid__hours" aria-hidden="true">{hours.map((h) => <span key={h} className="mono" style={{ top: (h - 8) * PX }}>{String(h).padStart(2, '0')}</span>)}</div>
         {days.map((d) => {
           const list = shootsOn(shoots, d);
           return (
