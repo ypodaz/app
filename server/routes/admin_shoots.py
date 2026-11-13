@@ -14,9 +14,10 @@ from sqlalchemy.orm import Session as DB
 import booking
 import growth
 import money
+import subscriptions
 from auth import current_admin
 from db import get_db, now
-from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot
+from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot, SubscriptionPayment
 from routes.admin import blank_to_none, client_full, client_out
 from views import (baku_today, day_bounds, iso, material_out, materials_of, payment_line, shoot_core,
                    studio_balance, utc)
@@ -249,6 +250,8 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         p = money.price(kind=body.kind, location=location, cameras=body.cameras, duration_min=body.duration_min,
                         editing=editing, reels_count=reels, package_cameras=pkg.cameras if pkg else None,
                         discount=body.discount, extras=sum(e.amount for e in body.extras))
+        if subscriptions.has_free_visits(db, client.id):  # aylıq abunə: 0 AZN, keşbek yoxdur
+            p = money.Price(0, 0, 0, 0)
         money.check_cashback_use(body.cashback_use, balance, p.total, done)
         draft = Shoot(client_id=client.id, starts_at=utc(body.starts_at), kind=body.kind)
         first = booking.is_first_shoot(db, client, draft)
@@ -620,6 +623,8 @@ def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db
     at_studio = total("paid_at_studio", Shoot.closed_at)
     refunds = total("refund_amount", Shoot.refunded_at)
     pkgs = db.scalars(select(Package).where(Package.created_at >= a, Package.created_at < b)).all()
+    subs = sum(p.amount for p in db.scalars(select(SubscriptionPayment).where(
+        SubscriptionPayment.status == "paid", SubscriptionPayment.paid_at >= a, SubscriptionPayment.paid_at < b)))
     ledger = db.scalars(select(CashbackLedger).where(CashbackLedger.created_at < b)).all()
     in_month = [r for r in ledger if utc(r.created_at) >= a]
     by_kind = {}
@@ -631,7 +636,8 @@ def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db
     return {
         "month": month,
         "cash": {"deposits": deposits, "at_studio": at_studio, "packages": sum(p.price_paid for p in pkgs),
-                 "refunds": refunds, "net": deposits + at_studio + sum(p.price_paid for p in pkgs) - refunds},
+                 "subscriptions": subs, "refunds": refunds,
+                 "net": deposits + at_studio + sum(p.price_paid for p in pkgs) + subs - refunds},
         "shoots": {"completed": len(done), "cancelled": sum(s.status == "cancelled" for s in shoots),
                    "no_show": sum(s.status == "no_show" for s in shoots),
                    "upcoming": sum(s.status == "confirmed" for s in shoots),

@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DB
 
 import money
+import subscriptions
 from db import aware, now
 from views import BAKU, short_name
 from models import (AuditLog, Block, CashbackLedger, Client, Notification, Package, PackageHoursLedger,
@@ -97,7 +98,10 @@ def _notify(db: DB, client_id: int, type_: str, **payload) -> None:
     db.add(Notification(client_id=client_id, type=type_, payload=payload))
 
 
-def _price(s: Shoot, pkg: Package | None) -> money.Price:
+def _price(db: DB, s: Shoot, pkg: Package | None) -> money.Price:
+    if subscriptions.has_free_visits(db, s.client_id):  # aylıq abunə: görüş 0 AZN, keşbek yazılmır
+        s.discount, s.discount_note = 0, "Aylıq abunə"
+        return money.Price(0, 0, 0, 0)
     try:
         return money.price(kind=s.kind, location=s.location, cameras=s.cameras, duration_min=s.duration_min,
                            editing=s.editing, reels_count=s.reels_count,
@@ -209,7 +213,7 @@ def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: dat
               reels_count=reels_count, title=title, note=note, source_note=source_note, created_by=admin_id,
               discount=discount, discount_note=(discount_note or None) if discount else None,
               prep_min=prep_min, wrap_min=wrap_min, extras=list(extras))
-    _apply_price(s, _price(s, pkg))
+    _apply_price(s, _price(db, s, pkg))
     db.add(s)
     db.flush()
     _spend_cashback(db, s, cashback_use)
@@ -273,7 +277,7 @@ def close_shoot(db: DB, admin_id: int | None, s: Shoot, *, duration_min: int, pa
         s.discount = discount
     if extras is not None:
         s.extras = list(extras)
-    p = _price(s, pkg)
+    p = _price(db, s, pkg)
     if p.total < s.cashback_used + (s.deposit_amount if s.deposit_received_at else 0):
         raise Rejected("Yeni məbləğ artıq ödəniləndən azdır, əvvəl məbləği yoxlayın")
     _apply_price(s, p)
@@ -391,7 +395,7 @@ def edit_shoot(db: DB, admin_id: int | None, s: Shoot, *, starts_at: datetime, d
     s.cameras, s.editing, s.reels_count, s.title, s.note = cameras, editing, reels_count, title, note
     s.discount, s.discount_note = discount, (discount_note or None) if discount else None
     s.prep_min, s.wrap_min, s.extras = prep_min, wrap_min, list(extras)
-    _apply_price(s, _price(s, pkg))
+    _apply_price(s, _price(db, s, pkg))
     if s.cashback_used > s.total:
         raise Rejected(f"Bu çəkilişdə {money.fmt(s.cashback_used)} keşbek istifadə olunub, yeni məbləğ ondan azdır")
     if s.deposit_amount > money.to_pay(s.total, s.cashback_used):

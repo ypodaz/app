@@ -11,9 +11,10 @@ from sqlalchemy import text
 import alerts
 import push
 import settings
+import subscriptions
 from auth import ensure_admin
 from db import SessionLocal
-from routes import admin, admin_crm, admin_growth, admin_people, admin_shoots, admin_social, ai as ai_routes, client, public, webhooks
+from routes import admin, admin_crm, admin_growth, admin_people, admin_shoots, admin_social, admin_subscriptions, ai as ai_routes, client, public, webhooks
 from routes import social as social_hooks
 from crm import calendar_sync, turns, worker as crm_worker, youtube
 from social import worker as social_worker
@@ -30,7 +31,8 @@ async def lifespan(_app: FastAPI):
     alerts.notify("start", "server başladı (deploy və ya çökmədən sonra yenidən başlama)")
     tasks = [asyncio.create_task(push.loop()), asyncio.create_task(social_worker.loop()),
              asyncio.create_task(crm_worker.loop()), asyncio.create_task(youtube.loop()),
-             asyncio.create_task(turns.loop()), asyncio.create_task(calendar_sync.loop())] if settings.SCHEDULER else []
+             asyncio.create_task(turns.loop()), asyncio.create_task(calendar_sync.loop()),
+             asyncio.create_task(subscriptions.loop())] if settings.SCHEDULER else []
     yield
     for task in tasks:
         task.cancel()
@@ -62,6 +64,7 @@ app.include_router(admin_growth.router)
 app.include_router(admin_social.router)
 app.include_router(admin_crm.router)
 app.include_router(admin_people.router)
+app.include_router(admin_subscriptions.router)
 app.include_router(ai_routes.router)
 app.include_router(webhooks.router)
 app.include_router(social_hooks.router)
