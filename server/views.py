@@ -68,7 +68,7 @@ def shoot_core(s: Shoot) -> dict:
     return {
         "id": s.id, "package_id": s.package_id, "starts_at": iso(s.starts_at), "duration_min": s.duration_min,
         "kind": s.kind, "tag": s.tag, "location": s.location, "address": s.address, "cameras": s.cameras,
-        "editing": s.editing, "reels_count": s.reels_count, "title": s.title, "status": s.status,
+        "editing": s.editing, "reels_count": s.reels_count, "cover_count": s.cover_count, "title": s.title, "status": s.status,
         "production": s.production, "delivery_on": s.delivery_on,
         "price_base": s.price_base, "price_editing": s.price_editing, "price_reels": s.price_reels,
         "price_extra_camera": s.price_extra_camera, "discount": s.discount, "total": s.total,

@@ -323,7 +323,7 @@ class ConfirmIn(BaseModel):
     cameras: int = Field(ge=0, le=3)
     editing: bool
     location: Literal["studio", "onsite"]
-    kind: Literal["shoot", "reels_pack", "studio_rent"]
+    kind: Literal["shoot", "reels_pack", "studio_rent", "single_reel"]
 
 
 def _tail(phone: str | None) -> str:

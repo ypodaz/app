@@ -647,3 +647,45 @@ def test_reschedule_script_one_per_day_and_moves_buffer(api, monkeypatch):  # no
     utc20 = lambda d: datetime(2026, 11, d, 16, 0, tzinfo=timezone.utc)  # noqa: E731  Bakı 20:00
     assert [v for _, v in sorted(got.items())][1:] == [("queued", utc20(13)), ("planned", utc20(14))]
     assert calls == [("buf2", utc20(13))]  # paylaşılmış post toxunulmur, növbədəki Buffer-də də köçür
+
+
+def test_requeue_post(api):
+    from views import BAKU
+    h = bearer(admin_token(api))
+    with SessionLocal() as db:
+        seed(db, 3, start_offset_h=2, step_h=24, platforms=("tiktok", "instagram"))
+        posts = db.scalars(select(SocialPost).order_by(SocialPost.id)).all()
+        tt = [p for p in posts if p.platform == "tiktok"]
+        tt[0].status, tt[0].error, tt[0].attempts, tt[0].external_id = "error", "boom", 3, "b1"
+        tt[1].status = "queued"
+        ids = {"err": tt[0].id, "last": tt[2].id, "queued": tt[1].id}
+        db.commit()
+        last_at = tt[2].scheduled_at
+    assert api.post(f"/api/admin/social/posts/{ids['queued']}/requeue", headers=h).status_code == 409
+    assert api.post("/api/admin/social/posts/9999/requeue", headers=h).status_code == 404
+    assert api.post(f"/api/admin/social/posts/{ids['err']}/requeue").status_code == 401
+    r = api.post(f"/api/admin/social/posts/{ids['err']}/requeue", headers=h)
+    assert r.status_code == 200
+    j = r.json()
+    assert (j["status"], j["error"], j["attempts"], j["external_id"]) == ("planned", None, 0, None)
+    new = datetime.fromisoformat(j["scheduled_at"]).astimezone(BAKU)
+    old = last_at.replace(tzinfo=timezone.utc).astimezone(BAKU)
+    assert new.date() == old.date() + timedelta(days=1) and (new.hour, new.minute) == (20, 0)
+    # ikinci dəfə düşən (cancelled) post bundan da sonraya gedir
+    assert api.patch(f"/api/admin/social/posts/{ids['last']}", json={"status": "cancelled"}, headers=h).status_code == 200
+    r = api.post(f"/api/admin/social/posts/{ids['last']}/requeue", headers=h)
+    assert r.status_code == 200 and r.json()["status"] == "planned"
+
+
+def test_requeue_empty_queue_goes_tomorrow(api):
+    from views import BAKU
+    h = bearer(admin_token(api))
+    with SessionLocal() as db:
+        seed(db, 1, platforms=("youtube",))
+        p = db.scalar(select(SocialPost))
+        p.status, p.error = "error", "x"
+        db.commit()
+        pid = p.id
+    j = api.post(f"/api/admin/social/posts/{pid}/requeue", headers=h).json()
+    new = datetime.fromisoformat(j["scheduled_at"]).astimezone(BAKU)
+    assert new.date() == datetime.now(BAKU).date() + timedelta(days=1) and (new.hour, new.minute) == (20, 0)

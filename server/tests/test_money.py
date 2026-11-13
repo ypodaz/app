@@ -189,3 +189,48 @@ def test_discount_on_package_extras():
                 discount=20 * A)
     assert p.total == 80 * A
     assert m.cashback_earned(p, from_package=True, first_shoot=False) == ("earn", 0)
+
+
+def test_single_reel_fixed_40():
+    p = m.price(kind="single_reel", location="studio", cameras=0, duration_min=60, editing=False)
+    assert p.total == 40 * A and p.gross == 40 * A
+    # kamera/müddət qiymətə təsir etmir
+    assert m.price(kind="single_reel", location="studio", cameras=3, duration_min=120, editing=False).total == 40 * A
+    assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 4 * A)
+
+
+def test_single_reel_rejects_onsite_editing_package():
+    base = dict(kind="single_reel", location="studio", cameras=0, duration_min=60, editing=False)
+    # 10% qaydası Tək Reels-ə aid deyil, amma sahibkarın əl ilə yazdığı endirim (Reels paketi kimi) qəbul olunur
+    assert m.price(**base, discount=4 * A).total == 36 * A
+    with pytest.raises(ValueError, match="studiyada"):
+        m.price(**{**base, "location": "onsite"})
+    with pytest.raises(ValueError):
+        m.price(**{**base, "editing": True})
+    with pytest.raises(ValueError):
+        m.price(**base, package_cameras=1)
+
+
+def test_cover_adds_10_per_video_not_discounted():
+    p = shoot(cover_count=3)
+    assert p.cover == 30 * A and p.total == 100 * A  # 70 + 30
+    d = shoot(cover_count=3, discount=7 * A)
+    assert d.total == 93 * A and d.cover == 30 * A
+    assert m.price(kind="single_reel", location="studio", cameras=0, duration_min=60, editing=False,
+                   cover_count=2).total == 60 * A
+    assert m.price(kind="reels_pack", location="studio", cameras=1, duration_min=60, editing=False,
+                   cover_count=1).total == 160 * A
+    assert m.cashback_earned(p, from_package=False, first_shoot=False) == ("earn", 10 * A)
+
+
+def test_cover_rejected_for_rent_onsite_and_out_of_range():
+    with pytest.raises(ValueError, match="Cover"):
+        m.price(kind="studio_rent", location="studio", cameras=0, duration_min=60, editing=False, cover_count=1)
+    with pytest.raises(ValueError, match="Cover"):
+        shoot(location="onsite", cover_count=1)
+    with pytest.raises(ValueError, match="Cover"):
+        m.price(kind="reels_pack", location="onsite", cameras=1, duration_min=60, editing=False, cover_count=1)
+    with pytest.raises(ValueError, match="Cover"):
+        shoot(cover_count=51)
+    with pytest.raises(ValueError, match="Cover"):
+        shoot(cover_count=-1)

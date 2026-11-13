@@ -5,7 +5,7 @@ import { bakuToday } from '../../../format';
 import { go, useRoute } from '../../../router';
 import type { ClientRow, Package, Subscription } from '../../../types';
 import { PageHeader } from '../../shell/PageHeader';
-import { Avatar, Button, Card, Chip, Dialog, EmptyState, ErrorBox, Field, LoadingRows, Segmented, TextInput, UnitInput, V2Icon, useOnline, useToast } from '../../ui';
+import { Avatar, Button, Card, Chip, Dialog, EmptyState, ErrorBox, Field, LoadingRows, Segmented, TextArea, TextInput, UnitInput, V2Icon, useOnline, useToast } from '../../ui';
 import { ChangeNote } from '../../ui';
 import { Chosen, ClientPickDialog, ClientResults, Fld, Gate, daysBetween, dmy, hrs, pct, useClients } from './kit';
 import './tenzimleme.css';
@@ -227,6 +227,52 @@ function SubDialog({ open, onClose, onDone }: { open: boolean; onClose: () => vo
   );
 }
 
+/** Abunənin redaktəsi (PATCH /subscriptions/{id}): ad, məbləğ, ödəniş günü, aylıq görüş sayı, qeyd. */
+function SubEditDialog({ sub, onClose, onDone }: { sub: Subscription | null; onClose: () => void; onDone: () => void }) {
+  const { call } = useAuth();
+  const toast = useToast();
+  const online = useOnline();
+  const act = useAction();
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState('');
+  const [payDay, setPayDay] = useState(20);
+  const [visits, setVisits] = useState('');
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    if (!sub) return;
+    setTitle(sub.title); setAmount(String(sub.amount / 100)); setPayDay(sub.pay_day);
+    setVisits(sub.visits_per_month == null ? '' : String(sub.visits_per_month)); setNote(sub.note ?? ''); act.setErr('');
+  }, [sub]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const azn = Number(amount.replace(',', '.'));
+  const vis = visits.trim() === '' ? null : Number(visits);
+  const valid = title.trim().length > 0 && Number.isFinite(azn) && azn > 0 && (vis === null || (Number.isInteger(vis) && vis >= 0 && vis <= 100));
+  async function submit() {
+    if (!sub || !valid) return;
+    const r = await act.run(() => call(`/subscriptions/${sub.id}`, { method: 'PATCH', body: { title: title.trim(), amount: Math.round(azn * 100), pay_day: payDay, visits_per_month: vis, note: note.trim() || null } }));
+    if (r !== undefined) { onClose(); onDone(); toast.show(`Abunə yeniləndi · ${sub.client_name}`); }
+  }
+  return (
+    <Dialog open={!!sub} onClose={onClose} title="Abunəni redaktə et" subtitle={sub?.client_name}
+      footer={<><Button variant="text" onClick={onClose}>Ləğv et</Button><Button variant="primary" disabled={!valid || !online || act.busy} onClick={submit}>Saxla</Button></>}>
+      <Field label="Ad">{(id) => <TextInput id={id} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />}</Field>
+      <div className="tz-row2">
+        <Field label="Aylıq məbləğ">{(id) => <UnitInput id={id} unit="AZN" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />}</Field>
+        <Field label="Ödəniş günü">
+          {(id) => <select id={id} className="input" value={payDay} onChange={(e) => setPayDay(Number(e.target.value))}>
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+            <option value={0}>Ayın son günü</option>
+          </select>}
+        </Field>
+      </div>
+      <Field label="Aylıq görüş sayı" hint="Boş qalsa limit yoxdur">{(id) => <TextInput id={id} inputMode="numeric" value={visits} onChange={(e) => setVisits(e.target.value)} placeholder="məs. 4" />}</Field>
+      <Field label="Qeyd">{(id) => <TextArea id={id} rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />}</Field>
+      {act.err && <ErrorBox title="Alınmadı" detail={act.err} />}
+      <ChangeNote changes={['Abunənin özü; yeni aylıq ödənişlər yeni məbləğlə yaranır']} unchanged={['Artıq yaranmış ödənişlər', 'Çəkilişlər']} />
+    </Dialog>
+  );
+}
+
 /** Aylıq abunələr: bu ayın ödənişi (Ödənib / Gözləyir / Bu ay yox). Pul «Ödənildi» basılan ayın Kassa-sına düşür. */
 function Subscriptions() {
   const { call } = useAuth();
@@ -235,7 +281,13 @@ function Subscriptions() {
   const toast = useToast();
   const list = useLoad<Subscription[]>('/subscriptions');
   const [add, setAdd] = useState(false);
+  const [edit, setEdit] = useState<Subscription | null>(null);
+  const [toggle, setToggle] = useState<Subscription | null>(null);
   const month = bakuToday().slice(0, 7);
+  async function setActive(s: Subscription) {
+    const r = await act.run(() => call(`/subscriptions/${s.id}`, { method: 'PATCH', body: { active: !s.active } }));
+    if (r !== undefined) { setToggle(null); list.reload(); toast.show(s.active ? `Dayandırıldı · ${s.client_name}` : `Davam etdirildi · ${s.client_name}`); }
+  }
   async function pay(id: number, what: 'paid' | 'unpaid', name: string) {
     const r = await act.run(() => call(`/subscriptions/payments/${id}/${what}`, { method: 'POST', body: {} }));
     if (r !== undefined) { list.reload(); toast.show(what === 'paid' ? `Ödənildi · ${name}` : `Geri alındı · ${name}`); }
@@ -244,7 +296,6 @@ function Subscriptions() {
   return (
     <Card title={<>Aylıq abunələr{list.data && <span className="tz-count">{list.data.filter((s) => s.active).length}</span>}</>}
       aside={<Button size="row" icon={<V2Icon name="plus" size={14} />} disabled={!online} onClick={() => setAdd(true)}>Abunə</Button>}>
-      {/* TODO [API] Abunənin redaktəsi/dayandırılması (PATCH /subscriptions/{id}) bu ekranda yoxdur; xatırlatma Telegram-dadır. */}
       <Gate q={list} title="Abunələr yüklənmədi">
         {(rows) => rows.length === 0 ? (
           <EmptyState title="Abunə yoxdur" reason="Aylıq ödəyən müştəri və ya sub-icarəçi əlavə edin." action={<Button disabled={!online} onClick={() => setAdd(true)}>Abunə əlavə et</Button>} />
@@ -254,13 +305,15 @@ function Subscriptions() {
             {rows.map((s) => {
               const p = s.payments.find((x) => x.period === month);
               return (
-                <div key={s.id} className="tz-tr tz-wide" style={{ '--cols': cols } as React.CSSProperties}>
-                  <div className="tz-c"><span className="tz-who"><Avatar name={s.client_name} /><span style={{ minWidth: 0 }}><a href={`#/insanlar/${s.client_id}`} style={{ color: 'var(--text)' }}>{s.client_name}</a><span className="tz-sub">{s.title}{s.kind === 'rent' ? ' · icarəçi' : ''}{!s.active ? ' · dayandırılıb' : ''}</span></span></span></div>
+                <div key={s.id} className="tz-tr tz-wide" style={{ '--cols': cols, ...(s.active ? {} : { opacity: 0.65 }) } as React.CSSProperties}>
+                  <div className="tz-c"><span className="tz-who"><Avatar name={s.client_name} /><span style={{ minWidth: 0 }}><a href={`#/insanlar/${s.client_id}`} style={{ color: 'var(--text)' }}>{s.client_name}</a><span className="tz-sub">{s.title}{s.kind === 'rent' ? ' · icarəçi' : ''}</span></span></span></div>
                   <div className="tz-c mono">{formatMoney(s.amount)} · {payDayText(s.pay_day)}</div>
-                  <div className="tz-c">{p ? <Chip tone={p.status === 'paid' ? 'done' : p.status === 'pending' ? 'deposit' : 'neutral'}>{p.status === 'paid' ? 'Ödənib' : p.status === 'pending' ? 'Gözləyir' : 'Bu ay yox'}</Chip> : <span className="tz-faint">—</span>}</div>
+                  <div className="tz-c">{!s.active ? <Chip tone="neutral">Dayandırılıb</Chip> : p ? <Chip tone={p.status === 'paid' ? 'done' : p.status === 'pending' ? 'deposit' : 'neutral'}>{p.status === 'paid' ? 'Ödənib' : p.status === 'pending' ? 'Gözləyir' : 'Bu ay yox'}</Chip> : <span className="tz-faint">—</span>}</div>
                   <div className="tz-c tz-actions tz-actions--end">
-                    {p?.status === 'pending' && <Button size="row" disabled={!online || act.busy} onClick={() => pay(p.id, 'paid', s.client_name)}>Ödənildi</Button>}
-                    {p?.status === 'paid' && <Button size="row" variant="text" disabled={!online || act.busy} onClick={() => pay(p.id, 'unpaid', s.client_name)}>Geri al</Button>}
+                    <Button size="row" variant="text" disabled={!online || act.busy} onClick={() => { act.setErr(''); setEdit(s); }}>Redaktə et</Button>
+                    <Button size="row" variant="text" disabled={!online || act.busy} onClick={() => { act.setErr(''); setToggle(s); }}>{s.active ? 'Dayandır' : 'Davam etdir'}</Button>
+                    {s.active && p?.status === 'pending' && <Button size="row" disabled={!online || act.busy} onClick={() => pay(p.id, 'paid', s.client_name)}>Ödənildi</Button>}
+                    {s.active && p?.status === 'paid' && <Button size="row" variant="text" disabled={!online || act.busy} onClick={() => pay(p.id, 'unpaid', s.client_name)}>Geri al</Button>}
                   </div>
                 </div>
               );
@@ -270,6 +323,12 @@ function Subscriptions() {
       </Gate>
       {act.err && <ErrorBox title="Alınmadı" detail={act.err} />}
       <SubDialog open={add} onClose={() => setAdd(false)} onDone={list.reload} />
+      <SubEditDialog sub={edit} onClose={() => setEdit(null)} onDone={list.reload} />
+      <Dialog open={!!toggle} onClose={() => setToggle(null)} title={toggle?.active ? 'Abunə dayandırılsın?' : 'Abunə davam etdirilsin?'} subtitle={toggle?.client_name}
+        footer={<><Button variant="text" onClick={() => setToggle(null)}>Ləğv et</Button><Button variant="primary" disabled={act.busy || !online} onClick={() => toggle && setActive(toggle)}>{toggle?.active ? 'Bəli, dayandır' : 'Bəli, davam etdir'}</Button></>}>
+        <p className="tz-muted">{toggle?.active ? 'Yeni aylıq ödənişlər yaranmayacaq və müştərinin çəkilişləri adi qiymətlə hesablanacaq. Əvvəlki ödənişlər qalır.' : 'Aylıq ödənişlər yenidən yaranacaq, müştərinin çəkilişləri yenə 0 AZN olacaq.'}</p>
+        {act.err && <ErrorBox title="Alınmadı" detail={act.err} />}
+      </Dialog>
     </Card>
   );
 }
@@ -277,7 +336,7 @@ function Subscriptions() {
 /** Paketlər və qiymətlər (30-paketler.md). Routes: /tenzimleme/paketler, /tenzimleme/paketler/yeni, ?paket-sat=1, köhnə /packages. */
 type PriceListData = {
   shoot_per_hour: Record<'studio' | 'onsite', Record<number, number>>; studio_rent: Record<number, number>;
-  reels_pack: Record<'studio' | 'onsite', number>; editing: number; reel: number; extra_camera_per_hour: number;
+  reels_pack: Record<'studio' | 'onsite', number>; single_reel?: number; cover?: number; editing: number; reel: number; extra_camera_per_hour: number;
 };
 
 /** Qiymət cədvəli (30): yalnız oxunur, rəqəmlər server/money.py-dən (/price-list). */
@@ -292,6 +351,8 @@ function PriceList() {
           <div className="hs-kv"><span><b>Çəkiliş, 1 saat · məkanda</b><span className="tz-sub">1 / 2 / 3 kamera</span></span><span className="mono">{CAMS.map((c) => m(p.shoot_per_hour.onsite[c]).replace(' AZN', '')).join(' / ')} AZN</span></div>
           <div className="hs-kv"><span><b>Müştəri özü çəkir</b><span className="tz-sub">1 / 2 / 3 saat</span></span><span className="mono">{[1, 2, 3].map((h) => m(p.studio_rent[h]).replace(' AZN', '')).join(' / ')} AZN</span></div>
           <div className="hs-kv"><span><b>Reels paketi</b><span className="tz-sub">studiya / məkanda</span></span><span className="mono">{m(p.reels_pack.studio).replace(' AZN', '')} / {m(p.reels_pack.onsite).replace(' AZN', '')} AZN</span></div>
+          {p.single_reel !== undefined && <div className="hs-kv"><span><b>Tək Reels</b><span className="tz-sub">studiyada, sabit</span></span><span className="mono">{m(p.single_reel)}</span></div>}
+          {p.cover !== undefined && <div className="hs-kv"><span><b>Cover</b><span className="tz-sub">hər video, yalnız studiyada</span></span><span className="mono">{m(p.cover)}</span></div>}
           <div className="hs-kv"><span><b>Montaj</b><span className="tz-sub">hər epizod</span></span><span className="mono">{m(p.editing)}</span></div>
           <div className="hs-kv"><span><b>Cover / Reels videosu</b><span className="tz-sub">hər video</span></span><span className="mono">{m(p.reel)}</span></div>
           <div className="hs-kv"><span><b>Əlavə kamera</b><span className="tz-sub">paket çəkilişində, saatda</span></span><span className="mono">{m(p.extra_camera_per_hour)}</span></div>

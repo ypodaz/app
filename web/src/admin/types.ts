@@ -14,7 +14,7 @@ export type Block = { id: number; starts_at: string; ends_at: string; reason: st
 export type InviteOut = { url: string; whatsapp_url: string | null };
 
 export type ShootStatus = 'confirmed' | 'completed' | 'cancelled' | 'no_show';
-export type Kind = 'shoot' | 'reels_pack' | 'studio_rent';
+export type Kind = 'shoot' | 'reels_pack' | 'studio_rent' | 'single_reel';
 export type Tag = 'podcast' | 'reels' | 'other';
 export type Location = 'studio' | 'onsite';
 export type Production = 'none' | 'editing' | 'ready';
@@ -26,7 +26,7 @@ export type Extra = { name: string; amount: number };
 export type Shoot = {
   id: number; client_id: number; client_name: string | null; client_phone?: string | null; package_id: number | null;
   starts_at: string; duration_min: number; kind: Kind; tag: Tag; location: Location; address: string | null;
-  cameras: number; editing: boolean; reels_count: number; title: string | null; status: ShootStatus;
+  cameras: number; editing: boolean; reels_count: number; cover_count?: number; title: string | null; status: ShootStatus;
   production: Production; delivery_on: string | null;
   price_base: number; price_editing: number; price_reels: number; price_extra_camera: number; discount: number; discount_note: string | null; extras: Extra[]; prep_min: number; wrap_min: number; total: number;
   note: string | null; source_note: string | null; cashback_used: number;
@@ -67,7 +67,7 @@ export type Conflict =
   | { type: 'block'; id: number; starts_at: string; ends_at: string; reason: string | null };
 
 export type Quote = {
-  base: number; editing: number; reels: number; extra_camera: number; extras: number; gross: number; discount: number; total: number; deposit_expected: number;
+  base: number; editing: number; reels: number; extra_camera: number; extras: number; cover?: number; gross: number; discount: number; total: number; deposit_expected: number;
   conflicts: Conflict[];
   cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; cashback_usable: number; cashback_min_use: number; cashback_shoots_left: number; deposit_required: boolean;
 };

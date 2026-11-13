@@ -107,6 +107,8 @@ def patch_subscription(sub_id: int, body: SubscriptionPatch, db: DB = Depends(ge
                        admin: Admin = Depends(current_admin)):
     s = get_sub(db, sub_id)
     changes = body.model_dump(exclude_unset=True)
+    if any(changes.get(k, 0) is None for k in ("title", "amount", "pay_day", "active")):
+        raise HTTPException(422, "Ad, məbləğ, ödəniş günü və vəziyyət boş ola bilməz")
     before = {k: getattr(s, k) for k in changes}
     for k, v in changes.items():
         setattr(s, k, v)

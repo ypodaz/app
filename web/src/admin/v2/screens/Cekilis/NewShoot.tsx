@@ -49,6 +49,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
   const [cameras, setCameras] = useState(2);
   const [editing, setEditing] = useState(false);
   const [reels, setReels] = useState(0);
+  const [cover, setCover] = useState(0);
   const [payWanted, setPayWanted] = useState<'paid' | 'package'>('paid');
   const [pkgSel, setPkgSel] = useState<number | null>(null);
   const [useCb, setUseCb] = useState(false);
@@ -70,7 +71,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
     const p = bakuParts(o.starts_at);
     setClientId(o.client_id); setDate(p.date); setTime(p.time); setDur(o.duration_min); setPrep(o.prep_min); setWrap(o.wrap_min);
     setKind(o.kind); setTag(o.tag); setLoc(o.location); setAddress(o.address ?? ''); setCameras(o.cameras || 1);
-    setEditing(o.editing); setReels(o.reels_count); setNote(o.note ?? '');
+    setEditing(o.editing); setReels(o.reels_count); setCover(o.cover_count ?? 0); setNote(o.note ?? '');
     setExRows(extraRows(o.extras ?? []));
     if (o.discount > 0) { setDiscText(aznInput(o.discount)); setDiscNote(o.discount_note ?? ''); }
     setHydrated(true);
@@ -80,9 +81,12 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
   const extrasKey = JSON.stringify(extras);
   const detail = useLoad<ClientDetail>(clientId && !edit ? `/clients/${clientId}` : null).data;
   const clients = useLoad<Client[]>('/clients').data;
-  const reelsPack = kind === 'reels_pack', rent = kind === 'studio_rent';
-  const loc: Location = rent ? 'studio' : locSel;
-  const step = reelsPack ? 15 : 30;
+  const reelsPack = kind === 'reels_pack', rent = kind === 'studio_rent', single = kind === 'single_reel';
+  const loc: Location = rent || single ? 'studio' : locSel;
+  const step = reelsPack || single ? 15 : 30;
+  // Cover yalnız bizim studiyada çəkilişdə (öz kamerası ilə icarədə və məkanda yox)
+  const coverOk = !rent && loc === 'studio';
+  const coverN = coverOk ? cover : 0;
   const end = addMin(time, dur);
   // % rejimində AZN məbləği ümumi məbləğdən hesablanır (server yalnız AZN qəbul edir)
   const pctH = discPct && discText.trim() ? parseAzn(discText) : null;
@@ -99,11 +103,11 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
   const depPaid = edit ? (o?.deposit_amount ?? 0) : 0;
 
   const body = useMemo(() => (clientId && (!edit || hydrated) && date && /^\d{2}:\d{2}$/.test(time) && !discBad && !extrasBad ? {
-    client_id: clientId, starts_at: toIso(date, time), duration_min: dur, kind, tag: rent ? 'other' : reelsPack ? 'reels' : tag,
-    location: loc, cameras: rent ? 0 : reelsPack ? 1 : cameras, editing: kind === 'shoot' ? editing : false, reels_count: reelsN,
+    client_id: clientId, starts_at: toIso(date, time), duration_min: dur, kind, tag: rent ? 'other' : reelsPack || single ? 'reels' : tag,
+    location: loc, cameras: rent || single ? 0 : reelsPack ? 1 : cameras, editing: kind === 'shoot' ? editing : false, reels_count: reelsN, cover_count: coverN,
     package_id: pkgId, cashback_use: cashback, address: loc === 'onsite' ? address.trim() || null : null, note: note.trim() || null,
     extras, discount, discount_note: discount > 0 ? discNote.trim() || null : null, prep_min: prep, wrap_min: wrap,
-  } : null), [clientId, hydrated, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, reelsPack, rent, pkgId, cashback, note, discBad, extrasBad, extrasKey, discount, discNote, prep, wrap]); // eslint-disable-line react-hooks/exhaustive-deps
+  } : null), [clientId, hydrated, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, coverN, reelsPack, single, rent, pkgId, cashback, note, discBad, extrasBad, extrasKey, discount, discNote, prep, wrap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Qiymət: 250ms gecikmə ilə serverdən
   const key = JSON.stringify(body);
@@ -159,7 +163,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
 
   function pickKind(k: Kind) {
     setKind(k);
-    if (k === 'reels_pack') setDur(60);
+    if (k === 'reels_pack' || k === 'single_reel') setDur(60);
     else if (dur % 30) setDur(Math.ceil(dur / 30) * 30);
   }
   function pickEnd(v: string) {
@@ -200,9 +204,9 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
 
           <section className="ck-sec" aria-label="Xidmət">
             <h3 className="ck-sec__h">2 · Xidmət</h3>
-            <Segmented label="Xidmət" value={kind} onChange={pickKind} options={[{ value: 'shoot', label: 'Çəkiliş' }, { value: 'reels_pack', label: 'Reels paketi' }, { value: 'studio_rent', label: 'Müştəri özü çəkir' }]} />
+            <Segmented label="Xidmət" value={kind} onChange={pickKind} options={[{ value: 'shoot', label: 'Çəkiliş' }, { value: 'reels_pack', label: 'Reels paketi' }, { value: 'single_reel', label: 'Tək Reels' }, { value: 'studio_rent', label: 'Müştəri özü çəkir' }]} />
             {kind === 'shoot' && <Chips label="Nə çəkilir" value={tag} onChange={setTag} options={TAGS.map(([v, l]) => ({ value: v, label: l }))} />}
-            {!rent && <Segmented label="Məkan" value={loc} onChange={setLoc} options={[{ value: 'studio', label: 'Studiyada' }, { value: 'onsite', label: 'Sizin məkanda' }]} />}
+            {!rent && !single && <Segmented label="Məkan" value={loc} onChange={setLoc} options={[{ value: 'studio', label: 'Studiyada' }, { value: 'onsite', label: 'Sizin məkanda' }]} />}
             {loc === 'onsite' && <Field label="Ünvan">{(i) => <TextInput id={i} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Küçə, bina, mənzil" />}</Field>}
             {kind === 'shoot' && (
               <div className="field"><span className="field__label">Kamera · 1 saat (AZN)</span>
@@ -217,7 +221,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
               <Field label="Başlanğıc">{(i) => <TextInput id={i} type="time" value={time} onChange={(e) => setTime(e.target.value)} />}</Field>
               <Field label="Bitmə">{(i) => <TextInput id={i} type="time" value={end} onChange={(e) => pickEnd(e.target.value)} />}</Field>
             </div>
-            {!reelsPack && <div className="ck-line"><b>Müddət</b><Stepper text={formatHours(dur)} label="Müddət" onDec={() => setDur(Math.max(step, dur - step))} onInc={() => setDur(Math.min(600, dur + step))} decDisabled={dur <= step} incDisabled={dur >= 600} /></div>}
+            {!reelsPack && !single && <div className="ck-line"><b>Müddət</b><Stepper text={formatHours(dur)} label="Müddət" onDec={() => setDur(Math.max(step, dur - step))} onInc={() => setDur(Math.min(600, dur + step))} decDisabled={dur <= step} incDisabled={dur >= 600} /></div>}
             <div className="field"><span className="field__label">Boş vaxt</span>
               {slots.err ? <ErrorBox title="Boş vaxtlar yüklənmədi" detail={slots.err} onRetry={slots.reload} />
                 : !slots.data ? <LoadingRows rows={1} />
@@ -253,6 +257,13 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
                     <span className="ck-sub">{!editing ? 'Montaj olmadan seçilmir' : `${reelsN} Reels × 10 = ${reelsN * 10} AZN`}</span></div>
                 </div>
               </>
+            )}
+            {coverOk && (
+              <div className="ck-reels">
+                <b>Cover</b><span className="ck-sub">Hər video üçün · +10 AZN/video</span>
+                <div className="ck-line"><Stepper text={String(coverN)} label="Cover sayı" onDec={() => setCover(Math.max(0, coverN - 1))} onInc={() => setCover(Math.min(50, coverN + 1))} decDisabled={coverN <= 0} incDisabled={coverN >= 50} />
+                  <span className="ck-sub">{coverN === 0 ? 'Cover yoxdur' : `${coverN} × 10 = ${coverN * 10} AZN`}</span></div>
+              </div>
             )}
             <div className="field"><span className="field__label">Əlavə xərclər</span><Extras rows={exRows} onChange={setExRows} /></div>
             <Field label={`Endirim (${discPct ? '%' : 'AZN'})`} hint={discBad ? undefined : discPct && discount > 0 ? `= ${formatMoney(discount)}` : 'Boş qalsa endirim yoxdur.'} error={discBad ? (discPct ? 'Faizi 0–100 arasında yazın' : 'Məbləği düzgün yazın, məs. 50 və ya 12,5') : undefined}>
@@ -308,10 +319,11 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
           {quote && body ? (
             <dl className="ck-facts">
               <div><dt>Tarix</dt><dd className="mono">{date.slice(8)}.{date.slice(5, 7)} · {time}–{end}</dd></div>
-              {money(pay === 'package' ? `Paketdən · ${formatHours(body.duration_min)}` : reelsPack ? 'Reels paketi' : rent ? `Müştəri özü çəkir · ${formatHours(dur)}` : `${cameras} kamera · ${loc === 'studio' ? 'studiyada' : 'məkanda'}`, quote.base)}
+              {money(pay === 'package' ? `Paketdən · ${formatHours(body.duration_min)}` : reelsPack ? 'Reels paketi' : single ? 'Tək Reels' : rent ? `Müştəri özü çəkir · ${formatHours(dur)}` : `${cameras} kamera · ${loc === 'studio' ? 'studiyada' : 'məkanda'}`, quote.base)}
               {quote.extra_camera > 0 && money('Əlavə kamera', quote.extra_camera)}
               {(reelsN > 0 || (editing && kind === 'shoot')) && money('Montaj', quote.editing)}
               {reelsN > 0 && money(`Reels · ${reelsN} × 10`, quote.reels)}
+              {coverN > 0 && money(`Cover × ${coverN}`, quote.cover ?? coverN * 1000)}
               {extras.map((x, i) => money(x.name, x.amount, `x${i}`))}
               {quote.discount > 0 && <>{money('Cəmi', quote.gross)}{money('Endirim', -quote.discount)}</>}
               <div className="ck-facts__sum"><dt>{quote.discount > 0 ? 'Yekun' : 'Cəmi'}</dt><dd className="mono">{totalTxt}</dd></div>

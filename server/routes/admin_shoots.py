@@ -35,12 +35,13 @@ class ShootIn(BaseModel):
     client_id: int
     starts_at: AwareDatetime
     duration_min: int = Field(ge=15, le=720)
-    kind: Literal["shoot", "reels_pack", "studio_rent"]
+    kind: Literal["shoot", "reels_pack", "studio_rent", "single_reel"]
     tag: Literal["podcast", "reels", "other"]
     location: Literal["studio", "onsite"]
     cameras: int = Field(ge=0, le=3)  # studiya icarəsində 0
     editing: bool
     reels_count: int = Field(default=0, ge=0, le=100)
+    cover_count: int = Field(default=0, ge=0, le=money.COVER_MAX)
     package_id: Optional[int] = None
     cashback_use: int = Field(default=0, ge=0)
     address: Optional[str] = Field(default=None, max_length=255)
@@ -57,12 +58,13 @@ class ShootIn(BaseModel):
 class ShootEditIn(BaseModel):
     starts_at: AwareDatetime
     duration_min: int = Field(ge=15, le=720)
-    kind: Literal["shoot", "reels_pack", "studio_rent"]
+    kind: Literal["shoot", "reels_pack", "studio_rent", "single_reel"]
     tag: Literal["podcast", "reels", "other"]
     location: Literal["studio", "onsite"]
     cameras: int = Field(ge=0, le=3)
     editing: bool
     reels_count: int = Field(default=0, ge=0, le=100)
+    cover_count: int = Field(default=0, ge=0, le=money.COVER_MAX)
     address: Optional[str] = Field(default=None, max_length=255)
     title: Optional[str] = Field(default=None, max_length=120)
     note: Optional[str] = Field(default=None, max_length=2000)
@@ -243,16 +245,17 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         if not pkg:
             raise HTTPException(404, "Paket tapılmadı")
     editing, reels, location = body.editing, body.reels_count, body.location
-    if body.kind in ("reels_pack", "studio_rent"):
+    if body.kind in ("reels_pack", "studio_rent", "single_reel"):
         editing, reels = False, 0
-    if body.kind == "studio_rent":
+    if body.kind in ("studio_rent", "single_reel"):
         location = "studio"
     balance = booking.cashback_balance(db, client.id)
     done = booking.shoots_done(db, client.id, exclude_id)
     try:
         p = money.price(kind=body.kind, location=location, cameras=body.cameras, duration_min=body.duration_min,
                         editing=editing, reels_count=reels, package_cameras=pkg.cameras if pkg else None,
-                        discount=body.discount, extras=sum(e.amount for e in body.extras))
+                        discount=body.discount, extras=sum(e.amount for e in body.extras),
+                        cover_count=body.cover_count)
         if subscriptions.has_free_visits(db, client.id):  # aylıq abunə: 0 AZN, keşbek yoxdur
             p = money.Price(0, 0, 0, 0)
         money.check_cashback_use(body.cashback_use, balance, p.total, done)
@@ -263,7 +266,7 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         raise HTTPException(400, str(e))
     return {
         "base": p.base, "editing": p.editing, "reels": p.reels, "extra_camera": p.extra_camera,
-        "discount": p.discount, "extras": p.extras, "gross": p.gross, "total": p.total,
+        "discount": p.discount, "extras": p.extras, "cover": p.cover, "gross": p.gross, "total": p.total,
         "conflicts": booking.conflicts(db, starts_at=utc(body.starts_at), duration_min=body.duration_min,
                                        prep_min=body.prep_min, wrap_min=body.wrap_min, exclude_id=exclude_id),
         "deposit_expected": money.deposit_expected(p.total, body.cashback_use, pkg is not None),
@@ -447,6 +450,8 @@ def price_list():
         "shoot_per_hour": money.SHOOT_PER_HOUR,
         "studio_rent": {h: money.studio_rent_price(h * 60) for h in (1, 2, 3)},
         "reels_pack": money.REELS_PACK,
+        "single_reel": money.SINGLE_REEL,
+        "cover": money.COVER,
         "editing": money.EDITING,
         "reel": money.REEL,
         "extra_camera_per_hour": money.EXTRA_CAMERA_PER_HOUR,

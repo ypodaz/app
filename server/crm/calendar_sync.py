@@ -232,7 +232,7 @@ def _changed(db: DB, link: CalendarLink, s: Shoot, ev: dict, dur: int) -> None:
                                location=s.location, cameras=s.cameras, editing=s.editing, reels_count=s.reels_count,
                                address=s.address, title=s.title, note=s.note, discount=s.discount,
                                discount_note=s.discount_note, prep_min=s.prep_min, wrap_min=s.wrap_min,
-                               extras=s.extras or [])
+                               extras=s.extras or [], cover_count=s.cover_count)
             _drop_notifications(db, s.id)  # müştəriyə xəbər getmir
             return
         except booking.Rejected as e:

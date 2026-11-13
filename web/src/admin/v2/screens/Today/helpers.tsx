@@ -11,8 +11,8 @@ export function mx(text: string): ReactNode {
 const TAG: Record<string, string> = { podcast: 'Podkast', reels: 'Reels', other: 'Digər' };
 /** "Podkast · 3 kamera", "Reels paketi", "Müştəri özü çəkir" ("icarə" sözü qadağandır). */
 export function shootLabel(s: Pick<Shoot, 'kind' | 'tag' | 'cameras'>): string {
-  const base = s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'studio_rent' ? 'Müştəri özü çəkir' : TAG[s.tag] ?? 'Çəkiliş';
-  return s.cameras > 0 && s.kind !== 'reels_pack' ? `${base} · ${s.cameras} kamera` : base;
+  const base = s.kind === 'reels_pack' ? 'Reels paketi' : s.kind === 'single_reel' ? 'Tək Reels' : s.kind === 'studio_rent' ? 'Müştəri özü çəkir' : TAG[s.tag] ?? 'Çəkiliş';
+  return s.cameras > 0 && s.kind !== 'reels_pack' && s.kind !== 'single_reel' ? `${base} · ${s.cameras} kamera` : base;
 }
 
 /** "Nümunə Müştəri" → "Nümunə M." */

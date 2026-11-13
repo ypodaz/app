@@ -163,7 +163,9 @@ function PostDialog({ post, onClose, onSaved }: { post: Post; onClose: () => voi
   const { call } = useAuth();
   const act = useAction();
   const online = useOnline();
+  const toast = useToast();
   const edit = post.status === 'planned';
+  const redo = post.status === 'error' || post.status === 'cancelled';
   const t0 = bakuParts(post.scheduled_at);
   const [text, setText] = useState(post.text);
   const [title, setTitle] = useState(post.title ?? '');
@@ -174,6 +176,10 @@ function PostDialog({ post, onClose, onSaved }: { post: Post; onClose: () => voi
   async function patch(body: Record<string, unknown>) {
     const r = await act.run(() => call(`/social/posts/${post.id}`, { method: 'PATCH', body }));
     if (r) { onSaved(); onClose(); }
+  }
+  async function requeue() {
+    const r = await act.run(() => call<Post>(`/social/posts/${post.id}/requeue`, { method: 'POST' }));
+    if (r) { const t = bakuParts(r.scheduled_at); onSaved(); onClose(); toast.show(`Sıraya qoyuldu · ${ddmm(t.date)} ${t.time}`); }
   }
   function save() {
     const body: Record<string, unknown> = {};
@@ -186,7 +192,7 @@ function PostDialog({ post, onClose, onSaved }: { post: Post; onClose: () => voi
   return (
     <>
       <Dialog open={!ask} onClose={onClose} title={`${PLAT[post.platform] ?? post.platform} · Video ${post.media.number}`} subtitle={<Chip tone={TONE[post.status]}>{ST[post.status]}</Chip>}
-        footer={edit ? <><Button variant="danger" disabled={act.busy || !online} onClick={() => setAsk(true)}>Ləğv et</Button><Button variant="primary" disabled={act.busy || !online || !text.trim()} onClick={save}>Yadda saxla</Button></> : <Button onClick={onClose}>Bağla</Button>}>
+        footer={edit ? <><Button variant="danger" disabled={act.busy || !online} onClick={() => setAsk(true)}>Ləğv et</Button><Button variant="primary" disabled={act.busy || !online || !text.trim()} onClick={save}>Yadda saxla</Button></> : <>{redo && <Button variant="primary" disabled={act.busy || !online} onClick={requeue}>Sıraya qoy</Button>}<Button onClick={onClose}>Bağla</Button></>}>
         {post.error && <ErrorBox title="Paylaşım xətası" detail={post.error} />}
         {!edit && post.status !== 'cancelled' && <p className="tz-muted">Yalnız «Planlanıb» post dəyişdirilə bilər.</p>}
         {post.media.public_url ? <video className="sp-video" src={post.media.public_url} controls playsInline preload="metadata" /> : <p className="tz-muted">Video yüklənməyib</p>}
@@ -196,7 +202,7 @@ function PostDialog({ post, onClose, onSaved }: { post: Post; onClose: () => voi
           <Field label="Tarix">{(id) => <TextInput id={id} type="date" value={date} disabled={!edit} onChange={(e) => setDate(e.target.value)} />}</Field>
           <Field label="Saat">{(id) => <TextInput id={id} type="time" value={time} disabled={!edit} onChange={(e) => setTime(e.target.value)} />}</Field>
         </div>
-        {act.err && <ErrorBox title="Saxlanmadı" detail={act.err} />}
+        {act.err && <ErrorBox title={redo ? 'Sıraya qoyulmadı' : 'Saxlanmadı'} detail={act.err} />}
       </Dialog>
       <Dialog open={ask} onClose={() => setAsk(false)} title="Post ləğv olunsun?" subtitle="Bu post paylaşılmayacaq."
         footer={<><Button variant="text" onClick={() => setAsk(false)}>Geri</Button><Button variant="danger" disabled={act.busy} onClick={() => { setAsk(false); patch({ status: 'cancelled' }); }}>Ləğv et</Button></>}>

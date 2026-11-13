@@ -8,7 +8,7 @@ from db import aware
 from models import Client, Shoot, WaContact, WaConversation, WaMessage
 from views import BAKU
 
-KINDS = {"reels_pack": "Reels paketi", "studio_rent": "öz kamerası ilə studiya"}
+KINDS = {"reels_pack": "Reels paketi", "studio_rent": "öz kamerası ilə studiya", "single_reel": "Tək Reels"}
 TAGS = {"podcast": "podkast", "reels": "Reels", "other": "digər çəkiliş"}
 
 

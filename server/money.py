@@ -27,6 +27,11 @@ def studio_rent_price(duration_min: int) -> int:
 EDITING = 100 * AZN
 REEL = 10 * AZN
 EXTRA_CAMERA_PER_HOUR = 50 * AZN
+# Tək Reels: yalnız studiyada, sabit qiymət (kamera/müddət/montaj/Reels seçimi yoxdur, endirim tətbiq olunmur).
+SINGLE_REEL = 40 * AZN
+# Cover: hər video üçün; yalnız bizim studiyada çəkilişdə (öz kamerası ilə icarədə və məkanda yox), endirimə daxil deyil.
+COVER = 10 * AZN
+COVER_MAX = 50
 
 # Korporativ paketlər: saat → (ay, {kamera: qiymət}). Yalnız studiyada keçərlidir.
 PACKAGES = {
@@ -78,10 +83,11 @@ class Price:
     extra_camera: int
     discount: int = 0
     extras: int = 0  # adminin sərbəst yazdığı əlavə xərclər (mikrofon icarəsi və s.)
+    cover: int = 0  # Cover məbləği (video sayı × COVER)
 
     @property
     def gross(self) -> int:
-        return self.base + self.editing + self.reels + self.extra_camera + self.extras
+        return self.base + self.editing + self.reels + self.extra_camera + self.extras + self.cover
 
     @property
     def total(self) -> int:
@@ -91,7 +97,7 @@ class Price:
     @property
     def paid_extras(self) -> int:
         """Paketdən çəkilişdə pulla ödənən hissə."""
-        return self.editing + self.reels + self.extra_camera + self.extras
+        return self.editing + self.reels + self.extra_camera + self.extras + self.cover
 
 
 def price(
@@ -105,6 +111,7 @@ def price(
     package_cameras: int | None = None,
     discount: int = 0,
     extras: int = 0,
+    cover_count: int = 0,
 ) -> Price:
     """Çəkilişin qiyməti. package_cameras verilirsə, çəkiliş paketdəndir: saatlar paketdən
     çıxılır, yalnız montaj, Reels və əlavə kamera pulla ödənir. discount məbləğdən çıxılır."""
@@ -112,10 +119,14 @@ def price(
                      reels_count=reels_count, package_cameras=package_cameras)
     if extras < 0:
         raise ValueError("Əlavə xərc mənfi ola bilməz")
-    gross = p.gross + extras
+    if cover_count < 0 or cover_count > COVER_MAX:
+        raise ValueError(f"Cover sayı 0 ilə {COVER_MAX} arasında olmalıdır")
+    if cover_count and (kind == "studio_rent" or location != "studio"):
+        raise ValueError("Cover yalnız bizim studiyada çəkilişə əlavə olunur")
+    gross = p.gross + extras + cover_count * COVER
     if discount < 0 or discount > gross:
         raise ValueError(f"Endirim 0 ilə {fmt(gross)} arasında olmalıdır")
-    return Price(p.base, p.editing, p.reels, p.extra_camera, discount, extras)
+    return Price(p.base, p.editing, p.reels, p.extra_camera, discount, extras, cover_count * COVER)
 
 
 def _gross_price(*, kind, location, cameras, duration_min, editing, reels_count, package_cameras) -> Price:
@@ -127,6 +138,14 @@ def _gross_price(*, kind, location, cameras, duration_min, editing, reels_count,
         if duration_min <= 0 or duration_min % 15:
             raise ValueError("Müddət 15 dəqiqə addımla olmalıdır")
         return Price(REELS_PACK[location], 0, 0, 0)
+    if kind == "single_reel":
+        if package_cameras is not None:
+            raise ValueError("Tək Reels saat paketindən seçilmir")
+        if location != "studio":
+            raise ValueError("Tək Reels yalnız studiyada olur")
+        if editing or reels_count:
+            raise ValueError("Tək Reelsə montaj və əlavə Reels daxil deyil")
+        return Price(SINGLE_REEL, 0, 0, 0)
     if kind == "studio_rent":
         if package_cameras is not None:
             raise ValueError("Studiya icarəsi saat paketindən seçilmir")

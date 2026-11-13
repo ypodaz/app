@@ -25,7 +25,7 @@ admin_router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admi
 
 PAST_DAYS = 30
 FROM_CALENDAR = ("calendar", "calendar-archive")
-KIND = {"shoot": "Çəkiliş", "reels_pack": "Reels paketi", "studio_rent": "Studiya icarəsi"}
+KIND = {"shoot": "Çəkiliş", "reels_pack": "Reels paketi", "studio_rent": "Studiya icarəsi", "single_reel": "Tək Reels"}
 
 
 def _esc(text: str) -> str:

@@ -136,7 +136,7 @@ class Shoot(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="RESTRICT"), index=True)
     package_id: Mapped[Optional[int]] = mapped_column(ForeignKey("packages.id", ondelete="RESTRICT"), index=True)
-    kind: Mapped[str] = mapped_column(String(16), default="shoot")  # shoot | reels_pack | studio_rent
+    kind: Mapped[str] = mapped_column(String(16), default="shoot")  # shoot | reels_pack | studio_rent | single_reel
     tag: Mapped[str] = mapped_column(String(16))  # podcast | reels | other
     location: Mapped[str] = mapped_column(String(16))  # studio | onsite
     address: Mapped[Optional[str]] = mapped_column(String(255))
@@ -148,6 +148,7 @@ class Shoot(Base):
     cameras: Mapped[int] = mapped_column(Integer)
     editing: Mapped[bool] = mapped_column(default=False)
     reels_count: Mapped[int] = mapped_column(Integer, default=0)
+    cover_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # Cover: video sayı × 10 AZN
     title: Mapped[Optional[str]] = mapped_column(String(120))
     note: Mapped[Optional[str]] = mapped_column(Text)
     source_note: Mapped[Optional[str]] = mapped_column(Text)

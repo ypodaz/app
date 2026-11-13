@@ -499,3 +499,20 @@ def test_campaign_name_safe_for_blank_name(api):
         db.add(c)
         db.flush()
         growth.send(db, title="Salam {name}", body="Mətn burada", url=None, clients=[c])
+
+
+def test_single_reel_and_cover_via_api(api):
+    adm = admin_token(api)
+    cid, _ = new_client(api, adm, "Tək Reels Müştəri")
+    body = shoot_body(cid, kind="single_reel", tag="reels", cameras=0, editing=False, duration_min=60, cover_count=2)
+    q = api.post("/api/admin/shoots/quote", json=body, headers=bearer(adm)).json()
+    s = make_shoot(api, adm, cid, kind="single_reel", tag="reels", cameras=0, editing=False, duration_min=60,
+                   cover_count=2)
+    assert q["total"] == s["total"] == 6000 and q["cover"] == 2000 and s["cover_count"] == 2
+    assert s["price_base"] == 4000 and s["deposit_expected"] == 3000
+    # icarədə cover rədd edilir
+    r = api.post("/api/admin/shoots", json=shoot_body(cid, kind="studio_rent", cameras=0, editing=False,
+                                                      cover_count=1), headers=bearer(adm))
+    assert r.status_code == 400
+    r = api.post("/api/admin/shoots", json=shoot_body(cid, cover_count=51), headers=bearer(adm))
+    assert r.status_code == 422

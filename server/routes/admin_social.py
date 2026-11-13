@@ -3,7 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import settings
@@ -85,6 +85,26 @@ def patch_post(post_id: int, body: PostPatch, db: DB = Depends(get_db)):
         p.title = body.title
     if body.status:
         p.status = body.status
+    db.commit()
+    return post_out(p, db.get(MediaAsset, p.media_asset_id))
+
+
+@router.post("/posts/{post_id}/requeue")
+def requeue_post(post_id: int, db: DB = Depends(get_db)):
+    """Paylaşılmayan (error/cancelled) postu yenidən sıraya qoyur: eyni platformada ən son planned/queued postdan
+    sonrakı boş gün, POST_TIME (Bakı); növbə boşdursa sabah."""
+    p = db.get(SocialPost, post_id)
+    if not p:
+        raise HTTPException(404, "Post tapılmadı")
+    if p.status not in ("error", "cancelled"):
+        raise HTTPException(409, "Yalnız xətalı və ya ləğv edilmiş post yenidən sıraya qoyulur")
+    last = db.scalar(select(func.max(SocialPost.scheduled_at)).where(
+        SocialPost.platform == p.platform, SocialPost.status.in_(("planned", "queued")), SocialPost.id != p.id))
+    day = now().astimezone(BAKU).date()
+    if last:
+        day = max(day, utc(last).astimezone(BAKU).date())
+    p.scheduled_at = datetime.combine(day + timedelta(days=1), schedule.POST_TIME, tzinfo=BAKU).astimezone(timezone.utc)
+    p.status, p.error, p.attempts, p.external_id = "planned", None, 0, None
     db.commit()
     return post_out(p, db.get(MediaAsset, p.media_asset_id))
 

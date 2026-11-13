@@ -31,6 +31,7 @@ def test_price_list_from_money(api):
     assert r["shoot_per_hour"]["onsite"]["3"] == money.SHOOT_PER_HOUR["onsite"][3]
     assert r["studio_rent"] == {"1": money.studio_rent_price(60), "2": money.studio_rent_price(120), "3": money.studio_rent_price(180)}
     assert r["reels_pack"] == money.REELS_PACK and r["editing"] == money.EDITING and r["reel"] == money.REEL
+    assert r["single_reel"] == money.SINGLE_REEL and r["cover"] == money.COVER
     assert api.get("/api/admin/price-list").status_code == 401
 
 

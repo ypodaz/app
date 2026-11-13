@@ -148,4 +148,4 @@ def test_digest_lead_lines(api):
         db.query(Lead).update({Lead.remind_at: None})
         db.commit()
         text = digest.build(db, day, until)
-    assert "🔔" not in text and "itirilən" not in text
+    assert not text or ("🔔" not in text and "itirilən" not in text)  # boş hesabat None qaytarır

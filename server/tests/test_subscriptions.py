@@ -192,3 +192,28 @@ def test_telegram_callbacks(api, crm_env):
                                "message": {"message_id": 5, "chat": {"id": int(CHAT)}}}}
     assert api.post("/api/webhooks/telegram", json=body, headers=H).json()["result"] == "ignored"
     assert payments(sid)[1].status == "pending"
+
+
+def test_patch_edit_and_stop_resume(api):
+    adm = bearer(admin_token(api))
+    cid = mk_client("Redaktə Müştəri")
+    sid = mk_sub(cid)
+    r = api.patch(f"/api/admin/subscriptions/{sid}", headers=adm, json={
+        "title": "Yeni ad", "amount": 300_00, "pay_day": 0, "visits_per_month": 4, "note": "qeyd"})
+    assert r.status_code == 200
+    j = r.json()
+    assert (j["title"], j["amount"], j["pay_day"], j["visits_per_month"], j["note"]) == ("Yeni ad", 300_00, 0, 4, "qeyd")
+    # qeyd və limit təmizlənir
+    j = api.patch(f"/api/admin/subscriptions/{sid}", headers=adm, json={"note": None, "visits_per_month": None}).json()
+    assert j["note"] is None and j["visits_per_month"] is None
+    # boş ola bilməyən sahələr
+    assert api.patch(f"/api/admin/subscriptions/{sid}", headers=adm, json={"title": None}).status_code == 422
+    assert api.patch(f"/api/admin/subscriptions/{sid}", headers=adm, json={"pay_day": 29}).status_code == 422
+    # dayandır: yeni ay sətri yaranmır; davam etdir: yaranır
+    assert api.patch(f"/api/admin/subscriptions/{sid}", headers=adm, json={"active": False}).json()["active"] is False
+    with SessionLocal() as db:
+        assert subs.ensure_payments(db, date(2027, 2, 10)) == 0
+        db.commit()
+    assert api.patch(f"/api/admin/subscriptions/{sid}", headers=adm, json={"active": True}).json()["active"] is True
+    with SessionLocal() as db:
+        assert subs.ensure_payments(db, date(2027, 2, 10)) > 0

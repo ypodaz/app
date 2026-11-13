@@ -18,7 +18,7 @@ from models import Block, Client, Package, Shoot
 from views import BAKU, day_bounds, payment_line
 
 MAX_ROUNDS = 6
-KIND = {"shoot": "Çəkiliş", "reels_pack": "Reels paketi", "studio_rent": "Studiya icarəsi"}
+KIND = {"shoot": "Çəkiliş", "reels_pack": "Reels paketi", "studio_rent": "Studiya icarəsi", "single_reel": "Tək Reels"}
 TAG = {"podcast": "Podcast", "reels": "Reels", "other": "Digər"}
 _FOLD = str.maketrans("əıöüşçğ", "eiouscg")
 
@@ -242,15 +242,17 @@ class Run:
         tag = tag or s.tag
         if kind == "studio_rent":
             v.update(cameras=0, editing=False, reels_count=0, location="studio")
-        if kind == "reels_pack":
+        if kind in ("reels_pack", "single_reel"):
             v.update(editing=False, reels_count=0)
+        if kind == "single_reel":
+            v.update(location="studio")
         drop = {_fold(str(n).strip()) for n in remove_extras or []}
         added = _extras(add_extras)
         extras = [e for e in s.extras or [] if _fold(e["name"]) not in drop] + added
         pkg = self.db.get(Package, s.package_id) if s.package_id else None
         try:
             args = dict(kind=kind, duration_min=duration, package_cameras=pkg.cameras if pkg else None,
-                        extras=booking.extras_total(extras), **v)
+                        extras=booking.extras_total(extras), cover_count=s.cover_count, **v)
             gross = money.price(**args).gross
             discount = (money.percent(gross, int(round(float(discount_percent)))) if discount_percent
                         else _azn(discount_azn) if discount_azn is not None else min(s.discount, gross))
@@ -263,7 +265,7 @@ class Run:
                 "prep_min": int(s.prep_min if prep_min is None else prep_min),
                 "wrap_min": int(s.wrap_min if wrap_min is None else wrap_min),
                 "note": note if note is not None else s.note, "title": title if title is not None else s.title,
-                "extras": extras}
+                "extras": extras, "cover_count": s.cover_count}
         who = self.db.get(Client, s.client_id).full_name
         end_t = starts + timedelta(minutes=duration)
         changes = []

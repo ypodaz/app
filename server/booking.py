@@ -20,7 +20,7 @@ from models import (AuditLog, Block, CashbackLedger, Client, Notification, Packa
 MONEY_FIELDS = ("status", "total", "cashback_used", "deposit_expected", "deposit_amount", "deposit_waived",
                 "paid_at_studio", "retained_amount", "refund_amount", "duration_min", "starts_at", "discount",
                 # jurnalda düzəlişin nəyi dəyişdiyi görünsün
-                "kind", "tag", "location", "cameras", "editing", "reels_count", "prep_min", "wrap_min", "extras")
+                "kind", "tag", "location", "cameras", "editing", "reels_count", "cover_count", "prep_min", "wrap_min", "extras")
 
 
 class Rejected(ValueError):
@@ -106,7 +106,7 @@ def _price(db: DB, s: Shoot, pkg: Package | None) -> money.Price:
         return money.price(kind=s.kind, location=s.location, cameras=s.cameras, duration_min=s.duration_min,
                            editing=s.editing, reels_count=s.reels_count,
                            package_cameras=pkg.cameras if pkg else None, discount=s.discount,
-                           extras=extras_total(s.extras))
+                           extras=extras_total(s.extras), cover_count=s.cover_count)
     except ValueError as e:
         raise Rejected(str(e)) from e
 
@@ -198,19 +198,21 @@ def create_shoot(db: DB, admin_id: int | None, *, client_id: int, starts_at: dat
                  package_id: int | None = None, cashback_use: int = 0, address: str | None = None,
                  title: str | None = None, note: str | None = None, source_note: str | None = None,
                  discount: int = 0, discount_note: str | None = None, prep_min: int = 15,
-                 wrap_min: int = 0, extras: list[dict] = ()) -> Shoot:
+                 wrap_min: int = 0, extras: list[dict] = (), cover_count: int = 0) -> Shoot:
     client = _lock_client(db, client_id)
     if not client:
         raise Rejected("Müştəri tapılmadı")
     _check_buffer(prep_min, wrap_min)
-    if kind in ("reels_pack", "studio_rent"):
+    if kind in ("reels_pack", "studio_rent", "single_reel"):
         editing, reels_count = False, 0
     if kind == "studio_rent":
         cameras, location, address = 0, "studio", None
+    if kind == "single_reel":
+        location, address = "studio", None
     pkg = _usable_package(db, package_id, client_id, _baku_date(starts_at), duration_min) if package_id else None
     s = Shoot(client_id=client_id, package_id=package_id, kind=kind, tag=tag, location=location, address=address,
               starts_at=starts_at, duration_min=duration_min, cameras=cameras, editing=editing,
-              reels_count=reels_count, title=title, note=note, source_note=source_note, created_by=admin_id,
+              reels_count=reels_count, cover_count=cover_count, title=title, note=note, source_note=source_note, created_by=admin_id,
               discount=discount, discount_note=(discount_note or None) if discount else None,
               prep_min=prep_min, wrap_min=wrap_min, extras=list(extras))
     _apply_price(s, _price(db, s, pkg))
@@ -373,15 +375,17 @@ def edit_shoot(db: DB, admin_id: int | None, s: Shoot, *, starts_at: datetime, d
                tag: str, location: str, cameras: int, editing: bool, reels_count: int = 0,
                address: str | None = None, title: str | None = None, note: str | None = None, discount: int = 0,
                discount_note: str | None = None, prep_min: int = 15, wrap_min: int = 0,
-               extras: list[dict] = ()) -> None:
+               extras: list[dict] = (), cover_count: int = 0) -> None:
     """Adminin düzəlişi (səhvi düzəltmək): qiymət və beh yenidən hesablanır, 24 saat qaydası tətbiq olunmur.
     Müştəri, paket və keşbek istifadəsi dəyişmir (onlar üçün ləğv edib yenidən yaradılır)."""
     _require(s, "confirmed")
     _check_buffer(prep_min, wrap_min)
-    if kind in ("reels_pack", "studio_rent"):
+    if kind in ("reels_pack", "studio_rent", "single_reel"):
         editing, reels_count = False, 0
     if kind == "studio_rent":
         cameras, location, address = 0, "studio", None
+    if kind == "single_reel":
+        location, address = "studio", None
     _lock_client(db, s.client_id)
     pkg = None
     if s.package_id:
@@ -393,6 +397,7 @@ def edit_shoot(db: DB, admin_id: int | None, s: Shoot, *, starts_at: datetime, d
     old_start, old_total, old_duration = aware(s.starts_at), s.total, s.duration_min
     s.starts_at, s.duration_min, s.kind, s.tag, s.location, s.address = starts_at, duration_min, kind, tag, location, address
     s.cameras, s.editing, s.reels_count, s.title, s.note = cameras, editing, reels_count, title, note
+    s.cover_count = cover_count
     s.discount, s.discount_note = discount, (discount_note or None) if discount else None
     s.prep_min, s.wrap_min, s.extras = prep_min, wrap_min, list(extras)
     _apply_price(s, _price(db, s, pkg))

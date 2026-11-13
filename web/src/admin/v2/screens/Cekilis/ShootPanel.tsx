@@ -51,10 +51,13 @@ export function ShootPanel({ id, now, initial, onInitialDone, children }: { id: 
     if (r !== undefined) { toast.show(`Uzadıldı · ${endMin >= 600 ? '' : '0'}${Math.floor(endMin / 60)}:${String(endMin % 60).padStart(2, '0')}-dək`); refresh(); reload(); }
   }
 
-  const lines: [string, number][] = s.kind === 'reels_pack'
+  const cover: [string, number][] = s.cover_count ? [[`Cover × ${s.cover_count}`, s.cover_count * 1000]] : [];
+  const main: [string, number][] = s.kind === 'reels_pack'
     ? [['Reels paketi', s.price_base]]
+    : s.kind === 'single_reel' ? [['Tək Reels', s.price_base]]
     : s.kind === 'studio_rent' ? [[`Müştəri özü çəkir · ${formatHours(s.duration_min)}`, s.price_base]]
     : [[s.package_id ? 'Paketdən saatlar' : `${s.cameras} kameralı ${formatHours(s.duration_min)} çəkiliş`, s.price_base], ['Əlavə kamera', s.price_extra_camera], ['Montaj', s.price_editing], [`Podcastdan Reels · ${s.reels_count} əd.`, s.price_reels]];
+  const lines: [string, number][] = [...main, ...cover];
 
   return (
     <div className="ck-panel" aria-label="Seçilmiş çəkiliş">
