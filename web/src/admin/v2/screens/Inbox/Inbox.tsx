@@ -44,7 +44,9 @@ export function Inbox({ id, social }: { id?: number; social?: SocialSel }) {
   // Standart seçim (02): geniş ekranda /inbox açılanda «Sizi gözləyir»in 1-ci sətri açılır.
   const convs = list.data;
   const firstId = convs && (kanal === 'hamisi' || kanal === 'whatsapp') ? sortGroup(convs.filter((c) => groupOf(c, botOn) === 'you'), 'you', botOn)[0]?.id : undefined;
-  useEffect(() => { if (wide && !open && firstId) location.replace(`#/inbox/${firstId}`); }, [wide, open, firstId]);
+  // «Sizi gözləyir» yığılıbsa (ConvList, ypod.v2.inbox.closed) avtomatik açılmır: sahibkar son yazışmalara baxmaq istəyir.
+  const youClosed = (() => { try { return !!JSON.parse(localStorage.getItem('ypod.v2.inbox.closed') ?? '{}').you; } catch { return false; } })();
+  useEffect(() => { if (wide && !open && firstId && !youClosed) location.replace(`#/inbox/${firstId}`); }, [wide, open, firstId, youClosed]);
 
   // J/K: növbəti/əvvəlki söhbət; /: axtarış.
   const keyRef = useRef<(e: KeyboardEvent) => void>();

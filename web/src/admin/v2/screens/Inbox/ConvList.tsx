@@ -4,6 +4,7 @@ import { go } from '../../../router';
 import { channelLabel, inKanal, KANAL, socialGroup, socialName, socialPath, type Kanal, type SocialThread } from '../../data/social';
 import { fmtWait, msOf } from '../../data/time';
 import { Avatar, EmptyState, ErrorBox, LoadingRows, Segmented, V2Icon } from '../../ui';
+import { IbIcon } from './icons';
 import { clockOf, effMode, groupOf, phoneLabel, preview, rank, sortGroup, type Group } from './logic';
 
 const nameOf = (c: Conv) => (c.contact.name || '').trim() || phoneLabel(c.contact.phone) || 'Naməlum';
@@ -100,11 +101,33 @@ type Props = {
   onOrder: (paths: string[]) => void;
 };
 
+const CLOSED_KEY = 'ypod.v2.inbox.closed';
+type Closed = Record<Group, boolean>;
+const readClosed = (): Closed => {
+  try { const v = JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '{}'); return { you: !!v.you, bot: !!v.bot, theirs: !!v.theirs }; }
+  catch { return { you: false, bot: false, theirs: false }; }
+};
+
+/** Bölmə başlığı: basanda yığılır/açılır, seçim bu brauzerdə yadda qalır. */
+function GroupHead({ g, label, n, closed, onToggle, children }: { g: Group; label: string; n: number; closed: boolean; onToggle: (g: Group) => void; children?: React.ReactNode }) {
+  return (
+    <h2 className="ibg">
+      <button type="button" className="ibg__tog" aria-expanded={!closed} onClick={() => onToggle(g)}>
+        <span className={`ibg__chev${closed ? ' is-closed' : ''}`} aria-hidden="true"><IbIcon name="chevDown" size={14} /></span>
+        <span>{label}</span> <span className="mono ibg__n">{n}</span>
+      </button>
+      {!closed && children}
+    </h2>
+  );
+}
+
 const byTimeDesc = (a: Entry, b: Entry) => (b.at ?? '').localeCompare(a.at ?? '');
 
 /** Siyahı sütunu (02 #1–#9): WhatsApp + Instagram DM + Instagram/YouTube kommentləri, kanal filtri ilə. */
 export function ConvList({ convs, social, commentMode, kanal, onKanal, error, onRetry, botOn, now, sel, searchRef, onOrder }: Props) {
   const [more, setMore] = useState(false);
+  const [closedSt, setClosed] = useState<Closed>(readClosed);
+  const toggle = (g: Group) => setClosed((c) => { const n = { ...c, [g]: !c[g] }; try { localStorage.setItem(CLOSED_KEY, JSON.stringify(n)); } catch { /* yaddaş bağlıdır */ } return n; });
   const [raw, setRaw] = useState('');
   const [q, setQ] = useState('');
   useEffect(() => { const t = window.setTimeout(() => setQ(raw), 200); return () => window.clearTimeout(t); }, [raw]); // 02: 200 ms gecikmə
@@ -136,8 +159,11 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
     };
   }, [convs, social, kanal, q, botOn]);
 
+  // Axtarışda bütün bölmələr açıq görünür (tapılan gizli qalmasın)
+  const closed: Closed = q.trim() ? { you: false, bot: false, theirs: false } : closedSt;
   const botShown = more || q.trim() ? groups.bot : groups.bot.slice(0, 2);
-  const order = useMemo(() => [...groups.you, ...botShown, ...groups.theirs].map((e) => e.path), [groups, botShown]);
+  const order = useMemo(() => [...(closed.you ? [] : groups.you), ...(closed.bot ? [] : botShown), ...(closed.theirs ? [] : groups.theirs)].map((e) => e.path),
+    [groups, botShown, closed.you, closed.bot, closed.theirs]);
   const orderKey = order.join(',');
   useEffect(() => onOrder(order), [orderKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -185,26 +211,32 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
 
         {loaded && !empty && (
           <>
-            <h2 className="ibg"><span>Sizi gözləyir</span> <span className="mono ibg__n">{groups.you.length}</span><span className="ibg__keys"><kbd className="mono">J</kbd><kbd className="mono">K</kbd></span></h2>
-            {groups.you.length === 0
+            <GroupHead g="you" label="Sizi gözləyir" n={groups.you.length} closed={closed.you} onToggle={toggle}>
+              <span className="ibg__keys"><kbd className="mono">J</kbd><kbd className="mono">K</kbd></span>
+            </GroupHead>
+            {closed.you ? null : groups.you.length === 0
               ? <div className="ib__pad"><EmptyState title="Heç kim sizi gözləmir" reason={`bot ${groups.bot.length} söhbəti aparır`} /></div>
               : groups.you.map((e) => row(e, 'you'))}
 
             {groups.bot.length > 0 && (
               <>
-                <h2 className="ibg"><span>Bot aparır</span> <span className="mono ibg__n">{groups.bot.length}</span><span className="ibg__hint">· özü cavablayır, gecə də</span></h2>
-                {botShown.map((e) => row(e, 'bot', true))}
-                {!more && groups.bot.length > 2 && !searching && (
-                  <button type="button" className="ib__more" onClick={() => setMore(true)}>daha {groups.bot.length - 2}</button>
-                )}
-                {more && groups.bot.length > 2 && !searching && <button type="button" className="ib__more" onClick={() => setMore(false)}>yığ</button>}
+                <GroupHead g="bot" label="Bot aparır" n={groups.bot.length} closed={closed.bot} onToggle={toggle}>
+                  <span className="ibg__hint">· özü cavablayır, gecə də</span>
+                </GroupHead>
+                {!closed.bot && <>
+                  {botShown.map((e) => row(e, 'bot', true))}
+                  {!more && groups.bot.length > 2 && !searching && (
+                    <button type="button" className="ib__more" onClick={() => setMore(true)}>daha {groups.bot.length - 2}</button>
+                  )}
+                  {more && groups.bot.length > 2 && !searching && <button type="button" className="ib__more" onClick={() => setMore(false)}>yığ</button>}
+                </>}
               </>
             )}
 
             {groups.theirs.length > 0 && (
               <>
-                <h2 className="ibg"><span>Müştəridən cavab gözləyirik</span> <span className="mono ibg__n">{groups.theirs.length}</span></h2>
-                {groups.theirs.map((e) => row(e, 'theirs', true))}
+                <GroupHead g="theirs" label="Müştəridən cavab gözləyirik" n={groups.theirs.length} closed={closed.theirs} onToggle={toggle} />
+                {!closed.theirs && groups.theirs.map((e) => row(e, 'theirs', true))}
               </>
             )}
           </>

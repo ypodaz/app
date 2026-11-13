@@ -21,6 +21,12 @@
 
 .v2 .ibg { display: flex; align-items: baseline; gap: 6px; padding: 18px 20px 6px; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text); }
 .v2 .ibg__n { color: var(--text-3); font-weight: var(--fw-regular); }
+.v2 .ibg__tog { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 6px 4px 2px; margin: -4px 0 -4px -2px; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; border-radius: 6px; min-height: 32px; }
+.v2 .ibg__tog:hover { background: var(--surface-2, rgba(0,0,0,.04)); }
+.v2 .ibg__tog:focus-visible { outline: 2px solid var(--brand, #6d28d9); outline-offset: 2px; }
+.v2 .ibg__chev { display: inline-flex; align-self: center; color: var(--text-3); transition: transform .15s ease; }
+.v2 .ibg__chev.is-closed { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .v2 .ibg__chev { transition: none; } }
 .v2 .ibg__hint { color: var(--text-3); font-weight: var(--fw-regular); font-size: 12px; }
 .v2 .ibg__keys { margin-left: auto; display: inline-flex; gap: 4px; }
 .v2 .ibg__keys kbd { color: var(--text-3); }
