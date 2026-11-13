@@ -9,7 +9,6 @@ import { CancelShoot } from '../pages/CancelShoot';
 import { Clients } from '../pages/Clients';
 import { CloseShoot } from '../pages/CloseShoot';
 import { BotSettings } from '../pages/BotSettings';
-import { Inbox } from '../pages/Inbox';
 import { Leads } from '../pages/Leads';
 import { Materials } from '../pages/Materials';
 import { PackageForm, Packages } from '../pages/Packages';
@@ -23,6 +22,7 @@ import { AdminShell } from '../../shared/ui';
 import { PageHead } from '../components/neon';
 import { AccountStub, MoreMenu } from './Account';
 import { CEKILIS_TABS, INSAN_TABS, Legacy, SectionTabs } from './Legacy';
+import { Inbox } from './screens/Inbox/Inbox';
 import { Today } from './screens/Today/Today';
 import { Soon } from './screens/Soon';
 import { V2Shell } from './shell/Shell';
@@ -49,7 +49,7 @@ function Page() {
     case 'bu-gun': return <Today />;
 
     // ---- Inbox (02) ----
-    case 'inbox': return <Legacy><Inbox id={num || undefined} /></Legacy>; // TODO v2: 02-inbox.md, kanal filtrləri və /inbox/komment/…
+    case 'inbox': return <Inbox id={num || undefined} />; // TODO [API] kanal filtrləri və /inbox/komment/…: Instagram DM/komment üçün admin endpoint yoxdur
 
     // ---- Çəkilişlər (10–15) ----
     case 'cekilisler':

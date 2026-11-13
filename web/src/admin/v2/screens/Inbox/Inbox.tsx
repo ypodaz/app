@@ -1,0 +1,52 @@
+import { useEffect, useRef, useState } from 'react';
+import { usePoll, type Conv } from '../../../components/crm';
+import { useLoad } from '../../../ctx';
+import { go, useMedia } from '../../../router';
+import { useShellData } from '../../data/ShellData';
+import { EmptyState } from '../../ui';
+import { Chat } from './Chat';
+import { ConvList } from './ConvList';
+import { groupOf, sortGroup, typing } from './logic';
+import './inbox.css';
+
+/** Inbox (02-inbox.md): siyahı · söhbət · İnsan paneli. Route: /inbox, /inbox/<id>. */
+export function Inbox({ id }: { id?: number }) {
+  const sd = useShellData();
+  const botOn = sd.raw?.botEnabled !== false;
+  const list = useLoad<Conv[]>('/inbox'); // GET /inbox/{id} söhbəti oxunmuş edir — önizləmə üçün çağırılmır
+  usePoll(list.reload, 20_000);
+  const wide = useMedia('(min-width:1100px)');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
+  const search = useRef<HTMLInputElement>(null);
+  const order = useRef<number[]>([]);
+
+  // Standart seçim (02): geniş ekranda /inbox açılanda «Sizi gözləyir»in 1-ci sətri açılır.
+  const convs = list.data;
+  const firstId = convs ? sortGroup(convs.filter((c) => groupOf(c, botOn) === 'you'), 'you', botOn)[0]?.id : undefined;
+  useEffect(() => { if (wide && !id && firstId) location.replace(`#/inbox/${firstId}`); }, [wide, id, firstId]);
+
+  // J/K: növbəti/əvvəlki söhbət; /: axtarış.
+  const keyRef = useRef<(e: KeyboardEvent) => void>();
+  keyRef.current = (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+    if (e.key === '/') { e.preventDefault(); search.current?.focus(); return; }
+    const k = e.key.toLowerCase();
+    if (k !== 'j' && k !== 'k') return;
+    const o = order.current;
+    if (!o.length) return;
+    const i = id ? o.indexOf(id) : -1;
+    const next = k === 'j' ? o[Math.min(o.length - 1, i + 1)] : o[Math.max(0, i - 1)];
+    if (next && next !== id) go(`inbox/${next}`);
+  };
+  useEffect(() => { const on = (e: KeyboardEvent) => keyRef.current?.(e); window.addEventListener('keydown', on); return () => window.removeEventListener('keydown', on); }, []);
+
+  return (
+    <div className={`ib${id ? ' ib--chat' : ''}`}>
+      <ConvList convs={convs} error={list.err} onRetry={list.reload} botOn={botOn} now={now} sel={id} searchRef={search} onOrder={(o) => { order.current = o; }} />
+      {id
+        ? <Chat key={id} id={id} botOn={botOn} onChanged={list.reload} onBack={() => go('inbox')} />
+        : <div className="ib__cw ib__cw--empty"><EmptyState title="Söhbət seçin" reason="Soldakı siyahıdan müştərini açın." /></div>}
+    </div>
+  );
+}
