@@ -9,7 +9,7 @@ import './neon-admin.css';
 import './neon-admin-b3.css';
 import './crm.css';
 import { AuthProvider, makeCall } from './ctx';
-import { Login } from './pages/Login';
+import { Login } from './v2/screens/Tenzimleme/Login';
 import { V2Routes } from './v2/routes';
 
 // DEV: `?mock` ilə saxta məlumat (ekran görüntüləri üçün); build-də çıxarılır

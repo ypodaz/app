@@ -36,6 +36,8 @@ function route(path: string, method: string): unknown {
   const p = path.split('?')[0];
   const ins = insanlarMock(path, p, method); // Insanlar blokuna bax (faylın sonu)
   if (ins !== undefined) return ins;
+  const t = tenzimlemeRoute(path, method);
+  if (t !== undefined) return t;
   if (p === '/dashboard') return { deposit_pending: [shoots[2], shoots[4]], today: [shoots[1], shoots[2], shoots[3]], unclosed_count: 1, awaiting_material_count: 0, app_usage: { clients: 30, joined: 20, home_screen: 10, push_on: 8, active_7d: 6 } };
   if (p === '/shoots') return shoots;
   if (p === '/blocks') return [];
@@ -187,3 +189,40 @@ function insanlarMock(path: string, p: string, method: string): unknown {
   return undefined;
 }
 const baku_month = () => new Date(Date.now() + 4 * H).toISOString().slice(0, 7);
+
+// --- Tenzimleme ---
+function tenzimlemeRoute(path: string, method: string): unknown {
+  const p = path.split('?')[0];
+  const day = (n: number, h = 20) => iso(baku() + (n * 24 + h) * H);
+  const cl = (id: number, name: string, over: Record<string, unknown> = {}) => ({ id, full_name: name, phone: `99450000${String(1000 + id)}`, activated: true, app_seen_at: null, app_standalone: false, push_permission: 'granted', cashback_balance: 1500, package: null, last_shoot_at: null, ...over });
+  const camp = (id: number, title: string, rec: number, op: number, bk: number, ago: number) => ({ id, kind: 'manual', title, body: '{name}, yeni təklifimiz var.', url: null, filters: { has_package: false }, recipients: rec, push_on: rec - 3, created_at: iso(Date.now() - ago * 24 * H), created_by: 'Admin', opened: op, booked_14d: bk });
+  const camps = [camp(1, 'Noyabr təklifi', 42, 25, 4, 3), camp(2, 'Reels endirimi', 30, 12, 2, 12)];
+  if (p === '/whoami') return { name: 'Nümunə Admin' };
+  if (p === '/bot/settings') return { bot_enabled: true, bot_mode: 'draft', kapso_month_count: 640, kapso_month_limit: 1000 };
+  if (p === '/packages/quote') {
+    const q = new URLSearchParams(path.split('?')[1] ?? ''); const h = Number(q.get('hours') || 5); const c = Number(q.get('cameras') || 1);
+    return { price: Math.round(h * 5000 * (1 - h / 50) * (1 + (c - 1) * 0.3)), months: h <= 5 ? 3 : h <= 10 ? 4 : h <= 15 ? 6 : 8 };
+  }
+  if (p === '/packages' && method === 'GET') {
+    const pk = (id: number, owner: string, total: number, left: number, endsIn: number) => ({ id, title: `${total / 60} saatlıq paket`, owner_client_id: id, owner_name: owner, minutes_total: total, minutes_left: left, cameras: 2, starts_on: day(-60).slice(0, 10), ends_on: day(endsIn).slice(0, 10), price_paid: 45000, members: [] });
+    return [pk(1, 'Nümunə Müştəri A', 600, 90, 9), pk(2, 'Nümunə Müştəri B', 1200, 800, 90), pk(3, 'Nümunə Müştəri C', 300, 240, 40), pk(4, 'Nümunə Müştəri D', 300, 0, -10)];
+  }
+  if (p === '/clients') return [cl(1, 'Nümunə Müştəri A'), cl(2, 'Nümunə Müştəri B'), cl(3, 'Nümunə Müştəri C')];
+  if (p === '/campaigns' && method === 'GET') return camps;
+  const cm = p.match(/^\/campaigns\/(\d+)$/);
+  if (cm) return { ...camps[0], list: [1, 2, 3].map((i) => ({ id: i, full_name: `Nümunə Müştəri ${'ABC'[i - 1]}`, opened_at: i < 3 ? iso(Date.now() - i * H) : null })) };
+  if (p === '/segments/preview') return { count: 38, push_on: 31, opted_out: 4, recently_messaged: 2, sample: [{ id: 1, full_name: 'Nümunə Müştəri A' }] };
+  if (p === '/tags') return [{ id: 1, name: 'Podcast', count: 12 }, { id: 2, name: 'Psixoloq', count: 5 }];
+  if (p === '/free-slots') return [{ start: '10:00', end: '12:00' }, { start: '15:00', end: '17:00' }];
+  if (p === '/automations') return { send_hour: 11, studio_hours: [10, 22], winback: { enabled: true, days: 60, title: 'Sizi görmək istəyirik', body: '{name}, çoxdandır gəlmirsiniz.' }, cashback: { enabled: true, min: 1000, title: 'Keşbekiniz var', body: '{name}, {balance} keşbekiniz gözləyir.' }, birthday: { enabled: false, gift: 1000, title: 'Ad gününüz mübarək', body: '{name}, {gift} hədiyyə.' }, review: { enabled: true, url: 'https://g.page/nümunə', title: 'Rəyiniz vacibdir', body: '{name}, rəy yazın.' } };
+  if (p === '/social/status') return { queue_enabled: true, channels: [{ id: 'a', service: 'instagram', name: 'nümunə', queue_paused: false }, { id: 'b', service: 'tiktok', name: 'nümunə', queue_paused: false }], requests_today: 6, request_cap: 80, next_posts: [], recent_errors: [] };
+  if (p === '/social/posts') {
+    const post = (id: number, mid: number, plat: string, d: number, status: string) => ({ id, platform: plat, scheduled_at: day(d), text: 'Nümunə mətn', title: plat === 'youtube' ? 'Nümunə başlıq' : null, status, external_id: null, error: status === 'error' ? 'Nümunə xəta' : null, attempts: 0, media: { id: mid, number: mid, day: d, slot: 'axsam', title: `Nümunə video ${mid}`, file_name: `v${mid}.mp4`, public_url: null } });
+    return [post(1, 1, 'instagram', -1, 'published'), post(2, 1, 'tiktok', -1, 'published'), post(3, 2, 'instagram', 0, 'queued'), post(4, 2, 'youtube', 0, 'planned'), post(5, 3, 'instagram', 1, 'planned'), post(6, 3, 'tiktok', 1, 'error')];
+  }
+  if (p === '/faqs') return [{ id: 1, question: 'Qiymət nə qədərdir?', answer: 'Podcast üçün saatı 60 AZN.', active: true }, { id: 2, question: 'Ünvan haradadır?', answer: 'Nümunə küçə 1.', active: false }];
+  if (p === '/quick-replies') return [{ id: 1, title: 'Kart nömrəsi', text: 'Kart: 0000 0000 0000 0000' }];
+  if (p === '/unanswered') return [{ id: 1, conversation_id: 1, question: 'Parkinq var?', created_at: iso(Date.now() - 5 * H) }];
+  if (p === '/bot/test' && method === 'POST') return { reply: 'Salam! Podcast üçün saatı 60 AZN-dir.', language: 'az', handoff: false, handoff_reason: null, filtered: null, lead: {} };
+  return undefined;
+}

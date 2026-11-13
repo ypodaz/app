@@ -4,24 +4,28 @@ import { useRoute, useWide } from '../router';
 import { useLoad } from '../ctx';
 import { bakuParts } from '../format';
 import { Calendar } from '../pages/Calendar';
-import { Campaigns } from '../pages/Campaigns';
 import { CancelShoot } from '../pages/CancelShoot';
 import { CloseShoot } from '../pages/CloseShoot';
-import { BotSettings } from '../pages/BotSettings';
 import { Materials } from '../pages/Materials';
-import { PackageForm, Packages } from '../pages/Packages';
 import { Panel } from '../pages/Panel';
 import { ShootForm } from '../pages/ShootForm';
-import { Social } from '../pages/Social';
 import type { Shoot } from '../types';
 import { AdminShell } from '../../shared/ui';
 import { PageHead } from '../components/neon';
-import { AccountStub, MoreMenu } from './Account';
+import { MoreMenu } from './Account';
 import { CEKILIS_TABS, Legacy, SectionTabs } from './Legacy';
 import { Inbox } from './screens/Inbox/Inbox';
 import { Hesabat } from './screens/Insanlar/Hesabat';
 import { InsanlarRoute } from './screens/Insanlar/Insanlar';
 import { ClientCardV2, LeadCardV2 } from './screens/Insanlar/Person';
+import { Avtomat } from './screens/Tenzimleme/Avtomat';
+import { Bot } from './screens/Tenzimleme/Bot';
+import { Hesab } from './screens/Tenzimleme/Hesab';
+import { Marketinq } from './screens/Tenzimleme/Marketinq';
+import { MBot } from './screens/Tenzimleme/MBot';
+import { Paketler } from './screens/Tenzimleme/Paketler';
+import { Paylasim } from './screens/Tenzimleme/Paylasim';
+import { YeniKampaniya } from './screens/Tenzimleme/YeniKampaniya';
 import { Today } from './screens/Today/Today';
 import { Soon } from './screens/Soon';
 import { V2Shell } from './shell/Shell';
@@ -70,16 +74,16 @@ function Page() {
     // ---- Tənzimləmə (30–35) ----
     case 'tenzimleme':
       switch (b) {
-        case 'paketler': return <Legacy>{c === 'yeni' ? <PackageForm /> : <Packages />}</Legacy>; // 30-paketler.md
-        case 'marketinq': return <Legacy>{c === 'paylasim' ? <Social /> : <Campaigns />}</Legacy>; // 31/32
-        case 'avtomat': return <Legacy><Campaigns tab="auto" /></Legacy>; // 33-avtomat.md
-        case 'bot': return <Legacy><BotSettings /></Legacy>; // 34-bot.md
-        default: return <AccountStub />; // 35-hesab-giris.md
+        case 'paketler': return <Paketler />; // 30-paketler.md (/yeni dialoqu Paketler daxilində)
+        case 'marketinq': return c === 'paylasim' ? <Paylasim /> : c === 'yeni' ? <YeniKampaniya /> : <Marketinq />; // 31/32
+        case 'avtomat': return <Avtomat />; // 33-avtomat.md
+        case 'bot': return <Bot />; // 34-bot.md
+        default: return <Hesab />; // 35-hesab-giris.md
       }
 
     // ---- Mobil ----
     case 'm':
-      if (b === 'bot') return <Legacy><BotSettings /></Legacy>;
+      if (b === 'bot') return <MBot />;
       return <MoreMenu />;
 
     // ---- Köhnə (v1) yollar: eyni səhifələr, yeni qabıqda ----
@@ -92,15 +96,15 @@ function Page() {
       if (c === 'close') return <Legacy><CloseShoot id={num} /></Legacy>;
       if (c === 'cancel') return <Legacy><CancelShoot id={num} /></Legacy>;
       return <Legacy><ShootPage key={num} id={num} /></Legacy>;
-    case 'packages': return <Legacy>{b === 'new' ? <PackageForm /> : <Packages />}</Legacy>;
+    case 'packages': return <Paketler />;
     case 'materials': return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="montaj" label="Çəkilişlər" />}><Materials /></Legacy>;
-    case 'campaigns': return <Legacy><Campaigns /></Legacy>;
-    case 'automations': return <Legacy><Campaigns tab="auto" /></Legacy>;
+    case 'campaigns': return b === 'new' ? <YeniKampaniya /> : <Marketinq />;
+    case 'automations': return <Avtomat />;
     case 'report': return <Hesabat />;
     case 'leads': return <InsanlarRoute query={query} tab="lead" />;
     case 'people': return <InsanlarRoute query={query} tab="hamisi" />;
-    case 'social': return <Legacy><Social /></Legacy>;
-    case 'bot': return <Legacy><BotSettings /></Legacy>;
+    case 'social': return <Paylasim />;
+    case 'bot': return <Bot />;
     case 'panel': return <Legacy><Panel /></Legacy>;
   }
   return <Today />;
