@@ -1,18 +1,41 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { usePoll, type Draft } from '../../../components/crm';
+import { usePoll, type ConvMode, type Draft } from '../../../components/crm';
 import { errMsg, useAuth, useLoad } from '../../../ctx';
 import { bakuParts } from '../../../format';
 import { socialName, type SocialItem, type SocialMode } from '../../data/social';
 import { fmtWait, msOf } from '../../data/time';
-import { Avatar, Button, Chip, ErrorBox, LoadingRows, Segmented, useOnline, useToast, V2Icon } from '../../ui';
+import { Avatar, Button, ErrorBox, LoadingRows, Segmented, useOnline, useToast, V2Icon } from '../../ui';
 import { DraftCard, FreeComposer } from './Composer';
 import { dayLabel, MODE_META } from './logic';
+import { ModeChip } from './ModeMenu';
+
+const IG_MODES: ConvMode[] = ['bot', 'owner', 'wait']; // Instagram DM-də «Bot susur» yoxdur
+const igProfile = (author: string) => (author ? `https://www.instagram.com/${encodeURIComponent(author)}/` : null);
+
+/** «Lead kimi əlavə et» (02 #57–58): lead varsa kartına keçid. */
+function LeadButton({ itemId, leadId, who, onDone }: { itemId?: number; leadId?: number | null; who: string; onDone: () => void }) {
+  const { call } = useAuth();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (leadId) return <a className="ibk__link" href={`#/insanlar/lead-${leadId}`}>Lead kartı</a>;
+  if (!itemId) return null;
+  return (
+    <Button variant="text" size="md" disabled={busy} onClick={async () => {
+      setBusy(true);
+      try {
+        const r = await call<{ lead_id: number; created: boolean }>(`/social-inbox/items/${itemId}/lead`, { method: 'POST' });
+        toast.show(r.created ? `Lead əlavə edildi · ${who}` : `Mövcud lead-ə bağlandı · ${who}`);
+        onDone();
+      } catch (e) { toast.show(`Alınmadı: ${errMsg(e)}`, { error: true }); } finally { setBusy(false); }
+    }}>Lead kimi əlavə et</Button>
+  );
+}
 
 const UNDO_MS = 5000; // 99 G2
 
 type DmMsg = { key: string; role: 'in' | 'bot' | 'you'; text: string; at: string };
 type DmOpen = {
-  thread_id: string; author: string; mode: SocialMode; window_open: boolean; window_expires_at: string | null;
+  thread_id: string; author: string; mode: SocialMode; window_open: boolean; window_expires_at: string | null; lead_id: number | null;
   messages: DmMsg[]; pending: SocialItem[];
 };
 type PostOpen = {
@@ -20,16 +43,19 @@ type PostOpen = {
   post: { permalink?: string | null; caption?: string; media_type?: string; timestamp?: string; like_count?: number; comments_count?: number };
 };
 
+/** Lead düyməsi üçün söhbətin hər hansı item-i: mesaj açarı `i<id>`-dir. */
+const lastId = (d: { messages: { key: string }[] }) => { const k = [...d.messages].reverse().find((m) => /^i\d+$/.test(m.key))?.key; return k ? Number(k.slice(1)) : undefined; };
+
 const asDraft = (i: SocialItem): Draft => ({ id: i.id, conversation_id: 0, text: i.draft_text ?? '', status: 'pending', reason: null, model_output: null, created_at: i.created_at });
 const ddmmyyyy = (iso: string) => bakuParts(iso).date.split('-').reverse().join('.');
 
-function Head({ name, meta, onBack, children }: { name: string; meta: string; onBack: () => void; children?: React.ReactNode }) {
+function Head({ name, meta, href, onBack, children }: { name: string; meta: string; href?: string | null; onBack: () => void; children?: React.ReactNode }) {
   return (
     <header className="ibh">
       <button type="button" className="ibh__back" aria-label="Geri" onClick={onBack}><V2Icon name="back" size={20} /></button>
       <Avatar name={name.replace(/^@/, '')} tone="brand" large />
       <div className="ibh__id">
-        <h2 className="ibh__name">{name}</h2>
+        <h2 className="ibh__name">{href ? <a href={href} target="_blank" rel="noopener noreferrer">{name}</a> : name}</h2>
         <p className="ibh__meta">{meta}</p>
       </div>
       {children}
@@ -50,6 +76,9 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
   const [hidden, setHidden] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [sendErr, setSendErr] = useState('');
+  const [menu, setMenu] = useState(false);
+  const [modeOv, setModeOv] = useState<SocialMode | null>(null);
+  useEffect(() => { setModeOv(null); }, [data?.mode]);
   const endRef = useRef<HTMLDivElement>(null);
   const n = data?.messages.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [n]);
@@ -89,6 +118,18 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
     } catch (e) { setSendErr(errMsg(e)); return false; } finally { setBusy(false); }
   }
 
+  async function pickMode(m: SocialMode) {
+    if (!data) return;
+    const prev = modeOv ?? data.mode;
+    const api = (x: SocialMode) => call(`/social-inbox/dm/${encodeURIComponent(thread)}/mode`, { method: 'POST', body: { mode: x } });
+    setModeOv(m);
+    try {
+      await api(m);
+      refresh();
+      toast.show(`Rejim: ${MODE_META[m].label}`, { undo: () => { setModeOv(prev); void api(prev).then(refresh); } });
+    } catch (e) { setModeOv(null); toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void pickMode(m) }); }
+  }
+
   if (!data) {
     return (
       <div className="ib__cw ib__cw--solo">
@@ -100,16 +141,20 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
     );
   }
 
-  const meta = MODE_META[data.mode];
+  const mode = modeOv ?? data.mode;
+  const meta = MODE_META[mode];
   const autoMin = draftItem?.auto_at ? Math.max(1, Math.ceil((msOf(draftItem.auto_at) - Date.now()) / 60_000)) : 0;
-  const note = autoMin ? `${autoMin} dəq sonra bot özü göndərəcək` : data.mode === 'wait' ? 'Siz baxana qədər gözləyir' : 'Siz göndərənə qədər gözləyir';
+  const note = autoMin ? `${autoMin} dəq sonra bot özü göndərəcək` : mode === 'wait' ? 'Siz baxana qədər gözləyir' : 'Siz göndərənə qədər gözləyir';
   const noDraftPending = data.pending.some((i) => !i.draft_text);
 
   return (
     <div className="ib__cw ib__cw--solo">
       <section className="ib__chat" aria-label="Söhbət">
-        <Head name={name} meta="Instagram DM" onBack={onBack}><Chip tone={meta.tone}>{meta.label}</Chip></Head>
-        <div className={`ibs ibs--${data.mode}`} role="status"><b>{meta.label}</b><span> · {meta.hint}</span></div>
+        <Head name={name} meta={data.author ? 'Instagram DM · ada basın, profil açılır' : 'Instagram DM'} href={igProfile(data.author)} onBack={onBack}>
+          <LeadButton itemId={data.pending[0]?.id ?? lastId(data)} leadId={data.lead_id} who={name} onDone={refresh} />
+          <ModeChip current={mode} friend={false} modes={IG_MODES} open={menu} setOpen={setMenu} disabled={!online} onPick={(m) => void pickMode(m as SocialMode)} />
+        </Head>
+        <div className={`ibs ibs--${mode}`} role="status"><b>{meta.label}</b><span> · {meta.hint}</span></div>
         {!data.window_open && <div className="ib__warn" role="status">24 saat keçib · müştəri yazmayınca Instagram cavaba icazə vermir</div>}
         <div className="ibt" tabIndex={-1}>
           {data.messages.map((m, i) => {
@@ -135,10 +180,10 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
         <div className="ibf-wrap">
           {sendErr && <ErrorBox title="Mesaj getmədi" detail={sendErr} />}
           {draftItem
-            ? <DraftCard draft={asDraft(draftItem)} mode={data.mode} note={note} windowOpen={data.window_open} online={online}
+            ? <DraftCard draft={asDraft(draftItem)} mode={mode} note={note} windowOpen={data.window_open} online={online}
                 onSend={sendDraft} onReject={() => void act('reject')} onRegenerate={draftItem.regen < 3 ? () => void act('regenerate') : undefined} />
             : <>
-                {data.mode === 'bot' && <div className="ibb"><div className="ibb__t"><b>Bot bu söhbəti aparır.</b><span>Siz yazsanız, bot yalnız qaralama hazırlayacaq</span></div></div>}
+                {mode === 'bot' && <div className="ibb"><div className="ibb__t"><b>Bot bu söhbəti aparır.</b><span>Siz yazsanız, bot yalnız qaralama hazırlayacaq</span></div></div>}
                 <FreeComposer windowOpen={data.window_open} online={online} busy={busy} onSend={sendFree} />
               </>}
         </div>
@@ -189,6 +234,7 @@ function PendingComment({ i, online, onDone }: { i: SocialItem; online: boolean;
         {i.regen < 3 && <Button variant="text" size="md" disabled={!online || busy} onClick={() => void act('regenerate')}>Yenidən yaz</Button>}
         <Button variant="text" size="md" disabled={busy} onClick={() => void act('reject')}>Rədd et</Button>
         {i.channel === 'instagram' && <Button variant="text" size="md" disabled={!online || busy} onClick={() => void act('hide')}>Gizlət</Button>}
+        <LeadButton itemId={i.id} leadId={i.lead_id} who={who} onDone={onDone} />
       </div>
     </article>
   );
@@ -226,7 +272,7 @@ export function PostView({ channel, thread, onChanged, onBack }: PostProps) {
   return (
     <div className="ib__cw ib__cw--solo">
       <section className="ib__chat" aria-label="Kommentlər">
-        <Head name={name} meta={`${yt ? 'YouTube' : 'Instagram'} komment · açıq, hamı görür`} onBack={onBack}>
+        <Head name={name} meta={`${yt ? 'YouTube' : 'Instagram'} komment · açıq, hamı görür`} href={!yt && first ? igProfile(first.author) : null} onBack={onBack}>
           {p?.permalink && <a className="ibk__link" href={p.permalink} target="_blank" rel="noopener noreferrer">{yt ? 'YouTube-da aç' : 'Instagram-da aç'}</a>}
         </Head>
         {!data
@@ -258,7 +304,7 @@ export function PostView({ channel, thread, onChanged, onBack }: PostProps) {
                   <div className="ibk__top"><Avatar name={i.author || 'İzləyici'} /><b>{socialName(i)}</b><span className="mono ibk__time">{ddmmyyyy(i.created_at)}</span></div>
                   <p className="ibk__text">{i.text}</p>
                   {i.status === 'sent' && i.draft_text && <p className="ibk__reply">↳ {i.draft_text}</p>}
-                  <p className="ibk__st">{doneLabel(i)}</p>
+                  <p className="ibk__st">{doneLabel(i)} <LeadButton itemId={i.id} leadId={i.lead_id} who={socialName(i)} onDone={refresh} /></p>
                 </article>
               ))}
             </div>

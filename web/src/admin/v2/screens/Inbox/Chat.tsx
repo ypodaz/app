@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { stageName, usePoll, type ConvMode, type ConvOpen, type Msg } from '../../../components/crm';
 import { errMsg, useAuth, useLoad } from '../../../ctx';
 import { bakuParts } from '../../../format';
+import { msOf } from '../../data/time';
 import { Avatar, ErrorBox, LoadingRows, useOnline, useToast, V2Icon } from '../../ui';
 import { BotBar, DraftCard, FreeComposer, SilentBar } from './Composer';
 import { IbIcon } from './icons';
@@ -79,16 +80,16 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const mode = data ? effMode({ mode: modeOv ?? data.mode, contact: { excluded } }, botOn) : 'bot';
   const draft = data ? [...data.drafts].filter((d) => d.status === 'pending' && d.id !== hiddenDraft).pop() : undefined;
 
-  async function apiMode(m: 'bot' | 'human') { await call(`/inbox/${id}/mode`, { method: 'POST', body: { mode: m } }); }
+  async function apiMode(m: ConvMode) { await call(`/inbox/${id}/mode`, { method: 'POST', body: { mode: m } }); }
 
   async function pickMode(m: ConvMode) {
-    if (!data || (m !== 'bot' && m !== 'human')) return;
+    if (!data) return;
     const prev = modeOv ?? data.mode;
     setModeOv(m);
     try {
       await apiMode(m);
       refresh();
-      toast.show(`Rejim: ${MODE_META[m].label}`, prev === 'bot' || prev === 'human' ? { undo: () => { setModeOv(prev); void apiMode(prev as 'bot' | 'human').then(refresh); } } : undefined);
+      toast.show(`Rejim: ${MODE_META[m].label}`, { undo: () => { setModeOv(prev); void apiMode(prev).then(refresh); } });
     } catch (e) {
       setModeOv(null);
       toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void pickMode(m) });
@@ -217,7 +218,8 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
         <div className="ibf-wrap">
           {sendErr && <ErrorBox title="Mesaj getmədi" detail={sendErr} />}
           {mode === 'human' && <SilentBar friend={excluded} disabled={!online} onFriend={(v) => void setFriend(v)} onBot={() => void setFriend(false)} />}
-          {draft && <DraftCard draft={draft} mode={mode} windowOpen={data.window_open} online={online} onSend={sendDraft} onReject={() => void reject()} />}
+          {draft && <DraftCard draft={draft} mode={mode} windowOpen={data.window_open} online={online} onSend={sendDraft} onReject={() => void reject()}
+            note={draft.auto_at && mode === 'owner' && msOf(draft.auto_at) > Date.now() ? `${Math.ceil((msOf(draft.auto_at) - Date.now()) / 60_000)} dəq sonra bot özü göndərəcək` : undefined} />}
           {mode === 'bot' && !draft && !writing && <BotBar friend={excluded} disabled={!online} onFriend={(v) => void setFriend(v)} onWrite={() => setWriting(true)} />}
           {showFree && <FreeComposer autoFocus={writing} windowOpen={data.window_open} online={online} busy={busy} onSend={sendFree} />}
         </div>

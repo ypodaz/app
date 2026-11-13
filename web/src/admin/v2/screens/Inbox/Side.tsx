@@ -1,9 +1,30 @@
-import { serviceLabel, stageName, type ConvMode, type ConvOpen, type Stage } from '../../../components/crm';
+import { serviceLabel, stageName, type ConvMode, type ConvOpen, type LeadEventRow, type Stage } from '../../../components/crm';
+import { bakuParts } from '../../../format';
 import { Chip } from '../../ui';
 import { phoneLabel } from './logic';
 
 const STEPS: Stage[] = ['yeni', 'maraqlanir', 'tarix', 'beh'];
 const SOURCE: Record<string, string> = { whatsapp: 'WhatsApp', instagram: 'Instagram', reklam: 'Instagram reklamı', diger: 'Digər' };
+
+const SHOOT_ST: Record<string, string> = { confirmed: 'Təsdiqli', completed: 'Bitib', cancelled: 'Ləğv', no_show: 'Gəlmədi' };
+const TAG: Record<string, string> = { podcast: 'Podkast', reels: 'Reels', other: 'Çəkiliş' };
+const dm = (iso: string) => { const p = bakuParts(iso); return `${p.date.slice(8, 10)}.${p.date.slice(5, 7)} ${p.time}`; };
+
+/** «Gedişat» sətri (02 #55): lead hadisəsi insan dilində. */
+function eventText(e: LeadEventRow): string {
+  const d = e.data ?? {};
+  const by = d.by === 'admin' ? 'siz' : 'bot';
+  switch (e.kind) {
+    case 'created': return `Lead yarandı · ${d.via === 'inbox' ? 'Inbox-dan əlavə edildi' : d.source === 'reklam' ? 'reklamdan' : d.source === 'instagram' ? 'Instagram-dan' : 'WhatsApp-dan'}`;
+    case 'stage': return `Mərhələ: ${stageName(String(d.from ?? ''))} → ${stageName(String(d.to ?? ''))} (${by})`;
+    case 'confirmed': return 'Çəkiliş yaradıldı';
+    case 'remind': return 'Xatırlatma qoyuldu';
+    case 'linked': return 'Söhbət lead-ə bağlandı';
+    case 'update': return 'Bot məlumatı yenilədi';
+    case 'admin_edit': return 'Siz məlumatı dəyişdiniz';
+    default: return e.kind;
+  }
+}
 
 function Steps({ stage }: { stage: Stage }) {
   const done = stage === 'tesdiq' || stage === 'geldi';
@@ -29,13 +50,11 @@ export function Side({ data, mode }: { data: ConvOpen; mode: ConvMode }) {
   const bits = lead ? [serviceLabel(lead.service), lead.people ? `${lead.people} nəfər` : '', lead.cameras ? `${lead.cameras} kamera` : '', lead.preferred_date ?? ''].filter(Boolean) : [];
   return (
     <aside className="ib__side ibp" aria-label="İnsan">
-      {/* TODO [API] İnsan kartına keçid: kontaktdan müştəri (Client) id-si cavabda yoxdur, ad link deyil. */}
       <div>
-        <h2 className="ibp__name">{name}</h2>
+        <h2 className="ibp__name">{data.client ? <a href={`#/insanlar/${data.client.id}`}>{name}</a> : name}</h2>
         <p className="ibp__phone mono">{phoneLabel(data.contact.phone)}</p>
       </div>
       {lead ? <Steps stage={lead.stage} /> : <p className="ibp__none">Hələ lead yoxdur · bot müştəri xidmət və tarix yazanda yaradır</p>}
-      {/* TODO [API] «Mərhələni bot təyin etdi · 19:02», «Bot xülasəsi» və «Gedişat» hadisələri: serverdə hadisə siyahısı endpoint-i yoxdur. */}
       <div className={`ibp__next${mode === 'bot' ? ' ibp__next--none' : ''}`}>
         <span className="ibp__k">Növbəti addım</span>
         {mode === 'bot'
@@ -48,11 +67,28 @@ export function Side({ data, mode }: { data: ConvOpen; mode: ConvMode }) {
       <dl className="ibp__facts">
         <h3 className="ibp__h3">Məlumat</h3>
         <div><dt>Mənbə</dt><dd>{SOURCE[lead?.source ?? 'whatsapp'] ?? 'Digər'}</dd></div>
-        {/* TODO [API] keşbek: /inbox/{id} cavabında müştəri keşbeki yoxdur («ilk çəkiliş 40%» göstərilmir). */}
+        {data.client
+          ? <div><dt>Keşbek</dt><dd className="mono">{data.client.cashback} AZN{data.client.shoots_done === 0 ? ' · ilk çəkiliş 40%' : ''}</dd></div>
+          : <div><dt>Müştəri kartı</dt><dd>Yoxdur · ilk çəkilişdə yaranacaq</dd></div>}
         <div><dt>Kanal</dt><dd>WhatsApp</dd></div>
         {data.contact.excluded && <div><dt>Bot</dt><dd>Dostdur · yazmır</dd></div>}
       </dl>
-      {/* TODO [API] «Çəkilişlər» siyahısı: söhbətdən çəkilişlərə (client_id) bağ yoxdur. */}
+      {!!data.client?.shoots.length && (
+        <div className="ibp__facts">
+          <h3 className="ibp__h3">Çəkilişlər</h3>
+          {data.client.shoots.map((s) => (
+            <div key={s.id}><dt><a href={`#/shoots/${s.id}`}>{dm(s.starts_at)}</a></dt><dd>{TAG[s.tag] ?? 'Çəkiliş'} · {SHOOT_ST[s.status] ?? s.status} · <span className="mono">{s.total} AZN</span></dd></div>
+          ))}
+        </div>
+      )}
+      {!!data.events?.length && (
+        <div className="ibp__facts">
+          <h3 className="ibp__h3">Gedişat</h3>
+          {data.events.slice(0, 8).map((e, i) => (
+            <div key={i}><dt className="mono">{dm(e.at)}</dt><dd>{eventText(e)}</dd></div>
+          ))}
+        </div>
+      )}
     </aside>
   );
 }

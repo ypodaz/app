@@ -11,7 +11,7 @@ export type SocialList = { threads: SocialThread[]; comment_mode: 'auto' | 'draf
 export type SocialItem = {
   id: number; channel: 'instagram' | 'youtube'; kind: 'dm' | 'comment'; thread_id: string; author: string; text: string;
   draft_text: string | null; status: 'pending' | 'sent' | 'rejected' | 'ignored'; auto: boolean; by_owner: boolean;
-  hidden: boolean; regen: number; auto_at: string | null; created_at: string; decided_at: string | null;
+  hidden: boolean; regen: number; lead_id?: number | null; auto_at: string | null; created_at: string; decided_at: string | null;
 };
 
 export type SocialGroup = 'you' | 'bot' | 'theirs';

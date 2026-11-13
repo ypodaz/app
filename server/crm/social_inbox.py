@@ -50,6 +50,8 @@ PHONE_RE = re.compile(r"(?:\+|00)?\d[\d\s\-().]{6,17}\d")
 _sent_mids: deque = deque(maxlen=500)  # API ilə göndərdiyimiz DM-lər: echo-su gələndə «sahibkar yazdı» sayılmasın
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
+_names: dict[str, tuple[str, float]] = {}  # IGSID → (Instagram adı, soruşulan an); boş ad təkrar soruşulur
+NAME_RETRY = 600
 COMMENT_NOTE = ("\n\nKANAL: Bu, {where} ictimai kommentdir. 1–2 qısa, isti cümlə yaz, ən çoxu bir emoji (yalnız 🙏 və ya 😊), "
                 "qiymət yazma. Komment spam, təhqir və ya mənasızdırsa reply boş qaytar, handoff = true, "
                 "handoff_reason = «diger». Şikayət, mənfi fikir, mübahisə və ya cavabını dəqiq bilmədiyin sualdırsa "
@@ -174,6 +176,32 @@ def to_wait(db: DB, thread: str, t: datetime) -> None:
     conf.put(db, _mode_key(thread), "wait")
 
 
+def set_mode(db: DB, thread: str, mode: str) -> None:
+    """Inbox rejim menyusu (03 E2): sahibkar rejimi əl ilə seçir. Mesaj getmir, qaralamalar yerində qalır."""
+    if mode == "bot":
+        draft_approved(db, thread)
+    elif mode == "wait":
+        to_wait(db, thread, now())
+    else:
+        conf.put(db, _mode_key(thread), "owner")
+        _clear_wait(db, thread)
+
+
+def ig_author(db: DB, thread: str) -> str:
+    """DM müştərisinin Instagram adı: bazadan, yoxsa API-dən. Alınmasa NAME_RETRY saniyə sonra yenidən soruşulur."""
+    known = db.scalar(select(SocialItem.author).where(
+        SocialItem.channel == "instagram", SocialItem.kind == "dm", SocialItem.thread_id == thread,
+        SocialItem.author != "").order_by(SocialItem.id.desc()).limit(1))
+    if known:
+        return known
+    hit = _names.get(thread)
+    if hit and (hit[0] or time.monotonic() - hit[1] < NAME_RETRY):
+        return hit[0]
+    name = instagram.username(thread)
+    _names[thread] = (name, time.monotonic())
+    return name
+
+
 def on_echo(thread: str, mid: str) -> str:
     """Fon işi: hesabımızdan gedən DM. Bizim API göndərişimiz deyilsə, sahibkar app-dan yazıb: söhbət `owner` rejiminə keçir."""
     time.sleep(ECHO_WAIT)  # API cavabı (mid) echo webhook-undan gec qeydə düşə bilər
@@ -235,10 +263,11 @@ def capture_lead(db: DB, item: SocialItem, res: dict) -> Lead | None:
     info, key = res.get("lead") or {}, f"ig_lead:{item.thread_id}"[:64]
     lid = conf.get(db, key)
     lead = db.get(Lead, int(lid)) if lid and lid.isdigit() else None
-    if lead and contacts.normalize(lead.phone) == phone:
+    if lead and lead.phone and contacts.normalize(lead.phone) == phone:
         _fill(lead, info)
         db.commit()
         return lead
+    reuse = lead if lead and not lead.phone else None  # Inbox-da «Lead kimi əlavə et» ilə nömrəsiz yaranıb
     name = str(info.get("name") or "").strip()[:120]
     contact = db.scalar(select(WaContact).where(WaContact.phone == phone))
     if not contact:
@@ -247,7 +276,11 @@ def capture_lead(db: DB, item: SocialItem, res: dict) -> Lead | None:
         db.flush()
     elif name and not contact.name:
         contact.name = name
-    lead = bot.instagram_lead(db, contact.id)
+    if reuse:  # ikinci lead yaranmır: nömrə və kontakt həmin lead-ə yazılır
+        reuse.contact_id, reuse.phone = contact.id, phone
+        if name and (not reuse.name or reuse.name.startswith("@")):
+            reuse.name = name
+    lead = reuse or bot.instagram_lead(db, contact.id)
     if not lead:
         ad_id = thread_ad_id(db, item.thread_id)
         source = "reklam" if ad_id else "instagram"
@@ -274,6 +307,53 @@ def capture_lead(db: DB, item: SocialItem, res: dict) -> Lead | None:
                         "Düyməyə basın: WhatsApp hazır salamla açılacaq, göndərin. Müştəri cavab yazanda bot davam edir.",
                         f"https://wa.me/{phone}?text={quote(opening)}")
     return lead
+
+
+def item_lead_id(db: DB, item: SocialItem) -> int | None:
+    """Bu item-in (DM söhbətinin və ya komment müəllifinin) bağlı olduğu lead."""
+    if item.kind == "dm":
+        lid = conf.get(db, f"ig_lead:{item.thread_id}"[:64])
+        return int(lid) if lid and lid.isdigit() and db.get(Lead, int(lid)) else None
+    lid = (item.model_output or {}).get("lead_id")
+    return lid if lid and db.get(Lead, lid) else None
+
+
+def add_lead(db: DB, item: SocialItem) -> tuple[Lead, bool]:
+    """Inbox «Lead kimi əlavə et» (02 #58): nömrəsiz lead, mərhələ «yeni». (lead, yeni_yarandı).
+
+    Eyni DM söhbətinin və ya eyni Instagram/YouTube adının açıq lead-i varsa yenisi yaranmır, ona bağlanır.
+    Sonra DM-də nömrə yazılsa capture_lead həmin lead-i doldurur."""
+    lid = item_lead_id(db, item)
+    lead = db.get(Lead, lid) if lid else None
+    yt = item.channel == "youtube"
+    user = item.author or (ig_author(db, item.thread_id) if item.kind == "dm" else "")
+    label = "YouTube" if yt else bot.NOTE_FIELDS["instagram"]
+    handle = (user if yt else "@" + user) if user else ""
+    if not lead and handle:
+        lead = next((x for x in db.scalars(select(Lead).where(
+            Lead.stage.not_in(("geldi", "itirildi")), Lead.notes.contains(f"{label}: {handle}")))
+            if bot._note_value(x, label) == handle), None)
+    created = lead is None
+    if created:
+        contact = WaContact(name=handle[:120])
+        db.add(contact)
+        db.flush()
+        ad = item.kind == "dm" and thread_ad_id(db, item.thread_id)
+        source = "diger" if yt else "reklam" if ad else "instagram"
+        lead = Lead(contact_id=contact.id, name=handle[:120], source=source)
+        db.add(lead)
+        db.flush()
+        if handle:
+            bot._set_note(lead, label, handle)
+        if item.kind == "comment":
+            bot._set_note(lead, "Komment", item.text.replace("\n", " ")[:300])
+        bot._event(db, lead, "created", {"source": source, "via": "inbox", "kind": item.kind, "channel": item.channel})
+    if item.kind == "dm":
+        conf.put(db, f"ig_lead:{item.thread_id}"[:64], str(lead.id))
+    else:
+        item.model_output = {**(item.model_output or {}), "lead_id": lead.id}
+    db.commit()
+    return lead, created
 
 
 def _thread_lock(thread: str) -> threading.Lock:
@@ -351,6 +431,8 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
             item.status, item.decided_at = "ignored", now()
             db.commit()
             return "skip:newer"
+        if not item.author:  # Inbox və Telegram-da kimin yazdığı görünsün
+            item.author = ig_author(db, item.thread_id)
         mo = item.model_output or {}
         if mo.get("audio_url") or mo.get("image_url"):  # bir dəfə Gemini ilə oxunur; alınmasa «[audio]»/«[şəkil]»
             if mo.get("audio_url"):  # qalır və bot yazmağı xahiş edir

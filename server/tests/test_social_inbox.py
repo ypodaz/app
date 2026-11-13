@@ -25,6 +25,8 @@ class Net:
         self.ig_error = None
         self.ig_thread = []  # Instagram Conversations API: köhnə yazışmanın mesajları
         self.ig_gets = []
+        self.name_gets = []
+        self.usernames = {}  # IGSID → Instagram adı (GET /{igsid}?fields=username)
 
 
 @pytest.fixture()
@@ -48,7 +50,12 @@ def net(crm_env, monkeypatch):
             return Resp(200, {"id": "out1", "message_id": "mid.out1"})
         return base_post(url, **kw)
 
+    monkeypatch.setattr(social_inbox, "_names", {})
+
     def fake_get(url, **kw):
+        if "graph.instagram.com" in url and (kw.get("params") or {}).get("fields") == "username":
+            n.name_gets.append(url)
+            return Resp(200, {"username": n.usernames.get(url.rsplit("/", 1)[-1], "")})
         if "graph.instagram.com" in url and url.endswith("/me/conversations"):
             n.ig_gets.append(kw)
             return Resp(200, {"data": [{"messages": {"data": n.ig_thread}}]})

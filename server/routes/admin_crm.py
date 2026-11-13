@@ -11,9 +11,9 @@ import ai
 import booking
 from auth import current_admin, new_card_code
 from crm import bot, chat, conf, kapso, turns
-from db import aware, get_db
+from db import aware, get_db, now
 from models import (BotDraft, Client, Faq, Lead, LeadEvent, QuickReply, UnansweredQuestion, WaContact, WaConversation,
-                    WaMessage)
+                    Shoot, WaMessage)
 from views import iso, utc
 
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
@@ -37,7 +37,8 @@ def msg_out(m: WaMessage) -> dict:
 
 def draft_out(d: BotDraft) -> dict:
     return {"id": d.id, "conversation_id": d.conversation_id, "text": d.text, "status": d.status, "reason": d.reason,
-            "model_output": d.model_output, "created_at": iso(d.created_at), "decided_at": iso(d.decided_at)}
+            "model_output": d.model_output, "created_at": iso(d.created_at), "decided_at": iso(d.decided_at),
+            "auto_at": iso(d.auto_at)}
 
 
 def lead_out(db: DB, lead: Lead) -> dict:
@@ -79,13 +80,31 @@ def inbox(mode: Literal["bot", "human"] | None = None, q: str | None = None, db:
     for c, ct in rows:
         last = chat.last_message(db, c.id)
         lead = db.get(Lead, c.lead_id) if c.lead_id else None
+        auto_at = db.scalar(select(func.min(BotDraft.auto_at)).where(
+            BotDraft.conversation_id == c.id, BotDraft.status == "pending")) if c.mode == "owner" else None
         out.append({"id": c.id, "contact": {"id": ct.id, "name": ct.name, "phone": ct.phone, "excluded": ct.excluded},
                     "last_message": msg_out(last) if last else None, "unread": c.unread, "mode": c.mode,
                     "pending_drafts": db.scalar(select(func.count()).select_from(BotDraft).where(
                         BotDraft.conversation_id == c.id, BotDraft.status == "pending")),
                     "lead_stage": lead.stage if lead else None, "last_message_at": iso(c.last_message_at),
-                    "window_expires_at": iso(c.window_expires_at)})
+                    "window_expires_at": iso(c.window_expires_at), "draft_auto_at": iso(auto_at),
+                    "wait_since": (conf.get(db, f"wait_since:{c.id}") or None) if c.mode == "wait" else None})
     return out
+
+
+def _client_card(db: DB, ct: WaContact, lead: Lead | None) -> dict | None:
+    """İnsan paneli: kontaktın müştəri kartı (telefonun son 9 rəqəmi ilə), keşbeki və son çəkilişləri."""
+    tail = _tail((lead.phone if lead else "") or ct.phone)
+    if len(tail) < 7:
+        return None
+    cl = next((c for c in db.scalars(select(Client).where(Client.phone != "")) if _tail(c.phone) == tail), None)
+    if not cl:
+        return None
+    shoots = db.scalars(select(Shoot).where(Shoot.client_id == cl.id).order_by(Shoot.starts_at.desc()).limit(5)).all()
+    done = db.scalar(select(func.count()).select_from(Shoot).where(Shoot.client_id == cl.id, Shoot.status == "completed"))
+    return {"id": cl.id, "full_name": cl.full_name, "cashback": booking.cashback_balance(db, cl.id), "shoots_done": done or 0,
+            "shoots": [{"id": s.id, "starts_at": iso(s.starts_at), "status": s.status, "tag": s.tag, "kind": s.kind,
+                        "total": s.total} for s in shoots]}
 
 
 @router.get("/inbox/{conv_id}")
@@ -103,7 +122,11 @@ def inbox_open(conv_id: int, db: DB = Depends(get_db)):
                         "bot_muted_until": iso(ct.bot_muted_until)},
             "messages": [msg_out(m) for m in msgs], "drafts": [draft_out(d) for d in drafts],
             "lead": lead_out(db, lead) if lead else None, "window_expires_at": iso(c.window_expires_at),
-            "window_open": chat.window_open(c)}
+            "window_open": chat.window_open(c), "client": _client_card(db, ct, lead),
+            "wait_since": (conf.get(db, f"wait_since:{c.id}") or None) if c.mode == "wait" else None,
+            "events": [{"kind": e.kind, "data": e.data, "at": iso(e.created_at)} for e in db.scalars(
+                select(LeadEvent).where(LeadEvent.lead_id == lead.id).order_by(LeadEvent.id.desc()).limit(20))]
+            if lead else []}
 
 
 class SendIn(BaseModel):
@@ -126,13 +149,19 @@ def inbox_send(conv_id: int, body: SendIn, db: DB = Depends(get_db)):
 
 
 class ModeIn(BaseModel):
-    mode: Literal["bot", "human"]
+    mode: Literal["bot", "owner", "wait", "human"]
 
 
 @router.post("/inbox/{conv_id}/mode")
 def inbox_mode(conv_id: int, body: ModeIn, db: DB = Depends(get_db)):
+    """Rejim menyusu (03 E2, T8): 4 rejimin hamısı əl ilə seçilir; müştəriyə mesaj getmir, qaralamalar qalır."""
     c = get_or_404(db, WaConversation, conv_id, "Söhbət")
-    c.mode = body.mode
+    if body.mode == "wait":
+        c.mode = "bot"  # to_wait «human»-dan keçmir; əl ilə seçimdə keçsin
+        turns.to_wait(db, c, now())
+    else:
+        c.mode = body.mode
+        turns._clear_wait(db, c.id)
     db.commit()
     return {"id": c.id, "mode": c.mode}
 

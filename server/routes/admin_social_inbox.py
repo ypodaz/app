@@ -24,6 +24,7 @@ from views import iso
 router = APIRouter(prefix="/api/admin/social-inbox", dependencies=[Depends(current_admin)])
 
 LIST_DAYS = 60
+NAME_LOOKUPS = 5  # bir siyahı sorğusunda Instagram-dan ən çox neçə ad soruşulur (qalanı növbəti 20 s-də)
 HISTORY_TTL = 60  # saniyə: açıq söhbət 10 s-dən bir yenilənir, Instagram API-yə hər dəfə getmirik
 _history_cache: dict[str, tuple[float, list]] = {}
 
@@ -33,6 +34,7 @@ def item_out(i: SocialItem) -> dict:
     return {"id": i.id, "channel": i.channel, "kind": i.kind, "thread_id": i.thread_id, "author": i.author,
             "text": i.text, "draft_text": i.draft_text, "status": i.status, "auto": bool(mo.get("auto")),
             "by_owner": bool(mo.get("by_owner")), "hidden": bool(mo.get("hidden")), "regen": mo.get("regen", 0),
+            "lead_id": mo.get("lead_id"),
             "auto_at": iso(i.auto_at), "created_at": iso(i.created_at), "decided_at": iso(i.decided_at)}
 
 
@@ -67,9 +69,12 @@ def social_list(db: DB = Depends(get_db)):
     for r in rows:
         if r.thread_id:
             groups.setdefault((r.channel, r.kind, r.thread_id), []).append(r)
-    out = []
+    out, lookups = [], NAME_LOOKUPS
     for (channel, kind, thread), items in groups.items():
         last = items[-1]
+        if kind == "dm" and not _author(items) and lookups:  # köhnə DM-lər: Instagram adı bir dəfə soruşulub yazılır
+            lookups -= 1
+            last.author = social_inbox.ig_author(db, thread)
         pending = [i for i in items if i.status == "pending"]
         extra = _extras(last)
         times = [aware(last.decided_at or last.created_at)] + [aware(datetime.fromisoformat(e["at"])) for e in extra if e.get("at")]
@@ -82,6 +87,8 @@ def social_list(db: DB = Depends(get_db)):
                     "mode": social_inbox.ig_mode(db, thread) if kind == "dm" else None,
                     "window_open": _window_open(items) if kind == "dm" else None})
     out.sort(key=lambda r: r["last_at"] or "", reverse=True)
+    if lookups < NAME_LOOKUPS:
+        db.commit()
     return {"threads": out, "comment_mode": "auto" if social_inbox.comment_auto(db) else "draft"}
 
 
@@ -99,6 +106,9 @@ def dm_open(thread: str, db: DB = Depends(get_db)):
     items = _thread_items(db, "instagram", "dm", thread)
     if not items:
         raise HTTPException(404, "Söhbət tapılmadı")
+    if not _author(items):
+        items[-1].author = social_inbox.ig_author(db, thread)
+        db.commit()
     msgs, ours = [], set()
     for i in items:
         msgs.append({"key": f"i{i.id}", "role": "in", "text": i.text, "at": _ts(i.created_at)})
@@ -116,6 +126,7 @@ def dm_open(thread: str, db: DB = Depends(get_db)):
             msgs.append({"key": f"h{n}", "role": "in" if role == "user" else "you", "text": text, "at": _ts(t)})
     msgs.sort(key=lambda m: m["at"] or "")
     return {"thread_id": thread, "author": _author(items), "mode": social_inbox.ig_mode(db, thread),
+            "lead_id": social_inbox.item_lead_id(db, items[-1]),
             "window_open": _window_open(items), "window_expires_at": iso(aware(items[-1].created_at) + instagram.WINDOW),
             "messages": msgs, "pending": [item_out(i) for i in items if i.status == "pending"]}
 
@@ -281,3 +292,28 @@ def comment_mode(body: CommentModeIn, db: DB = Depends(get_db)):
     conf.put(db, "comment_mode", body.mode)
     db.commit()
     return {"comment_mode": body.mode}
+
+
+class ModeIn(BaseModel):
+    mode: Literal["bot", "owner", "wait"]
+
+
+@router.post("/dm/{thread}/mode")
+def dm_mode(thread: str, body: ModeIn, db: DB = Depends(get_db)):
+    """Rejim menyusu (03 E2): bot | owner (Siz yazdınız) | wait (Komandaya ötürülüb). Müştəriyə mesaj getmir."""
+    if not _thread_items(db, "instagram", "dm", thread):
+        raise HTTPException(404, "Söhbət tapılmadı")
+    with social_inbox._thread_lock(thread):
+        social_inbox.set_mode(db, thread, body.mode)
+        db.commit()
+    return {"mode": social_inbox.ig_mode(db, thread)}
+
+
+@router.post("/items/{item_id}/lead")
+def item_lead(item_id: int, db: DB = Depends(get_db)):
+    """«Lead kimi əlavə et» (02 #57–58): DM müştərisi və ya komment müəllifi lead olur (mərhələ «yeni», nömrəsiz)."""
+    item = db.get(SocialItem, item_id)
+    if not item:
+        raise HTTPException(404, "Tapılmadı")
+    lead, created = social_inbox.add_lead(db, item)
+    return {"lead_id": lead.id, "created": created, "name": lead.name}

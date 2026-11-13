@@ -13,10 +13,12 @@ const personal = (c: Conv) => !(c.contact.name || '').trim();
 function subLine(c: Conv, g: Group, now: number, botOn: boolean): { text: string; tone?: 'warn' | 'brand' } | null {
   if (g !== 'you') return null;
   const e = effMode(c, botOn);
-  // TODO [API] ötürmənin başlama vaxtı (wait_since) və səbəb kodu siyahı cavabında yoxdur: gözləmə son mesajdan hesablanır, səbəb göstərilmir.
-  if (e === 'wait') return { text: `Komandaya ötürülüb · ${fmtWait(now - msOf(c.last_message_at ?? new Date(now).toISOString()))}`, tone: 'warn' };
-  // TODO [API] qaralamanın auto_at (taymer) draft_out/inbox siyahısında yoxdur: «N dəq sonra özü gedəcək» yazıla bilmir.
-  if (e === 'owner' && c.pending_drafts > 0) return { text: 'Qaralama hazırdır · siz yazdınız', tone: 'brand' };
+  // Səbəb kodu siyahıda yoxdur; gözləmə ötürmə anından (wait_since), yoxdursa son mesajdan hesablanır.
+  if (e === 'wait') return { text: `Komandaya ötürülüb · ${fmtWait(now - msOf(c.wait_since ?? c.last_message_at ?? new Date(now).toISOString()))}`, tone: 'warn' };
+  if (e === 'owner' && c.pending_drafts > 0) {
+    const min = c.draft_auto_at ? Math.ceil((msOf(c.draft_auto_at) - now) / 60_000) : 0;
+    return { text: min > 0 ? `${min} dəq sonra bot özü göndərəcək` : 'Qaralama hazırdır · siz yazdınız', tone: 'brand' };
+  }
   if (personal(c)) return { text: 'Şəxsi kontakt · bot cavab vermədi' };
   return { text: e === 'bot' ? 'Bot söndürülüb · cavab gözləyir' : 'Bot susur · cavab gözləyir' };
 }

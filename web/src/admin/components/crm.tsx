@@ -13,6 +13,7 @@ export type Msg = {
 export type Draft = {
   id: number; conversation_id: number; text: string; status: 'pending' | 'sent' | 'rejected' | 'edited';
   reason: string | null; model_output: { handoff?: boolean; handoff_reason?: string | null } | null; created_at: string;
+  auto_at?: string | null; // «Siz yazdınız»: sahibkar toxunmasa bot bu vaxt özü göndərir
 };
 export type Stage = 'yeni' | 'maraqlanir' | 'tarix' | 'beh' | 'tesdiq' | 'geldi' | 'itirildi';
 export type Lead = {
@@ -58,10 +59,17 @@ export type Contact = { id: number; name: string | null; phone: string | null; e
 export type Conv = {
   id: number; contact: Contact; last_message: Msg | null; unread: number; mode: ConvMode;
   pending_drafts: number; lead_stage: Stage | null; last_message_at: string | null; window_expires_at: string | null;
+  draft_auto_at?: string | null; wait_since?: string | null;
 };
+export type ClientCard = {
+  id: number; full_name: string; cashback: number; shoots_done: number;
+  shoots: { id: number; starts_at: string; status: string; tag: string; kind: string; total: number }[];
+};
+export type LeadEventRow = { kind: string; data: Record<string, unknown> | null; at: string };
 export type ConvOpen = {
   id: number; mode: ConvMode; unread: number; contact: Contact & { bot_muted_until: string | null };
   messages: Msg[]; drafts: Draft[]; lead: Lead | null; window_expires_at: string | null; window_open: boolean;
+  client?: ClientCard | null; wait_since?: string | null; events?: LeadEventRow[];
 };
 
 export const STAGES: { key: Stage; label: string }[] = [

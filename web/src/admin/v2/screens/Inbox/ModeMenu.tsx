@@ -9,20 +9,19 @@ type Props = {
   current: ConvMode;
   /** Dost: yalnız «Bot susur» seçilə bilər (99 M13). */
   friend: boolean;
+  /** Menyudakı rejimlər (Instagram DM-də «Bot susur» yoxdur). */
+  modes?: ConvMode[];
   disabled?: boolean;
   onPick: (m: ConvMode) => void;
 };
 
-// Server POST /inbox/{id}/mode yalnız bot|human qəbul edir: «Siz yazdınız» sahibkar yazanda, «Komandaya ötürülüb» bot ötürəndə özü qoyulur.
-// TODO [API] rejim menyusunda owner/wait seçimi: /inbox/{id}/mode bunları qəbul etmir (03 T8). Hələlik deaktivdir.
-const SETTABLE: ConvMode[] = ['bot', 'human'];
-
-function Items({ current, friend, onPick, close }: Props & { close: () => void }) {
+// 4 rejimin hamısı əl ilə seçilir (03 T8): POST /inbox/{id}/mode və /social-inbox/dm/{thread}/mode. Müştəriyə mesaj getmir.
+function Items({ current, friend, modes = MODE_ORDER, onPick, close }: Props & { close: () => void }) {
   return (
     <div role="menu" aria-label="Söhbət rejimi" className="ibm__list">
-      {MODE_ORDER.map((m) => {
-        const off = !SETTABLE.includes(m) || (friend && m !== 'human');
-        const hint = friend && m !== 'human' ? 'Dostdur · əvvəl «Bot yazsın»' : !SETTABLE.includes(m) ? `${MODE_META[m].hint} · əl ilə seçilmir` : MODE_META[m].hint;
+      {modes.map((m) => {
+        const off = friend && m !== 'human';
+        const hint = off ? 'Dostdur · əvvəl «Bot yazsın»' : MODE_META[m].hint;
         return (
           <button key={m} type="button" role="menuitemradio" aria-checked={m === current} disabled={off && m !== current} className="ibm__item"
             onClick={() => { close(); if (m !== current) onPick(m); }}>

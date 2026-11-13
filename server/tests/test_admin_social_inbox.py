@@ -163,3 +163,57 @@ def test_comment_mode_toggle(api, net):
     with SessionLocal() as db:
         assert social_inbox.comment_auto(db) is False
     assert api.post(f"{BASE}/comment-mode", json={"mode": "x"}, headers=tok).status_code == 422
+
+
+def test_dm_author_filled_from_instagram(api, net):
+    tok = bearer(admin_token(api))
+    net.usernames["2001"] = "nigar.k"
+    mk(thread="2001")
+    rows = {t["key"]: t for t in api.get(BASE, headers=tok).json()["threads"]}
+    assert rows["dm:instagram:2001"]["author"] == "nigar.k"
+    assert len(net.name_gets) == 1
+    api.get(BASE, headers=tok)  # bazaya yazılıb: təkrar soruşulmur
+    assert len(net.name_gets) == 1
+
+
+def test_dm_mode_menu(api, net):
+    tok = bearer(admin_token(api))
+    mk(thread="2002")
+    for m in ("wait", "owner", "bot"):
+        assert api.post(f"{BASE}/dm/2002/mode", json={"mode": m}, headers=tok).json() == {"mode": m}
+        with SessionLocal() as db:
+            assert social_inbox.ig_mode(db, "2002") == m
+    assert api.post(f"{BASE}/dm/2002/mode", json={"mode": "human"}, headers=tok).status_code == 422
+    assert api.post(f"{BASE}/dm/nope/mode", json={"mode": "bot"}, headers=tok).status_code == 404
+    assert not ig_posts(net, "/me/messages")  # müştəriyə heç nə getmir
+
+
+def test_comment_author_becomes_lead_once(api, net):
+    from models import Lead
+    tok = bearer(admin_token(api))
+    a = mk(kind="comment", thread="media9", author="aynur.m", text="Neçəyədir?", parent_id="c1")
+    b = mk(kind="comment", thread="media8", author="aynur.m", text="Bəs reels?", parent_id="c2")
+    r = api.post(f"{BASE}/items/{a}/lead", headers=tok).json()
+    assert r["created"] is True and r["name"] == "@aynur.m"
+    r2 = api.post(f"{BASE}/items/{b}/lead", headers=tok).json()
+    assert r2 == {**r, "created": False}  # eyni Instagram adı: mövcud lead-ə bağlanır
+    with SessionLocal() as db:
+        lead = db.get(Lead, r["lead_id"])
+        assert lead.stage == "yeni" and lead.source == "instagram" and lead.phone == ""
+        assert "Instagram: @aynur.m" in lead.notes
+    items = api.get(f"{BASE}/post/instagram/media9", headers=tok).json()["items"]
+    assert items[0]["lead_id"] == r["lead_id"]
+
+
+def test_dm_lead_gets_phone_later(api, net):
+    from models import Lead
+    tok = bearer(admin_token(api))
+    net.usernames["2003"] = "rauf"
+    iid = mk(thread="2003")
+    r = api.post(f"{BASE}/items/{iid}/lead", headers=tok).json()
+    assert api.get(f"{BASE}/dm/2003", headers=tok).json()["lead_id"] == r["lead_id"]
+    phone_item = mk(thread="2003", text="Nömrəm 050 123 45 67")
+    with SessionLocal() as db:
+        lead = social_inbox.capture_lead(db, db.get(SocialItem, phone_item), {})
+        assert lead.id == r["lead_id"] and lead.phone.endswith("501234567")
+        assert db.query(Lead).count() == 1

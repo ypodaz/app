@@ -499,6 +499,31 @@ def test_inbox_list_open_mode_exclude_and_unread(api, crm_env):
     assert api.get("/api/admin/inbox/9999", headers=adm).status_code == 404
 
 
+def test_inbox_mode_menu_timer_and_client_card(api, crm_env):
+    adm = bearer(admin_token(api))
+    _, conv_id = mk_conv(phone="994551234567", mode="owner")
+    with SessionLocal() as db:
+        db.add(BotDraft(conversation_id=conv_id, text="q", auto_at=now() + timedelta(minutes=18)))
+        cl = Client(full_name="Leyla Q", phone="+994 55 123 45 67", card_code="CARDX1")
+        db.add(cl)
+        db.flush()
+        booking.manual_cashback(db, None, cl.id, 40, "sınaq")
+        db.commit()
+        cl_id = cl.id
+    (item,) = api.get("/api/admin/inbox", headers=adm).json()
+    assert item["draft_auto_at"] and item["wait_since"] is None
+    full = api.get(f"/api/admin/inbox/{conv_id}", headers=adm).json()
+    assert full["drafts"][0]["auto_at"] and full["client"]["id"] == cl_id and full["client"]["cashback"] == 40
+    assert full["events"] == []
+    for m in ("wait", "owner", "human", "bot"):
+        assert api.post(f"/api/admin/inbox/{conv_id}/mode", json={"mode": m}, headers=adm).json()["mode"] == m
+        if m == "wait":
+            assert api.get(f"/api/admin/inbox/{conv_id}", headers=adm).json()["wait_since"]
+    with SessionLocal() as db:
+        assert not conf.get(db, f"wait_since:{conv_id}")
+    assert crm_env.kapso() == []  # rejim dəyişikliyi müştəriyə mesaj göndərmir
+
+
 def test_admin_draft_edit_send_and_reject(api, crm_env):
     adm = bearer(admin_token(api))
     _, conv_id = mk_conv()
