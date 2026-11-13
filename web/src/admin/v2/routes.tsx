@@ -6,23 +6,22 @@ import { bakuParts } from '../format';
 import { Calendar } from '../pages/Calendar';
 import { Campaigns } from '../pages/Campaigns';
 import { CancelShoot } from '../pages/CancelShoot';
-import { Clients } from '../pages/Clients';
 import { CloseShoot } from '../pages/CloseShoot';
 import { BotSettings } from '../pages/BotSettings';
-import { Leads } from '../pages/Leads';
 import { Materials } from '../pages/Materials';
 import { PackageForm, Packages } from '../pages/Packages';
 import { Panel } from '../pages/Panel';
-import { People } from '../pages/People';
-import { Report } from '../pages/Report';
 import { ShootForm } from '../pages/ShootForm';
 import { Social } from '../pages/Social';
 import type { Shoot } from '../types';
 import { AdminShell } from '../../shared/ui';
 import { PageHead } from '../components/neon';
 import { AccountStub, MoreMenu } from './Account';
-import { CEKILIS_TABS, INSAN_TABS, Legacy, SectionTabs } from './Legacy';
+import { CEKILIS_TABS, Legacy, SectionTabs } from './Legacy';
 import { Inbox } from './screens/Inbox/Inbox';
+import { Hesabat } from './screens/Insanlar/Hesabat';
+import { InsanlarRoute } from './screens/Insanlar/Insanlar';
+import { ClientCardV2, LeadCardV2 } from './screens/Insanlar/Person';
 import { Today } from './screens/Today/Today';
 import { Soon } from './screens/Soon';
 import { V2Shell } from './shell/Shell';
@@ -60,15 +59,13 @@ function Page() {
       return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="teqvim" label="Çəkilişlər" />}><Calendar query={query} /></Legacy>; // 10-teqvim.md
 
     // ---- İnsanlar (20–22) ----
-    case 'insanlar': {
-      if (num) return <Legacy><Clients id={num} /></Legacy>; // 22-insan-karti.md
-      const tab = query.get('tab') ?? 'lead'; // TODO v2: 20-insanlar.md (Addım gözləyən / Lövhə / Müştəri / Hamısı)
-      const body = tab === 'musteri' ? <Clients /> : tab === 'hamisi' ? <People /> : <Leads />;
-      return <Legacy tabs={<SectionTabs options={INSAN_TABS} value={tab === 'musteri' || tab === 'hamisi' ? tab : 'lead'} label="İnsanlar" />}>{body}</Legacy>;
-    }
+    case 'insanlar':
+      if (b?.startsWith('lead-') && Number(b.slice(5))) return <LeadCardV2 key={b} leadId={Number(b.slice(5))} />; // 22-insan-karti.md (hələ müştəri olmayan lead)
+      if (num) return <ClientCardV2 key={num} id={num} />; // 22-insan-karti.md
+      return <InsanlarRoute query={query} />; // 20-insanlar.md + 21-lovhe.md (?gorunus=lovhe)
 
     // ---- Hesabat (23) ----
-    case 'hesabat': return <Legacy><Report /></Legacy>;
+    case 'hesabat': return <Hesabat />;
 
     // ---- Tənzimləmə (30–35) ----
     case 'tenzimleme':
@@ -87,7 +84,7 @@ function Page() {
 
     // ---- Köhnə (v1) yollar: eyni səhifələr, yeni qabıqda ----
     case 'calendar': return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="teqvim" label="Çəkilişlər" />}><Calendar query={query} /></Legacy>;
-    case 'clients': return <Legacy><Clients id={num || undefined} /></Legacy>;
+    case 'clients': return num ? <ClientCardV2 key={num} id={num} /> : <InsanlarRoute query={query} tab="musteri" />;
     case 'shoots':
       if (b === 'new') return <Legacy><ShootForm key={location.hash} query={query} /></Legacy>;
       if (!num) break;
@@ -99,9 +96,9 @@ function Page() {
     case 'materials': return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="montaj" label="Çəkilişlər" />}><Materials /></Legacy>;
     case 'campaigns': return <Legacy><Campaigns /></Legacy>;
     case 'automations': return <Legacy><Campaigns tab="auto" /></Legacy>;
-    case 'report': return <Legacy><Report /></Legacy>;
-    case 'leads': return <Legacy tabs={<SectionTabs options={INSAN_TABS} value="lead" label="İnsanlar" />}><Leads /></Legacy>;
-    case 'people': return <Legacy tabs={<SectionTabs options={INSAN_TABS} value="hamisi" label="İnsanlar" />}><People /></Legacy>;
+    case 'report': return <Hesabat />;
+    case 'leads': return <InsanlarRoute query={query} tab="lead" />;
+    case 'people': return <InsanlarRoute query={query} tab="hamisi" />;
     case 'social': return <Legacy><Social /></Legacy>;
     case 'bot': return <Legacy><BotSettings /></Legacy>;
     case 'panel': return <Legacy><Panel /></Legacy>;

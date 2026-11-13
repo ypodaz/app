@@ -34,6 +34,8 @@ const convs = [conv(1, 'Söhbət Bir', 'wait', 'Sabah üçün yer var?', 25), co
 
 function route(path: string, method: string): unknown {
   const p = path.split('?')[0];
+  const ins = insanlarMock(path, p, method); // Insanlar blokuna bax (faylın sonu)
+  if (ins !== undefined) return ins;
   if (p === '/dashboard') return { deposit_pending: [shoots[2], shoots[4]], today: [shoots[1], shoots[2], shoots[3]], unclosed_count: 1, awaiting_material_count: 0, app_usage: { clients: 30, joined: 20, home_screen: 10, push_on: 8, active_7d: 6 } };
   if (p === '/shoots') return shoots;
   if (p === '/blocks') return [];
@@ -126,3 +128,62 @@ const ibWrapped: typeof fetch = async (input, init) => {
   return ibNext(input, init);
 };
 Object.defineProperty(window, 'fetch', { configurable: true, get: () => ibWrapped, set: (f: typeof fetch) => { ibNext = f; } });
+
+// --- Insanlar ---
+// /leads, /clients, /clients/:id, /tags, /people, /report üçün nümunə (uydurma ad və nömrə). Bu endpoint-lər üçün yuxarıdakı sadə cavabları əvəz edir.
+const iDay = (n: number) => iso(Date.now() + n * 24 * H);
+function iLead(id: number, name: string, stage: string, over: Record<string, unknown> = {}) {
+  return { id, contact_id: id, conversation_id: id <= 3 ? id : null, name, phone: `99450000${String(1000 + id)}`, service: 'podkast', preferred_date: null, people: null, cameras: null, editing: null,
+    source: 'whatsapp', stage, notes: '', shoot_id: null, created_at: iDay(-id), updated_at: iso(Date.now() - id * 55 * 60_000), lost_reason: null, lost_text: null, remind_at: null, remind_note: null, ...over };
+}
+const iLeads = [
+  iLead(1, 'Nümunə Müştəri A', 'yeni', { service: 'reels', preferred_date: 'bu həftə' }),
+  iLead(2, 'Nümunə Müştəri B', 'yeni'),
+  iLead(3, 'Nümunə Müştəri C', 'maraqlanir', { remind_at: iDay(-1), remind_note: 'sabah yazacam dedi', service: 'korporativ' }),
+  iLead(4, 'Nümunə Müştəri D', 'maraqlanir', { remind_at: iDay(3), remind_note: 'studiyada ödəyəcəm' }),
+  iLead(5, 'Nümunə Müştəri E', 'tarix', { preferred_date: '17.11, 11:00', cameras: 2 }),
+  iLead(6, 'Nümunə Müştəri F', 'beh', { preferred_date: '14.11, 11:30', cameras: 3, editing: true }),
+  iLead(7, 'Nümunə Müştəri G', 'itirildi', { lost_reason: 'qiymet' }),
+  iLead(8, 'Nümunə Müştəri H', 'itirildi', { lost_reason: 'diger', lost_text: 'layihə təxirə düşdü' }),
+  iLead(9, 'Nümunə Müştəri I', 'tesdiq', { updated_at: iso(Date.now() - 5 * H), shoot_id: 2 }),
+  iLead(10, 'Nümunə Müştəri J', 'geldi', { updated_at: iso(Date.now() - 30 * H) }),
+];
+const iClients = [
+  { id: 1, full_name: 'Nümunə Müştəri A', phone: '994500000001', activated: true, app_seen_at: iDay(-2), app_standalone: true, push_permission: 'granted', cashback_balance: 9600, package: null, last_shoot_at: iDay(-1), tags: [{ id: 1, name: 'Podkast' }], profession: 'Psixoloq' },
+  { id: 2, full_name: 'Nümunə Müştəri B', phone: '994500000002', activated: false, app_seen_at: null, app_standalone: false, push_permission: null, cashback_balance: 2800, package: { title: '5 saat', minutes_left: 210, minutes_total: 300 }, last_shoot_at: iDay(-8), tags: [] },
+  { id: 3, full_name: 'Nümunə Müştəri C', phone: '994500000003', activated: true, app_seen_at: iDay(-9), app_standalone: false, push_permission: 'default', cashback_balance: 0, package: null, last_shoot_at: null, tags: [{ id: 2, name: 'Reels' }] },
+  { id: 4, full_name: 'Nümunə Müştəri D', phone: '994500000004', activated: false, app_seen_at: null, app_standalone: false, push_permission: null, cashback_balance: 6800, package: null, last_shoot_at: iDay(-30), tags: [] },
+];
+const iShoot = (id: number, ago: number, status: string) => ({ ...shoot(id, 'Nümunə Müştəri A', -24 * ago + 14, 90, { status }), payment_line: 'Ödənilib · 120 AZN' });
+const iCbRows = [
+  { id: 5, kind: 'referral', amount: 2000, note: 'Dost dəvəti', shoot_id: null, created_at: iDay(-6) }, { id: 4, kind: 'earn', amount: 1200, note: '', shoot_id: 12, created_at: iDay(-10) },
+  { id: 3, kind: 'earn', amount: 1800, note: '', shoot_id: 11, created_at: iDay(-30) }, { id: 2, kind: 'manual', amount: 2800, note: 'Başlanğıc keşbek', shoot_id: null, created_at: iDay(-60) },
+];
+function insanlarMock(path: string, p: string, method: string): unknown {
+  if (method !== 'GET') return p.startsWith('/leads/') ? iLeads[0] : p === '/clients' ? iClients[0] : undefined;
+  if (p === '/leads') return iLeads;
+  if (p === '/clients') return iClients;
+  if (p === '/tags') return [{ id: 1, name: 'Podkast', count: 1 }, { id: 2, name: 'Reels', count: 1 }];
+  const m = p.match(/^\/clients\/(\d+)$/);
+  if (m) {
+    const c = iClients.find((x) => x.id === Number(m[1])) ?? iClients[0];
+    return { ...c, notes: 'Səhər çəkilişi sevir.', deposit_required: false, profile_complete: true, workplace: 'Nümunə Klinika', instagram: 'numune.a', niche: 'Psixologiya', birthday: '1992-05-14', source: 'referral', marketing_opt_in: true,
+      referral_code: 'NUMUNE4', referred_by: { id: 3, full_name: 'Nümunə Müştəri C' }, cashback_rows: iCbRows, packages: c.package ? [{ id: 1, title: c.package.title, owner_client_id: c.id, owner_name: c.full_name, minutes_total: 300, minutes_left: 210, cameras: 2, starts_on: '2026-10-01', ends_on: '2027-02-01', price_paid: 40000, members: [] }] : [],
+      shoots: [iShoot(21, 0, 'confirmed'), iShoot(22, 8, 'completed'), iShoot(23, 30, 'completed'), iShoot(24, 60, 'completed')] };
+  }
+  if (p === '/people') {
+    const items = [{ id: 1, display_name: 'Nümunə Müştəri K', phone: '994500000011', ig_username: 'numune.k', client_id: null, profession: 'Dizayner', workplace: '', reason: 'podkast', service: 'Podkast', need: '', phones_found: [], summary: 'Qiymət soruşub.', outcome: 'lead', sources: ['wa', 'ig'], msg_count: 12, first_contact_at: iDay(-9), last_contact_at: iDay(-1), card_at: null, wa_link: 'https://wa.me/994500000011', ig_link: null },
+      { id: 2, display_name: 'Nümunə Müştəri A', phone: '994500000001', ig_username: null, client_id: 1, profession: 'Psixoloq', workplace: '', reason: '', service: 'Reels', need: '', phones_found: [], summary: '', outcome: 'client', sources: ['wa'], msg_count: 40, first_contact_at: iDay(-80), last_contact_at: iDay(-2), card_at: null, wa_link: null, ig_link: null }];
+    return { items, total: items.length };
+  }
+  if (p === '/report') {
+    const prevMonth = new URLSearchParams(path.split('?')[1] ?? '').get('month') !== baku_month();
+    const k = prevMonth ? 1.1 : 1;
+    return { month: new URLSearchParams(path.split('?')[1] ?? '').get('month'), cash: { deposits: Math.round(120000 * k), at_studio: Math.round(310000 * k), packages: 56000, refunds: 5000, net: Math.round(481000 * k) },
+      shoots: { completed: 31, cancelled: 2, no_show: 1, upcoming: 6, minutes: 3720, revenue: 486000, discounts: 12000, retained: 5000, by_kind: { shoot: { count: 20, minutes: 2400, total: 320000 }, reels_pack: { count: 8, minutes: 960, total: 110000 }, studio_rent: { count: 3, minutes: 360, total: 56000 } } },
+      packages_sold: 2, cashback: { earned: 38000, manual: 2800, bonuses: 4000, spent: 9000, liability: 210000 },
+      growth: { new_clients: 9, by_source: { instagram: 5, referral: 3, unknown: 1 }, referrals: 3, repeat_rate: 38, avg_check: 15700, avg_client_value: 31000, bonuses: { profile_bonus: 1000, referral: 3000, birthday: 0 }, campaigns: { count: 2, recipients: 60, opened: 41, booked_14d: 4 } } };
+  }
+  return undefined;
+}
+const baku_month = () => new Date(Date.now() + 4 * H).toISOString().slice(0, 7);
