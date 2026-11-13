@@ -1,15 +1,18 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { usePoll, type ConvMode, type Draft } from '../../../components/crm';
+import { usePoll, type ConvMode, type Draft, type ThreadEvent } from '../../../components/crm';
 import { errMsg, useAuth, useLoad } from '../../../ctx';
 import { bakuParts } from '../../../format';
+import { useMedia } from '../../../router';
 import { socialName, type SocialItem, type SocialMode } from '../../data/social';
 import { fmtWait, msOf } from '../../data/time';
 import { Avatar, Button, ErrorBox, LoadingRows, Segmented, useOnline, useToast, V2Icon } from '../../ui';
-import { DraftCard, FreeComposer, FriendSwitch } from './Composer';
+import { DraftCard, FreeComposer, FriendSwitch, NoteComposer, ReplyTabs, SilentBar, type ReplyTab } from './Composer';
+import { EventLine, mergeTimeline } from './Events';
 import { dayLabel, MODE_META } from './logic';
 import { ModeChip } from './ModeMenu';
 
-const IG_MODES: ConvMode[] = ['bot', 'owner', 'wait']; // Instagram DM-də «Bot susur» yoxdur
+// Instagram DM-də ayrıca «human» rejimi yoxdur: «Bot susur» = «Dostdur · bot yazmır» açarı (03 T9, §Q1 dost → Bot susur)
+const IG_MODES: ConvMode[] = ['bot', 'owner', 'wait', 'human'];
 const igProfile = (author: string) => (author ? `https://www.instagram.com/${encodeURIComponent(author)}/` : null);
 
 /** «Lead kimi əlavə et» (02 #57–58): lead varsa kartına keçid. */
@@ -36,7 +39,7 @@ const UNDO_MS = 5000; // 99 G2
 type DmMsg = { key: string; role: 'in' | 'bot' | 'you'; text: string; at: string };
 type DmOpen = {
   thread_id: string; author: string; mode: SocialMode; window_open: boolean; window_expires_at: string | null; lead_id: number | null;
-  messages: DmMsg[]; pending: SocialItem[]; friend?: boolean; park?: { to: 'theirs' | 'archive'; at: string } | null;
+  messages: DmMsg[]; pending: SocialItem[]; friend?: boolean; thread_events?: ThreadEvent[]; park?: { to: 'theirs' | 'archive'; at: string } | null;
 };
 type PostOpen = {
   channel: 'instagram' | 'youtube'; thread_id: string; comment_mode: 'auto' | 'draft'; items: SocialItem[];
@@ -76,6 +79,10 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
   const [hidden, setHidden] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [sendErr, setSendErr] = useState('');
+  const [tabSel, setTab] = useState<ReplyTab>('reply'); // «Cavab | Daxili qeyd» (02 #19), yalnız kompüterdə
+  const [noteBusy, setNoteBusy] = useState(false);
+  const mobile = useMedia('(max-width: 767px)');
+  useEffect(() => { setTab('reply'); }, [thread]);
   const [menu, setMenu] = useState(false);
   const [modeOv, setModeOv] = useState<SocialMode | null>(null);
   useEffect(() => { setModeOv(null); }, [data?.mode]);
@@ -84,7 +91,7 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
   const [parkOv, setParkOv] = useState<'theirs' | 'archive' | null | undefined>(undefined); // undefined: serverdəki kimi
   useEffect(() => { setParkOv(undefined); }, [data?.park]);
   const endRef = useRef<HTMLDivElement>(null);
-  const n = data?.messages.length ?? 0;
+  const n = (data?.messages.length ?? 0) + (data?.thread_events?.length ?? 0);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [n]);
   const refresh = () => { conv.reload(); onChanged(); };
 
@@ -148,8 +155,20 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
     }
   }
 
-  async function pickMode(m: SocialMode) {
+  /** «Daxili qeyd»: Instagram-a getmir, rejim və qaralama dəyişmir; lead-ə bağlıdırsa İnsan kartına da düşür. */
+  async function saveNote(text: string): Promise<boolean> {
+    setNoteBusy(true);
+    try {
+      await call(`/social-inbox/dm/${encodeURIComponent(thread)}/note`, { method: 'POST', body: { text } });
+      refresh();
+      toast.show('Qeyd yazıldı · müştəriyə getmir');
+      return true;
+    } catch (e) { toast.show(`Alınmadı: ${errMsg(e)}`, { error: true }); return false; } finally { setNoteBusy(false); }
+  }
+
+  async function pickMode(m: SocialMode | 'human') {
     if (!data) return;
+    if (m === 'human') { void setFriend(true); return; } // «Bot susur» menyudan = dost açarı (Instagram-da başqa susdurma yoxdur)
     const prev = modeOv ?? data.mode;
     const api = (x: SocialMode) => call(`/social-inbox/dm/${encodeURIComponent(thread)}/mode`, { method: 'POST', body: { mode: x } });
     setModeOv(m);
@@ -171,29 +190,32 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
     );
   }
 
-  const mode = modeOv ?? data.mode;
-  const meta = MODE_META[mode];
   const friend = friendOv ?? data.friend ?? false;
+  const realMode = modeOv ?? data.mode;
+  const mode: ConvMode = friend ? 'human' : realMode; // dost → «Bot susur» (03 §Q1)
+  const meta = MODE_META[mode];
   const lastIn = data.messages[data.messages.length - 1];
   const parked = parkOv !== undefined ? parkOv
     : data.park && data.pending.length === 0 && !(lastIn?.role === 'in' && new Date(lastIn.at).getTime() > new Date(data.park.at).getTime()) ? data.park.to : null;
   const autoMin = draftItem?.auto_at ? Math.max(1, Math.ceil((msOf(draftItem.auto_at) - Date.now()) / 60_000)) : 0;
-  const note = autoMin ? `${autoMin} dəq sonra bot özü göndərəcək` : mode === 'wait' ? 'Siz baxana qədər gözləyir' : 'Siz göndərənə qədər gözləyir';
+  const note = autoMin ? `${autoMin} dəq sonra bot özü göndərəcək` : realMode === 'wait' ? 'Siz baxana qədər gözləyir' : 'Siz göndərənə qədər gözləyir';
   const noDraftPending = data.pending.some((i) => !i.draft_text);
+  const noteTab = tabSel === 'note' && !mobile;
+  const timeline = mergeTimeline(data.messages, (m) => m.at, data.thread_events ?? []);
 
   return (
     <div className="ib__cw ib__cw--solo">
       <section className="ib__chat" aria-label="Söhbət">
         <Head name={name} meta={data.author ? 'Instagram DM · ada basın, profil açılır' : 'Instagram DM'} href={igProfile(data.author)} onBack={onBack}>
           <LeadButton itemId={data.pending[0]?.id ?? lastId(data)} leadId={data.lead_id} who={name} onDone={refresh} />
-          <ModeChip current={mode} friend={friend} modes={IG_MODES} open={menu} setOpen={setMenu} disabled={!online} onPick={(m) => void pickMode(m as SocialMode)} />
+          <ModeChip current={mode} friend={friend} modes={IG_MODES} open={menu} setOpen={setMenu} disabled={!online} onPick={(m) => void pickMode(m as SocialMode | 'human')} />
         </Head>
         <div className={`ibs ibs--${friend || parked ? 'park' : mode}`}>
-          <span className="ibs__txt" role="status">{friend ? <><b>Dost</b><span> · bot bu söhbətə yazmır</span></>
+          <span className="ibs__txt" role="status">{friend ? <><b>{meta.label}</b><span> · {meta.hint} · dostdur</span></>
             : parked ? <><b>{parked === 'archive' ? 'Arxivdə' : 'Müştəridən cavab gözləyirik'}</b><span> · müştəri yazanda «Sizi gözləyir»ə qayıdır</span></>
             : <><b>{meta.label}</b><span> · {meta.hint}</span></>}</span>
           <span className="ibs__acts">
-            <FriendSwitch on={friend} disabled={!online} onChange={(v) => void setFriend(v)} />
+            {!friend && <FriendSwitch on={friend} disabled={!online} onChange={(v) => void setFriend(v)} />}
             {!friend && (parked
               ? <button type="button" className="ibs__btn" disabled={!online} onClick={() => void park(null)}>Geri qaytar</button>
               : <>
@@ -204,13 +226,16 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
         </div>
         {!data.window_open && <div className="ib__warn" role="status">24 saat keçib · müştəri yazmayınca Instagram cavaba icazə vermir</div>}
         <div className="ibt" tabIndex={-1}>
-          {data.messages.map((m, i) => {
-            const day = dayLabel(m.at);
-            const prev = data.messages[i - 1];
+          {timeline.map((r, i) => {
+            const day = dayLabel(r.at);
+            const prev = timeline[i - 1];
+            const dayRow = (!prev || dayLabel(prev.at) !== day) && <div className="ibt__day">{day}</div>;
+            if (r.t === 'e') return <Fragment key={`e${r.e.id}`}>{dayRow}<EventLine e={r.e} /></Fragment>;
+            const m = r.m;
             const out = m.role !== 'in';
             return (
               <Fragment key={m.key}>
-                {(!prev || dayLabel(prev.at) !== day) && <div className="ibt__day">{day}</div>}
+                {dayRow}
                 <div className={`ibm-row${out ? ' ibm-row--out' : ''}`}>
                   <div className={`ibmsg${out ? (m.role === 'bot' ? ' ibmsg--bot' : ' ibmsg--you') : ''}`}>
                     {out && <span className="ibmsg__who">{m.role === 'bot' ? 'Bot' : 'Siz'}</span>}
@@ -225,7 +250,10 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
           <div ref={endRef} />
         </div>
         <div className="ibf-wrap">
+          {!mobile && <ReplyTabs value={tabSel} onChange={setTab} />}
+          {noteTab ? <NoteComposer online={online} busy={noteBusy} onSave={saveNote} /> : <>
           {sendErr && <ErrorBox title="Mesaj getmədi" detail={sendErr} />}
+          {friend && <SilentBar friend disabled={!online} onFriend={(v) => void setFriend(v)} onBot={() => void setFriend(false)} />}
           {draftItem && !friend
             ? <DraftCard draft={asDraft(draftItem)} mode={mode} note={note} windowOpen={data.window_open} online={online}
                 onSend={sendDraft} onReject={() => void act('reject')} onRegenerate={draftItem.regen < 3 ? () => void act('regenerate') : undefined} />
@@ -233,6 +261,7 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
                 {mode === 'bot' && !friend && <div className="ibb"><div className="ibb__t"><b>Bot bu söhbəti aparır.</b><span>Siz yazsanız, bot yalnız qaralama hazırlayacaq</span></div></div>}
                 <FreeComposer windowOpen={data.window_open} online={online} busy={busy} onSend={sendFree} />
               </>}
+          </>}
         </div>
       </section>
     </div>

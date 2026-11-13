@@ -138,3 +138,37 @@ export function SilentBar({ friend, onFriend, onBot, disabled }: { friend: boole
     </div>
   );
 }
+
+export type ReplyTab = 'reply' | 'note';
+
+/** «Cavab | Daxili qeyd» tabları (02 #19): yalnız kompüterdə (mobildə qeyd yoxdur). */
+export function ReplyTabs({ value, onChange }: { value: ReplyTab; onChange: (v: ReplyTab) => void }) {
+  const tabs: [ReplyTab, string][] = [['reply', 'Cavab'], ['note', 'Daxili qeyd']];
+  return (
+    <div className="ibtabs" role="tablist" aria-label="Mesaj növü">
+      {tabs.map(([k, label]) => (
+        <button key={k} type="button" role="tab" aria-selected={value === k} className={`ibtabs__t${value === k ? ' is-on' : ''}`} onClick={() => onChange(k)}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+/** Daxili qeyd sahəsi: müştəriyə getmir, söhbətdə daxili sətir kimi görünür, rejim və qaralama dəyişmir (03 §Q7.17). */
+export function NoteComposer({ online, busy, onSave }: { online: boolean; busy: boolean; onSave: (text: string) => Promise<boolean> }) {
+  const [text, setText] = useState('');
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { area.current?.focus(); }, []);
+  const can = !!text.trim() && online && !busy;
+  const submit = async () => { if (can && (await onSave(text.trim()))) setText(''); };
+  return (
+    <div className="ibc ibc--note">
+      <textarea ref={area} rows={2} className="input ibc__ta" aria-label="Daxili qeyd" value={text} placeholder="Yalnız komanda görür · müştəriyə getmir"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); } if (e.key === 'Escape') setText(''); }} />
+      <div className="ibc__bar">
+        <span className="ibc__hint">İnsan kartının tarixçəsinə də düşür</span>
+        <Button variant="primary" size="md" kbd="↵" disabled={!can} onClick={() => void submit()}>Qeyd yaz</Button>
+      </div>
+    </div>
+  );
+}

@@ -63,7 +63,7 @@ export function ClientCardV2({ id }: { id: number }) {
   const showSkeleton = useAfter();
   const c = detail.data;
   const [friendOv, setFriendOv] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<'all' | 'shoot' | 'cb'>('all');
+  const [tab, setTab] = useState<'all' | 'shoot' | 'cb' | 'note'>('all');
   const [cb, setCb] = useState(false);
   const [row, setRow] = useState<LedgerRow | null>(null);
   const [edit, setEdit] = useState(false);
@@ -88,9 +88,10 @@ export function ClientCardV2({ id }: { id: number }) {
     if (!c) return [];
     const a = c.shoots.map((s) => ({ t: new Date(s.starts_at).getTime(), kind: 'shoot' as const, s }));
     const b = c.cashback_rows.map((r) => ({ t: new Date(r.created_at).getTime(), kind: 'cb' as const, r }));
-    return [...a, ...b].sort((x, y) => y.t - x.t);
+    const n = (c.chat_notes ?? []).map((r) => ({ t: new Date(r.created_at).getTime(), kind: 'note' as const, r })); // Inbox «Daxili qeyd» (02 #19)
+    return [...a, ...b, ...n].sort((x, y) => y.t - x.t);
   }, [c]);
-  // TODO [API] Tarixçədə «Söhbət» və «Qeyd» hadisələri və daxili qeyd əlavə etmək: müştəriyə bağlı söhbət/qeyd endpoint-i yoxdur (22-insan-karti.md #11, #13). Yalnız tək `notes` sahəsi var (Redaktə).
+  // TODO [API] Tarixçədə «Söhbət» xülasələri və kartdan birbaşa qeyd əlavə etmək (22-insan-karti.md #11, #13): qeyd yalnız Inbox-dan yazılır.
   const shown = history.filter((h) => tab === 'all' || h.kind === tab);
 
   if (!c) {
@@ -148,10 +149,19 @@ export function ClientCardV2({ id }: { id: number }) {
           <Card title={<>Tarixçə <small className="mono">{history.length}</small></>} aside={
             <Segmented label="Tarixçə filtri" value={tab} onChange={setTab} options={[
               { value: 'all', label: 'Hamısı', count: history.length }, { value: 'shoot', label: 'Çəkiliş', count: c.shoots.length }, { value: 'cb', label: 'Keşbek', count: c.cashback_rows.length },
+              ...(c.chat_notes?.length ? [{ value: 'note' as const, label: 'Qeyd', count: c.chat_notes.length }] : []),
             ]} />}>
             {shown.length === 0 ? <EmptyState title={tab === 'all' ? 'Hələ çəkiliş və ya keşbek yoxdur' : 'Bu növdə hadisə yoxdur'} reason={tab === 'all' ? 'Çəkiliş yazanda burada görünəcək.' : undefined} /> : (
               <ul className="ins-hist">
-                {shown.map((h) => h.kind === 'shoot' ? (
+                {shown.map((h) => h.kind === 'note' ? (
+                  <li key={`n${h.r.id}`}>
+                    <div className="ins-hrow">
+                      <V2Icon name="user" />
+                      <span className="ins-hrow__t"><b>Qeyd</b> · {h.r.text}<span className="ins-sub">Siz · daxili qeyd</span></span>
+                      <span className="mono ins-dim2">{ddmmTime(h.r.created_at)}</span>
+                    </div>
+                  </li>
+                ) : h.kind === 'shoot' ? (
                   <li key={`s${h.s.id}`}>
                     <a className="ins-hrow" href={`#/shoots/${h.s.id}`}>
                       <V2Icon name="cal" />
@@ -246,6 +256,7 @@ export function LeadCardV2({ leadId }: { leadId: number }) {
   const [lost, setLost] = useState<Lead | null>(null);
   const [rem, setRem] = useState<Lead | null>(null);
   const lead = L.leads.find((l) => l.id === leadId);
+  const notes = useLoad<{ id: number; text: string; created_at: string }[]>(`/leads/${leadId}/notes`);
 
   if (!lead) {
     return (
@@ -293,7 +304,16 @@ export function LeadCardV2({ leadId }: { leadId: number }) {
               <div><Button size="sm" variant="danger" disabled={!online} onClick={() => setLost(lead)}>İtirildi kimi işarələ</Button></div>
             )}
           </Card>
-          {/* TODO [API] Tarixçə (söhbət xülasələri, qeydlər, mərhələ hadisələri) və «Növbəti addım»: lead üçün hadisə endpoint-i yoxdur (LeadEvent yalnız serverdə yazılır). */}
+          {/* TODO [API] Tarixçədə söhbət xülasələri, mərhələ hadisələri və «Növbəti addım»: LeadEvent yalnız serverdə yazılır, oxuma endpoint-i yoxdur (daxili qeydlər aşağıdadır). */}
+          {!!notes.data?.length && (
+            <Card title={<>Daxili qeydlər <small className="mono">{notes.data.length}</small></>}>
+              <ul className="ins-hist">
+                {notes.data.map((r) => (
+                  <li key={r.id}><div className="ins-hrow"><V2Icon name="user" /><span className="ins-hrow__t">{r.text}<span className="ins-sub">Siz · daxili qeyd</span></span><span className="mono ins-dim2">{ddmmTime(r.created_at)}</span></div></li>
+                ))}
+              </ul>
+            </Card>
+          )}
           {lead.notes && <Card title="Qeyd"><p className="ins-notes">{lead.notes}</p></Card>}
         </div>
         <aside className="ins-side" aria-label="Yan panel">

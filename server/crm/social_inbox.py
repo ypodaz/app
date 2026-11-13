@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import AiError
-from crm import bot, conf, contacts, friends, instagram, social_tg, turns, voice, youtube
+from crm import bot, conf, contacts, events, friends, instagram, social_tg, turns, voice, youtube
 from db import SessionLocal, aware, now
 from models import Lead, SocialItem, WaContact
 
@@ -147,6 +147,7 @@ def _clear_wait(db: DB, thread: str) -> None:
 def owner_wrote(db: DB, thread: str) -> bool:
     """Sahibkar app-dan yazdı: söhbəti o aparır. True: vəziyyət indi dəyişdi (əvvəl `owner` deyildi)."""
     was = ig_mode(db, thread)
+    events.mode_changed(db, events.IG, thread, was, "owner")
     conf.put(db, _mode_key(thread), "owner")
     conf.put(db, f"ig_owner:{thread}"[:64], now().isoformat())  # bundan əvvəlki qaralamalar köhnəlib (ig_turns)
     _clear_wait(db, thread)
@@ -163,7 +164,9 @@ def owner_since(db: DB, thread: str, since: datetime) -> bool:
 
 def draft_approved(db: DB, thread: str) -> None:
     """Sahibkar qaralamanı təsdiqlədi: bot söhbəti yenidən özü aparır."""
-    if ig_mode(db, thread) != "bot":
+    old = ig_mode(db, thread)
+    if old != "bot":
+        events.mode_changed(db, events.IG, thread, old, "bot")
         conf.put(db, _mode_key(thread), "bot")
         _clear_wait(db, thread)
 
@@ -178,13 +181,16 @@ def to_wait(db: DB, thread: str, t: datetime) -> None:
 
 def set_mode(db: DB, thread: str, mode: str) -> None:
     """Inbox rejim menyusu (03 E2): sahibkar rejimi əl ilə seçir. Mesaj getmir, qaralamalar yerində qalır."""
+    old = ig_mode(db, thread)
     if mode == "bot":
         draft_approved(db, thread)
     elif mode == "wait":
         to_wait(db, thread, now())
+        events.mode_changed(db, events.IG, thread, old, "wait")
     else:
         conf.put(db, _mode_key(thread), "owner")
         _clear_wait(db, thread)
+        events.mode_changed(db, events.IG, thread, old, "owner")
 
 
 def ig_author(db: DB, thread: str) -> str:
@@ -519,6 +525,7 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
                                                         "qaralama Telegram-dadır.")
             if handoff:  # komandaya ötürüldü: sahibkarın cavabı gözlənilir (asan suala bot yenə cavab verir)
                 to_wait(db, item.thread_id, now())
+                events.handoff(db, events.IG, item.thread_id, res.get("handoff_reason"))
             db.commit()
             if send_now:
                 if handoff:

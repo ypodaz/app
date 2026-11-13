@@ -43,6 +43,17 @@ function Steps({ stage }: { stage: Stage }) {
   );
 }
 
+/** «Çəkiliş yarat» (02 #51): mövcud Yeni çəkiliş dialoqu, müştəri varsa seçilmiş, yoxsa lead-in adı/nömrəsi axtarışa yazılır. */
+function shootHref(data: ConvOpen, name: string): string {
+  const q = new URLSearchParams();
+  if (data.client) q.set('client', String(data.client.id));
+  else { q.set('ad', name); q.set('tel', data.lead?.phone || data.contact.phone || ''); }
+  const svc = data.lead?.service;
+  if (svc === 'podkast') q.set('xidmet', 'podcast'); else if (svc === 'reels') q.set('xidmet', 'reels');
+  if (data.lead?.cameras) q.set('kamera', String(data.lead.cameras));
+  return `#/shoots/new?${q.toString()}`;
+}
+
 /** İnsan paneli (02 #47–#55). Yalnız `/inbox/{id}` cavabındakı sahələr: kontakt + lead. */
 export function Side({ data, mode }: { data: ConvOpen; mode: ConvMode }) {
   const lead = data.lead;
@@ -62,7 +73,8 @@ export function Side({ data, mode }: { data: ConvOpen; mode: ConvMode }) {
           : lead?.shoot_id
             ? <><b>Çəkiliş yaradılıb</b><a href={`#/shoots/${lead.shoot_id}`}>Çəkilişə bax</a></>
             : bits.length ? <><b>{bits.join(' · ')}</b><span>Lead məlumatından</span></> : <><b>Cavab yazın</b><span>Müştəri sizi gözləyir</span></>}
-        {/* TODO [API] «Çəkiliş yarat» (lead → çəkiliş dialoqu, 14-yeni-cekilis.md) və «Növbəti addım» mətni (Sabah 15:00-ı saxla): serverdən hazır təklif gəlmir. */}
+        {mode !== 'bot' && !lead?.shoot_id && <a className="btn btn--secondary btn--md" href={shootHref(data, name)}>Çəkiliş yarat</a>}
+        {/* TODO [API] «Növbəti addım» mətni (Sabah 15:00-ı saxla): serverdən hazır təklif gəlmir. */}
       </div>
       <dl className="ibp__facts">
         <h3 className="ibp__h3">Məlumat</h3>

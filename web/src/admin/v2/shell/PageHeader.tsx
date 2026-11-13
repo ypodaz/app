@@ -3,7 +3,8 @@ import { useAuth } from '../../ctx';
 import { initials } from '../../format';
 import type { Client } from '../../types';
 import { maskPhone } from '../data/time';
-import { LinkButton, V2Icon } from '../ui';
+import { Button, LinkButton, V2Icon } from '../ui';
+import { NewContactDialog } from '../screens/Insanlar/Dialogs';
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
 
@@ -15,6 +16,7 @@ function Search() {
   const [hit, setHit] = useState(0);
   const [clients, setClients] = useState<Client[] | null>(null);
   const [err, setErr] = useState('');
+  const [newContact, setNewContact] = useState(false); // «Yeni kontakt yarat» (G8)
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -63,8 +65,8 @@ function Search() {
             {err && <p className="search__msg" role="alert">{err}</p>}
             {!err && q.trim() && clients && results.length === 0 && (
               <div className="search__msg"><b>«{q.trim()}» tapılmadı</b><br />
-                {/* TODO [API] «Yeni kontakt yarat» (G8): dialoq 20-insanlar.md sənədinin işidir. */}
-                Axtarış ad, telefon, Instagram və iş yerində aparılır.</div>
+                Axtarış ad, telefon, Instagram və iş yerində aparılır.
+                <div><Button size="sm" onClick={() => setNewContact(true)}>Yeni kontakt yarat</Button></div></div>
             )}
             {results.map((c, i) => (
               <button key={c.id} type="button" className="search__hit" aria-selected={i === hit} onMouseEnter={() => setHit(i)} onClick={() => choose(c)}>
@@ -76,6 +78,8 @@ function Search() {
           </div>
         </>
       )}
+      <NewContactDialog open={newContact} initialName={/\d{3}/.test(q) ? '' : q.trim()} initialPhone={/\d{3}/.test(q) ? q.trim() : ''}
+        onClose={() => setNewContact(false)} onCreated={(c) => { setNewContact(false); close(); setClients(null); location.hash = `#/insanlar/${c.id}`; }} />
     </div>
   );
 }

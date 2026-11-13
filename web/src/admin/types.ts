@@ -57,6 +57,7 @@ export type ClientDetail = Client & {
   notes: string | null; deposit_required: boolean; cashback_balance: number;
   cashback_rows: LedgerRow[]; packages: Package[]; shoots: Shoot[];
   conversation_id: number | null; wa_contact: { id: number; excluded: boolean } | null;
+  chat_notes?: { id: number; text: string; created_at: string }[]; // Inbox-dan daxili qeydlər (22 #11, #13)
 };
 
 export type AppUsage = { clients: number; joined: number; home_screen: number; push_on: number; active_7d: number };

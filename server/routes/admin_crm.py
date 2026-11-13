@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import booking
 from auth import current_admin, new_card_code
-from crm import bot, chat, conf, kapso, turns
+from crm import bot, chat, conf, events, kapso, turns
 from db import aware, get_db, now
 from models import (BotDraft, Client, Faq, Lead, LeadEvent, QuickReply, UnansweredQuestion, WaContact, WaConversation,
                     Shoot, WaMessage)
@@ -135,7 +135,7 @@ def inbox_open(conv_id: int, db: DB = Depends(get_db)):
             "lead": lead_out(db, lead) if lead else None, "window_expires_at": iso(c.window_expires_at),
             "window_open": chat.window_open(c), "client": _client_card(db, ct, lead),
             "wait_since": (conf.get(db, f"wait_since:{c.id}") or None) if c.mode == "wait" else None,
-            "park": _park(db, c.id),
+            "park": _park(db, c.id), "thread_events": events.listing(db, events.WA, c.id),
             "events": [{"kind": e.kind, "data": e.data, "at": iso(e.created_at)} for e in db.scalars(
                 select(LeadEvent).where(LeadEvent.lead_id == lead.id).order_by(LeadEvent.id.desc()).limit(20))]
             if lead else []}
@@ -160,6 +160,24 @@ def inbox_send(conv_id: int, body: SendIn, db: DB = Depends(get_db)):
     return msg_out(m)
 
 
+class NoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/inbox/{conv_id}/note")
+def inbox_note(conv_id: int, body: NoteIn, db: DB = Depends(get_db)):
+    """«Daxili qeyd» (02 #19): müştəriyə getmir, rejim və qaralama dəyişmir. Söhbətdə daxili sətir kimi görünür,
+    söhbət müştəri/lead kartına bağlıdırsa İnsan kartının tarixçəsinə də düşür."""
+    c = get_or_404(db, WaConversation, conv_id, "Söhbət")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(422, "Qeyd boşdur")
+    client_id, lead_id = events.wa_links(db, c)
+    e = events.note(db, events.WA, c.id, text, client_id=client_id, lead_id=lead_id)
+    db.commit()
+    return events.out(e)
+
+
 class ModeIn(BaseModel):
     mode: Literal["bot", "owner", "wait", "human"]
 
@@ -168,12 +186,14 @@ class ModeIn(BaseModel):
 def inbox_mode(conv_id: int, body: ModeIn, db: DB = Depends(get_db)):
     """Rejim menyusu (03 E2, T8): 4 rejimin hamısı əl ilə seçilir; müştəriyə mesaj getmir, qaralamalar qalır."""
     c = get_or_404(db, WaConversation, conv_id, "Söhbət")
+    old = c.mode
     if body.mode == "wait":
         c.mode = "bot"  # to_wait «human»-dan keçmir; əl ilə seçimdə keçsin
         turns.to_wait(db, c, now())
     else:
         c.mode = body.mode
         turns._clear_wait(db, c.id)
+    events.mode_changed(db, events.WA, c.id, old, c.mode)
     db.commit()
     return {"id": c.id, "mode": c.mode}
 
@@ -192,6 +212,7 @@ def inbox_park(conv_id: int, body: ParkIn, db: DB = Depends(get_db)):
         if c.mode == "wait":
             c.mode = "owner"
             turns._clear_wait(db, c.id)
+            events.mode_changed(db, events.WA, c.id, "wait", "owner")
         conf.put(db, f"park:{c.id}", f"{body.to}|{now().isoformat()}")
     else:
         conf.put(db, f"park:{c.id}", "")
@@ -246,6 +267,9 @@ class ExcludeIn(BaseModel):
 @router.post("/contacts/{contact_id}/exclude")
 def contact_exclude(contact_id: int, body: ExcludeIn, db: DB = Depends(get_db)):
     ct = get_or_404(db, WaContact, contact_id, "Kontakt")
+    if ct.excluded != body.excluded:
+        for cid in db.scalars(select(WaConversation.id).where(WaConversation.contact_id == ct.id)):
+            events.friend_changed(db, events.WA, cid, body.excluded)
     ct.excluded = body.excluded
     db.commit()
     return {"id": ct.id, "excluded": ct.excluded}
@@ -259,6 +283,16 @@ def leads(stage: Stage | None = None, db: DB = Depends(get_db)):
     if stage:
         q = q.where(Lead.stage == stage)
     return [lead_out(db, x) for x in db.scalars(q.order_by(Lead.updated_at.desc(), Lead.id.desc()).limit(500))]
+
+
+@router.get("/leads/{lead_id}/notes")
+def lead_notes(lead_id: int, db: DB = Depends(get_db)):
+    """Lead kartının tarixçəsi: Inbox-da bu lead-ə bağlı söhbətə yazılmış daxili qeydlər (22 #11, #13)."""
+    get_or_404(db, Lead, lead_id, "Lead")
+    rows = db.scalars(select(events.ConversationEvent).where(
+        events.ConversationEvent.kind == events.NOTE, events.ConversationEvent.lead_id == lead_id)
+        .order_by(events.ConversationEvent.created_at.desc(), events.ConversationEvent.id.desc()).limit(100)).all()
+    return [events.out(e) for e in rows]
 
 
 class LeadPatch(BaseModel):
