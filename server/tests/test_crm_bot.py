@@ -874,6 +874,25 @@ def test_eval_mock_writes_report(api, tmp_path):
     assert bot_eval.detect_lang("Hello, our studio is in Baku") == "en"
 
 
+def test_eval_ids_and_full_guard(api, tmp_path, monkeypatch, capsys):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import bot_eval
+    import settings
+    assert bot_eval.parse_ids("3,7, 12-14") == {3, 7, 12, 13, 14}
+    scen = tmp_path / "s.json"
+    scen.write_text('{"scenarios": [' + ",".join(
+        f'{{"id": {i}, "name": "s{i}", "message": "Salam", "expect": {{}}}}' for i in (1, 2, 3)) + "]}", encoding="utf-8")
+    out = tmp_path / "r.md"
+    assert bot_eval.main(["--mock", "--ids", "1,3", "--scenarios", str(scen), "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "| 1 | s1 |" in text and "| 3 | s3 |" in text and "| 2 | s2 |" not in text
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test")  # real rejim: --ids/--full olmadan heç bir sorğu getmir
+    assert bot_eval.main(["--scenarios", str(scen), "--out", str(out)]) == 2
+    assert "--full" in capsys.readouterr().out
+
+
 def test_inbox_badge_counts_conversations_with_pending(api, crm_env):
     from models import BotDraft
     _, c1 = mk_conv(phone="994500000001")

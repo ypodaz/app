@@ -166,3 +166,15 @@ def test_assistant_extras_on_create_and_edit(api, gemini):
         r = api.request(p["method"], "/api" + p["path"], json=p["body"], headers=bearer(adm))
         assert r.status_code == 200, r.text
     assert r.json()["total"] == 7000 + 1550
+
+
+def test_402_alerts_owner_once(monkeypatch):
+    import alerts
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test")
+    sent = []
+    monkeypatch.setattr(alerts, "notify", lambda key, text, topic="server": sent.append((key, topic, text)) or True)
+    monkeypatch.setattr(ai.httpx, "post", lambda *a, **k: type("R", (), {"status_code": 402})())
+    with pytest.raises(ai.AiError) as e:
+        ai.generate("s", [{"role": "user", "parts": [{"text": "salam"}]}])
+    assert "balans" not in str(e.value)  # müştəri app-ında daxili səbəb görünmür
+    assert sent and sent[0][0] == "gemini-balance" and sent[0][1] == "action" and "balansı bitib" in sent[0][2]

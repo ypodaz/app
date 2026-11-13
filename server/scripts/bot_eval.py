@@ -1,9 +1,10 @@
 """WhatsApp botunu sınaq ssenariləri ilə yoxlayır və nəticəni Biznes CRM/bot-sinaq.md-yə yazır.
 
-    cd server && .venv/bin/python scripts/bot_eval.py [--limit N] [--mock] [--out fayl.md]
+    cd server && .venv/bin/python scripts/bot_eval.py [--ids 3,7,12-15 | --full] [--limit N] [--mock] [--out fayl.md]
 
-Real rejimdə Gemini açarı settings-dən gəlir, sorğular arasında 1 saniyə gözlənir; 429 və ya 403 olarsa dayanır və
-bunu fayla yazır. `--mock` saxta modeldir (testlər üçün). Ssenarilər `/api/admin/bot/test` ilə eyni `bot.simulate`
+Real rejimdə Gemini açarı settings-dən gəlir (canlı botla eyni balans!), sorğular arasında 1 saniyə gözlənir; 402, 429
+və ya 403 olarsa dayanır və bunu fayla yazır. Tam qaçış (~86 sorğu, ~$0.8) yalnız `--full` ilə; adi halda dəyişikliyə
+aid ssenarilər `--ids` ilə seçilir. Başlamazdan əvvəl təxmini xərc çap olunur. `--mock` saxta modeldir (testlər üçün). Ssenarilər `/api/admin/bot/test` ilə eyni `bot.simulate`
 funksiyası ilə işlənir; baza müvəqqəti yaddaşdadır (FAQ boş, canlı baza oxunmur).
 """
 import argparse
@@ -28,6 +29,8 @@ from db import Base  # noqa: E402
 CRM_DIR = Path.home() / "Claude Projects/Biznes CRM"
 SCENARIOS = CRM_DIR / "tapsiriqlar/bot-ssenariler.json"
 OUT = CRM_DIR / "bot-sinaq.md"
+USD_PER_SCENARIO = 0.009  # təxmini: ~10.5k input × $0.75/1M + ~300 output × $3.75/1M (gemini-3.8-flash, 2026-11)
+STOP_CODES = (402, 403, 429)  # 402: balans bitib
 
 EN_WORDS = {"the", "you", "your", "our", "we", "is", "are", "and", "to", "of", "hello", "hi", "studio", "located",
             "price", "per", "hour", "welcome", "can", "please", "address", "open", "team", "will"}
@@ -119,16 +122,36 @@ def esc(v: str, n: int = 300) -> str:
     return (v[:n] + "…" if len(v) > n else v).replace("|", "\\|")
 
 
+def parse_ids(spec: str) -> set[int]:
+    out = set()
+    for part in spec.split(","):
+        a, _, b = part.strip().partition("-")
+        out.update(range(int(a), int(b or a) + 1))
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--mock", action="store_true")
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--ids", help="yalnız bu ssenarilər: 3,7,12-15")
+    ap.add_argument("--full", action="store_true", help="bütün ssenarilər (real rejimdə xərclidir)")
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--scenarios", type=Path, default=SCENARIOS)
     args = ap.parse_args(argv)
 
     data = json.loads(args.scenarios.read_text(encoding="utf-8"))
-    scenarios = data["scenarios"][:args.limit] if args.limit else data["scenarios"]
+    scenarios = data["scenarios"]
+    if args.ids:
+        want = parse_ids(args.ids)
+        scenarios = [s for s in scenarios if s["id"] in want]
+    elif not (args.full or args.limit or args.mock):
+        print(f"Tam qaçış {len(scenarios)} sorğudur (~${len(scenarios) * USD_PER_SCENARIO:.2f}). "
+              "Dəyişikliyə aid ssenariləri --ids ilə seçin və ya --full yazın.")
+        return 2
+    scenarios = scenarios[:args.limit] if args.limit else scenarios
+    if not args.mock:
+        print(f"{len(scenarios)} ssenari, təxmini xərc ~${len(scenarios) * USD_PER_SCENARIO:.2f}")
     global_bad = data.get("global_must_not_contain", [])
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
@@ -157,7 +180,7 @@ def run(args, scenarios, data, global_bad, engine) -> int:
                                    now_dt=bot.parse_now(sc.get("now")), slots_list=sc.get("slots"),
                                    first_message=sc.get("first_message", False))
             except ai.AiError as e:
-                if _last_status["code"] in (429, 403):
+                if _last_status["code"] in STOP_CODES:
                     stopped = f"HTTP {_last_status['code']} səbəbi ilə ssenari {sc['id']}-də dayandırıldı " \
                               f"({len(scenarios) - i} ssenari işlənmədi)"
                     break

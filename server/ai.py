@@ -12,6 +12,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
+import alerts
 import booking
 import money
 import settings
@@ -88,6 +89,9 @@ def generate(system: str, contents: list[dict], tools: list[dict] | None = None,
     except httpx.HTTPError as e:
         raise AiError("AI ilə əlaqə alınmadı, bir az sonra yenidən yoxlayın") from e
     if r.status_code != 200:
+        if r.status_code == 402:  # prepay krediti bitib: bütün AI (bot, sosial, app) dayanır, sahibkar bilsin
+            alerts.notify("gemini-balance", topic="action", text="Gemini balansı bitib, bot cavab yaza bilmir. "
+                          "AI Studio → Billing-də krediti artırın: https://ai.studio/projects")
         raise AiError("AI cavab vermədi, bir az sonra yenidən yoxlayın")
     data = r.json()
     cands = data.get("candidates") or []
