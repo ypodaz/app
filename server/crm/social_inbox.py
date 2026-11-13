@@ -6,8 +6,11 @@ ictimai cavab yenə nömrə ilə gedir. Şikayət, mübahisə, cavabı bilinməy
 (HANDOFF_REPLY) + sahibkara 🔴 xəbər. Spam cavabsız qalır. Sutkada 40-dan çox cavab və ya göndəriş xətası olanda
 qaralama Telegram-a düymələrlə gedir (social_tg). `/komment avto|qaralama` rejimi dəyişir.
 Instagram DM: `ig_dm_mode = auto` olanda bot özü cavab verir (sahibkar hər cavabı Telegram-da görür); `new_auto` —
-yalnız əvvəl bizimlə yazışmayana, köhnə yazışanlara qaralama. Handoff olanda
-və ya sahibkar Instagram app-dan özü yazanda o müştəriyə 7 gün avtomatik cavab getmir, yenə qaralama olur.
+yalnız əvvəl bizimlə yazışmayana, köhnə yazışanlara həmişə qaralama. Avtomatik cavab alan DM söhbətində bot ↔ sahibkar
+növbəsi var (WhatsApp ilə eyni, qaydalar crm/turns.py və crm/ig_turns.py-dədir): `bot` — bot özü yazır; sahibkar app-dan
+yazanda → `owner` (cavab qaralama, gündüz 1 saat toxunulmasa bot özü göndərir, gecə yalnız «asan» cavab); handoff →
+`wait` (asan suala cavab, qalanı qaralama, 30 dəqiqədən sonra xatırlatma); qaralama təsdiqlənəndə → `bot`.
+Rejim `settings`-də `ig_mode:<igsid>` açarındadır.
 Müştəri DM-də nömrə yazanda kontakt + lead yaranır və Telegram-a «WhatsApp-dan yaz» linkli kart gedir.
 """
 import logging
@@ -25,7 +28,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import AiError
-from crm import bot, conf, contacts, friends, instagram, social_tg, voice, youtube
+from crm import bot, conf, contacts, friends, instagram, social_tg, turns, voice, youtube
 from db import SessionLocal, aware, now
 from models import Lead, SocialItem, WaContact
 
@@ -41,7 +44,6 @@ DM_NOTE = ("\n\nKANAL: Bu, Instagram DM-dir. WhatsApp-dakı kimi qısa və isti 
            f"özünün yaza biləcəyini de: https://wa.me/{WA_NUMBER}. Nömrəni yazıbsa, bir daha soruşma: təşəkkür et və "
            "komandanın WhatsApp-dan yazacağını de. Nömrənin alınması ötürmə deyil: handoff = false qalır (müştəri "
            "kartı komandaya avtomatik gedir). Adı bilinəndə lead.name-ə yaz.")
-IG_HUMAN_FOR = timedelta(days=7)
 ECHO_WAIT = 3.0
 MOBILE = {"10", "50", "51", "55", "60", "70", "77", "99"}
 PHONE_RE = re.compile(r"(?:\+|00)?\d[\d\s\-().]{6,17}\d")
@@ -117,28 +119,54 @@ def is_new_ig(db: DB, item: SocialItem) -> bool:
     return not old
 
 
-def _human_key(thread: str) -> str:
-    return f"ig_human:{thread}"[:64]
+def _mode_key(thread: str) -> str:
+    return f"ig_mode:{thread}"[:64]
 
 
-def is_human(db: DB, thread: str) -> bool:
-    """Bu müştəri ilə son 7 gündə insan danışır (handoff və ya sahibkar app-dan yazıb)."""
-    v = conf.get(db, _human_key(thread))
+def ig_mode(db: DB, thread: str) -> str:
+    """Bu DM söhbətində növbə kimdədir: bot | owner | wait (crm/turns.py ilə eyni mənada)."""
+    v = conf.get(db, _mode_key(thread))
+    return v if v in ("owner", "wait") else "bot"
+
+
+def _clear_wait(db: DB, thread: str) -> None:
+    conf.put(db, f"ig_wait:{thread}"[:64], "")
+
+
+def owner_wrote(db: DB, thread: str) -> bool:
+    """Sahibkar app-dan yazdı: söhbəti o aparır. True: vəziyyət indi dəyişdi (əvvəl `owner` deyildi)."""
+    was = ig_mode(db, thread)
+    conf.put(db, _mode_key(thread), "owner")
+    conf.put(db, f"ig_owner:{thread}"[:64], now().isoformat())  # bundan əvvəlki qaralamalar köhnəlib (ig_turns)
+    _clear_wait(db, thread)
+    return was != "owner"
+
+
+def owner_since(db: DB, thread: str, since: datetime) -> bool:
+    v = conf.get(db, f"ig_owner:{thread}"[:64])
     try:
-        return bool(v) and now() - aware(datetime.fromisoformat(v)) < IG_HUMAN_FOR
+        return bool(v) and aware(datetime.fromisoformat(v)) > aware(since)
     except ValueError:
         return False
 
 
-def set_human(db: DB, thread: str) -> bool:
-    """True: vəziyyət indi dəyişdi (əvvəl bot cavab verirdi)."""
-    was = is_human(db, thread)
-    conf.put(db, _human_key(thread), now().isoformat())
-    return not was
+def draft_approved(db: DB, thread: str) -> None:
+    """Sahibkar qaralamanı təsdiqlədi: bot söhbəti yenidən özü aparır."""
+    if ig_mode(db, thread) != "bot":
+        conf.put(db, _mode_key(thread), "bot")
+        _clear_wait(db, thread)
+
+
+def to_wait(db: DB, thread: str, t: datetime) -> None:
+    """Handoff: komandaya ötürüldü, sahibkarın cavabı gözlənilir."""
+    wkey = f"ig_wait:{thread}"[:64]
+    if ig_mode(db, thread) != "wait" or not conf.get(db, wkey):
+        conf.put(db, wkey, aware(t).isoformat())
+    conf.put(db, _mode_key(thread), "wait")
 
 
 def on_echo(thread: str, mid: str) -> str:
-    """Fon işi: hesabımızdan gedən DM. Bizim API göndərişimiz deyilsə, sahibkar app-dan yazıb: bot 7 gün susur."""
+    """Fon işi: hesabımızdan gedən DM. Bizim API göndərişimiz deyilsə, sahibkar app-dan yazıb: söhbət `owner` rejiminə keçir."""
     time.sleep(ECHO_WAIT)  # API cavabı (mid) echo webhook-undan gec qeydə düşə bilər
     if mid in _sent_mids:
         return "own"
@@ -148,11 +176,11 @@ def on_echo(thread: str, mid: str) -> str:
             SocialItem.status == "sent").order_by(SocialItem.id.desc()).limit(20)).all()
         if any((mo or {}).get("sent_mid") == mid for mo in recent):
             return "own"
-        changed = set_human(db, thread)
+        changed = owner_wrote(db, thread)
         db.commit()
     if changed and recent:  # bot bu söhbətdə heç yazmayıbsa (məs. əl ilə kampaniya mesajı), xəbərə ehtiyac yoxdur
-        alerts.notify(f"ig-human:{thread}", topic="auto", text="Instagram: müştəriyə özünüz yazdınız, bot bu söhbətdə 7 gün avtomatik "
-                                            "cavab verməyəcək (qaralamalar Telegram-a gələcək).")
+        alerts.notify(f"ig-human:{thread}", topic="auto", text="Instagram: müştəriyə özünüz yazdınız, söhbət sizdədir. Bot "
+                                            "cavabı qaralama kimi Telegram-a göndərəcək; gündüz 1 saat toxunmasanız özü göndərəcək.")
     return "human"
 
 
@@ -383,21 +411,29 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         except Exception:  # lead xətası cavabı saxlamasın
             db.rollback()
             log.exception("Instagram lead (item %s)", item.id)
-        if not avoid and not is_human(db, item.thread_id) and ig_auto(db, item):  # «Yenidən yaz» həmişə qaralamadır
-            try:
-                send(db, item)
-                db.commit()
-            except SEND_ERRORS as e:
-                db.rollback()
-                alerts.notify(f"ig-auto:{item.id}", topic="action", text=f"Instagram avtomatik cavab getmədi ({str(e)[:200]}), qaralama "
-                                                    "Telegram-dadır.")
-            else:
-                if res.get("handoff"):
-                    set_human(db, item.thread_id)
+        if avoid:  # «Yenidən yaz» həmişə qaralamadır, avtomatik göndəriş taymeri də ləğv olunur
+            item.auto_at = None
+        elif ig_auto(db, item):
+            send_now, item.auto_at = turns.plan_mode(ig_mode(db, item.thread_id), res, now())  # növbə: crm/turns.py
+            handoff = bool(res.get("handoff"))
+            if send_now:
+                try:
+                    send(db, item)
                     db.commit()
+                except SEND_ERRORS as e:
+                    db.rollback()
+                    send_now = False
+                    item.auto_at = None
+                    alerts.notify(f"ig-auto:{item.id}", topic="action", text=f"Instagram avtomatik cavab getmədi ({str(e)[:200]}), "
+                                                        "qaralama Telegram-dadır.")
+            if handoff:  # komandaya ötürüldü: sahibkarın cavabı gözlənilir (asan suala bot yenə cavab verir)
+                to_wait(db, item.thread_id, now())
+            db.commit()
+            if send_now:
+                if handoff:
                     social_tg.auto_log(item, f"🙋 Əməkdaş lazımdır (səbəb: {res.get('handoff_reason') or '-'}). Bot "
-                                             "cavab verdi və bu müştəriyə 7 gün susur, Instagram-dan özünüz yazın.",
-                                       topic="action")
+                                             "cavab verdi, sizin cavabınızı gözləyir (asan suallara özü cavab verəcək), "
+                                             "Instagram-dan özünüz yazın.", topic="action")
                     return f"handoff:{res.get('handoff_reason')}"
                 social_tg.auto_log(item)
                 return "sent"
