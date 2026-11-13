@@ -35,6 +35,8 @@ const convs = [conv(1, 'Söhbət Bir', 'wait', 'Sabah üçün yer var?', 25), co
 function route(path: string, method: string): unknown {
   const p = path.split('?')[0];
   if (p === '/dashboard') return { deposit_pending: [shoots[2], shoots[4]], today: [shoots[1], shoots[2], shoots[3]], unclosed_count: 1, awaiting_material_count: 0, app_usage: { clients: 30, joined: 20, home_screen: 10, push_on: 8, active_7d: 6 } };
+  const ck = cekilisRoute(p);
+  if (ck !== undefined) return ck;
   if (p === '/shoots') return shoots;
   if (p === '/blocks') return [];
   if (p === '/inbox') return convs;
@@ -62,4 +64,25 @@ export function installMock() {
     if (new URLSearchParams(location.search).has('fail')) return new Response('{}', { status: 500 });
     return new Response(JSON.stringify(route(url.slice(i + 10), (init?.method ?? 'GET').toUpperCase())), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
+}
+
+// --- Cekilis ---
+// Çəkilişlər ekranları üçün əlavə nümunələr (uydurma ad/rəqəm): Apple təqvimi, arxiv, bloklar, boş vaxtlar.
+const ckShoots = [
+  ...shoots,
+  shoot(21, 'Nümunə Müştəri F', 24 + 11, 120, { source_note: 'calendar' }),
+  shoot(22, 'Nümunə Müştəri G', -48 + 14, 90, { status: 'completed', closed_at: iso(Date.now() - 40 * H), production: 'editing', delivery_on: null }),
+  shoot(23, 'Nümunə Müştəri H', -72 + 12, 90, { status: 'completed', closed_at: iso(Date.now() - 60 * H), production: 'ready', delivery_on: '2026-11-10', materials: [{ id: 1, title: 'Söhbət #1', drive_url: 'https://drive.google.com/x' }] }),
+  shoot(24, 'Nümunə Müştəri I', -24 * 9 + 13, 120, { status: 'completed', source_note: 'calendar-archive', closed_at: iso(Date.now() - 24 * 9 * H) }),
+  shoot(25, 'Nümunə Layihə Y Pod', 24 * 2 + 15, 90, { source_note: 'calendar' }),
+];
+function cekilisRoute(p: string): unknown {
+  if (p === '/shoots') return ckShoots;
+  if (p === '/blocks') return [{ id: 1, starts_at: iso(baku() + 18 * H), ends_at: iso(baku() + 20 * H), reason: 'Avadanlıq' }];
+  if (p === '/free-slots') return [{ start: '08:00', end: '10:00' }, { start: '16:30', end: '22:00' }];
+  const m = p.match(/^\/shoots\/(\d+)$/);
+  if (m) return ckShoots.find((x) => x.id === Number(m[1])) ?? ckShoots[1];
+  if (/^\/clients\/\d+$/.test(p)) return { id: 1, full_name: 'Nümunə Müştəri A', phone: '+994500000001', notes: null, deposit_required: false, cashback_balance: 0, cashback_rows: [], packages: [], shoots: [] };
+  if (p.endsWith('/quote')) return { base: 12000, editing: 3000, reels: 0, extra_camera: 0, extras: 0, gross: 15000, discount: 0, total: 15000, deposit_expected: 5000, conflicts: [], cashback_earn: 0, cashback_kind: 'none', first_shoot_bonus: false, cashback_balance: 0, cashback_usable: 0, cashback_min_use: 0, cashback_shoots_left: 0, deposit_required: false };
+  return undefined;
 }
