@@ -1,0 +1,263 @@
+import { useEffect, useMemo, useState } from 'react';
+import { formatMoney } from '../../../../shared/ui';
+import { useAction, useAuth, useLoad } from '../../../ctx';
+import { bakuToday } from '../../../format';
+import { go, useRoute } from '../../../router';
+import type { ClientRow, Package } from '../../../types';
+import { PageHeader } from '../../shell/PageHeader';
+import { Avatar, Button, Card, Dialog, EmptyState, ErrorBox, Field, LoadingRows, Segmented, TextInput, V2Icon, useOnline, useToast } from '../../ui';
+import { ChangeNote } from '../../ui';
+import { Chosen, ClientPickDialog, ClientResults, Fld, Gate, daysBetween, dmy, hrs, pct, useClients } from './kit';
+import './tenzimleme.css';
+
+const HOURS = [5, 10, 15, 20] as const;
+const CAMS = [1, 2, 3] as const;
+const DISC: Record<number, number> = { 5: 10, 10: 20, 15: 30, 20: 40 }; // 00 §5.7
+type Grid = Record<number, { months: number; prices: Record<number, number> }>;
+
+/** Saat paketi qiymətləri: /packages/quote (server/money.py), 4 saat × 3 kamera. */
+function usePriceGrid() {
+  const { call } = useAuth();
+  const [grid, setGrid] = useState<Grid | null>(null);
+  const [err, setErr] = useState('');
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setErr('');
+    Promise.all(HOURS.flatMap((h) => CAMS.map((c) => call<{ price: number; months: number }>(`/packages/quote?hours=${h}&cameras=${c}`).then((q) => [h, c, q] as const))))
+      .then((rows) => {
+        if (!live) return;
+        const g: Grid = {};
+        for (const [h, c, q] of rows) (g[h] ??= { months: q.months, prices: {} }).prices[c] = q.price;
+        setGrid(g);
+      })
+      .catch(() => live && setErr('Qiymətlər yüklənmədi'));
+    return () => { live = false; };
+  }, [call, tick]);
+  return { grid, err, retry: () => setTick((t) => t + 1) };
+}
+
+const addMonths = (date: string, n: number) => {
+  const [y, m, d] = date.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+};
+
+type Owner = { id: number; full_name: string };
+
+/** Paket sat (30-paketler.md §Paket sat). Hesablama brauzerdədir, server qiyməti /packages/quote-dan gəlir. */
+function SellDialog({ open, onClose, onDone, grid, owner0, packages }: { open: boolean; onClose: () => void; onDone: () => void; grid: Grid | null; owner0: Owner | null; packages: Package[] }) {
+  const { call } = useAuth();
+  const toast = useToast();
+  const online = useOnline();
+  const act = useAction();
+  const [owner, setOwner] = useState<Owner | null>(null);
+  const [q, setQ] = useState('');
+  const [hours, setHours] = useState<number>(10);
+  const [cams, setCams] = useState<number>(2);
+  const [start, setStart] = useState(bakuToday());
+  const [used, setUsed] = useState(0);
+  const [title, setTitle] = useState('');
+  const { list, err, retry } = useClients(open && !owner);
+  useEffect(() => {
+    if (!open) return;
+    setOwner(owner0); setQ(''); setHours(10); setCams(2); setStart(bakuToday()); setUsed(0); setTitle(''); act.setErr('');
+  }, [open, owner0]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const price = grid?.[hours]?.prices[cams];
+  const months = grid?.[hours]?.months;
+  const disc = DISC[hours];
+  const standard = price !== undefined ? Math.round(price / (1 - disc / 100)) : undefined;
+  const ends = months ? addMonths(start, months) : '';
+  const existing = owner ? packages.filter((p) => p.owner_client_id === owner.id && daysBetween(bakuToday(), p.ends_on) >= 0 && p.minutes_left > 0).sort((a, b) => a.ends_on.localeCompare(b.ends_on))[0] : undefined;
+  const usedOpts = Array.from({ length: hours * 2 + 1 }, (_, i) => i * 30);
+
+  async function submit() {
+    if (!owner || price === undefined) return;
+    const name = title.trim() || owner.full_name;
+    const r = await act.run(() => call('/packages', { body: { owner_client_id: owner.id, title: name, hours, cameras: cams, starts_on: start, used_minutes: Math.min(used, hours * 60), member_ids: [] } }));
+    if (r !== undefined) { onClose(); onDone(); toast.show(`Paket satıldı · ${name} · ${hours} saat · ${formatMoney(price)}`); }
+  }
+  return (
+    <Dialog open={open} onClose={onClose} title="Paket sat" subtitle="Korporativ saat paketi"
+      footer={<><Button variant="text" onClick={onClose}>Ləğv et</Button><Button variant="primary" disabled={!owner || price === undefined || !online || act.busy} onClick={submit}>{price !== undefined ? `Paketi sat · ${formatMoney(price)}` : 'Paketi sat'}</Button></>}>
+      <Field label="İnsan və ya şirkət">
+        {(id) => owner ? (
+          <div className="tz-pickbox"><Chosen name={owner.full_name} onRemove={() => setOwner(null)} /></div>
+        ) : (
+          <div className="tz-pick">
+            <div className="tz-pickbox"><V2Icon name="search" /><input id={id} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ad, telefon, şirkət" autoFocus /></div>
+            {q.trim() && <ClientResults list={list} err={err} retry={retry} q={q} onPick={(c: ClientRow) => { setOwner({ id: c.id, full_name: c.full_name }); setQ(''); }} />}
+          </div>
+        )}
+      </Field>
+      {existing && <p className="tz-muted">Aktiv paket {dmy(existing.ends_on).slice(0, 5)}-də bitir · yeniləmə. Köhnə paket öz bitmə tarixinə qədər qalır.</p>}
+      {/* TODO [API] 99 S8: qalıq saatın yeni pakete keçməsi: POST /packages bunu dəstəkləmir (used_minutes yalnız keçmiş istifadə üçündür). */}
+      <Fld label="Paket"><Segmented label="Saat" options={HOURS.map((h) => ({ value: String(h), label: `${h} saat` }))} value={String(hours)} onChange={(v) => { setHours(Number(v)); setUsed(0); }} /></Fld>
+      <Fld label="Kamera"><Segmented label="Kamera sayı" options={CAMS.map((c) => ({ value: String(c), label: String(c) }))} value={String(cams)} onChange={(v) => setCams(Number(v))} /></Fld>
+      <div className="tz-calc" aria-live="polite">
+        {price === undefined ? <span>Qiymət hesablanır…</span> : (
+          <>
+            <div><span>Standart qiymət</span><span className="mono">{formatMoney(standard!)}</span></div>
+            <div><span>Endirim −{disc}%</span><span className="mono">−{formatMoney(standard! - price)}</span></div>
+            <hr />
+            <div><b style={{ color: 'var(--text)' }}>Cəmi</b><span className="mono tz-tot">{formatMoney(price)}</span></div>
+            <div><span>1 saat = {formatMoney(Math.round(price / hours))}</span><span className="mono">bitmə {dmy(ends)} · {months} ay</span></div>
+            <span>Montaj hər epizod +100 AZN (paketə daxil deyil). Paketdən olan çəkilişə keşbek yazılmır.</span>
+          </>
+        )}
+      </div>
+      {/* TODO [API] «Ödəniş: Tam / 2 hissə» (99 E Paketlər): POST /packages ödəniş bölgüsü və ikinci hissənin xatırlatması saxlamır. */}
+      <details className="tz-det">
+        <summary>Əlavə: ad, başlama tarixi, artıq istifadə</summary>
+        <div className="tz-stack">
+          <Field label="Paket adı" hint="Boş qalsa sahibin adı yazılır">{(id) => <TextInput id={id} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={owner?.full_name ?? ''} />}</Field>
+          <div className="tz-row2">
+            <Field label="Başlama tarixi" hint="Keçmiş tarix də olar">{(id) => <TextInput id={id} type="date" value={start} onChange={(e) => setStart(e.target.value)} />}</Field>
+            <Field label="Artıq istifadə olunub" hint="Paket əvvəl başlayıbsa">
+              {(id) => <select id={id} className="input" value={used} onChange={(e) => setUsed(Number(e.target.value))}>{usedOpts.map((m) => <option key={m} value={m}>{hrs(m)} saat</option>)}</select>}
+            </Field>
+          </div>
+        </div>
+      </details>
+      {act.err && <ErrorBox title="Alınmadı" detail={act.err} />}
+      <ChangeNote unchanged={['Qiymət cədvəli', 'Şirkətin mövcud paketləri', 'Çəkilişlər']} />
+    </Dialog>
+  );
+}
+
+function Members({ p, onChanged }: { p: Package; onChanged: () => void }) {
+  const { call } = useAuth();
+  const act = useAction();
+  const toast = useToast();
+  const [add, setAdd] = useState(false);
+  const [ask, setAsk] = useState<{ id: number; name: string } | null>(null);
+  const online = useOnline();
+  async function addMember(c: ClientRow) {
+    const r = await act.run(() => call(`/packages/${p.id}/members`, { body: { client_id: c.id } }));
+    if (r !== undefined) { onChanged(); toast.show(`Üzv əlavə edildi · ${c.full_name}`); }
+  }
+  async function remove() {
+    if (!ask) return;
+    const a = ask; setAsk(null);
+    const r = await act.run(() => call(`/packages/${p.id}/members/${a.id}`, { method: 'DELETE' }));
+    if (r !== undefined) { onChanged(); toast.show(`Üzv çıxarıldı · ${a.name}`); }
+  }
+  return (
+    <div className="tz-members">
+      {p.members.map((m) => (
+        <div key={m.client_id} className="tz-mrow">
+          <Avatar name={m.full_name} />
+          <a href={`#/insanlar/${m.client_id}`}>{m.full_name}</a>
+          <span className="tz-faint">{m.role === 'owner' ? 'Sahib' : 'Üzv'}</span>
+          {m.role !== 'owner' && <Button size="row" variant="text" disabled={!online || act.busy} onClick={() => setAsk({ id: m.client_id, name: m.full_name })}>Çıxar</Button>}
+        </div>
+      ))}
+      <div><Button size="row" icon={<V2Icon name="plus" size={14} />} disabled={!online || act.busy} onClick={() => setAdd(true)}>Üzv əlavə et</Button></div>
+      {act.err && <ErrorBox title="Alınmadı" detail={act.err} />}
+      <ClientPickDialog open={add} onClose={() => setAdd(false)} onPick={addMember} exclude={p.members.map((m) => m.client_id)} title="Üzv əlavə et" />
+      <Dialog open={!!ask} onClose={() => setAsk(null)} title={`${ask?.name ?? ''} paketdən çıxarılsın?`}
+        footer={<><Button variant="text" onClick={() => setAsk(null)}>Ləğv et</Button><Button variant="danger" onClick={remove}>Çıxar</Button></>}>
+        <ChangeNote changes={['Üzv bu paketin saatından istifadə edə bilməz']} unchanged={['Paketin saatı və bitmə tarixi', 'Üzvün çəkilişləri']} />
+      </Dialog>
+    </div>
+  );
+}
+
+/** Paketlər və qiymətlər (30-paketler.md). Routes: /tenzimleme/paketler, /tenzimleme/paketler/yeni, ?paket-sat=1, köhnə /packages. */
+export function Paketler() {
+  const { path, query } = useRoute();
+  const online = useOnline();
+  const pk = useLoad<Package[]>('/packages');
+  const { grid, err: gridErr, retry } = usePriceGrid();
+  const [sell, setSell] = useState(false);
+  const [owner0, setOwner0] = useState<Owner | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  const today = bakuToday();
+  const asked = path[0] === 'tenzimleme' && path[2] === 'yeni' || path[0] === 'packages' && path[1] === 'new' || query.get('paket-sat') === '1';
+  useEffect(() => { if (asked) { setOwner0(null); setSell(true); } }, [asked]);
+  const closeSell = () => { setSell(false); if (asked) go('tenzimleme/paketler'); };
+
+  const { active, ended } = useMemo(() => {
+    const rows = (pk.data ?? []).map((p) => {
+      const days = daysBetween(today, p.ends_on);
+      const left = p.minutes_left / 60;
+      const off = days < 0 || p.minutes_left <= 0;
+      return { p, days, left, off, queue: !off && (left < 2 || days <= 14) };
+    });
+    const act = rows.filter((r) => !r.off).sort((a, b) => Number(b.queue) - Number(a.queue) || a.p.ends_on.localeCompare(b.p.ends_on));
+    return { active: act, ended: rows.filter((r) => r.off).sort((a, b) => b.p.ends_on.localeCompare(a.p.ends_on)) };
+  }, [pk.data, today]);
+  const cols = 'minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.5fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,1.4fr)';
+
+  const row = (r: (typeof active)[number]) => {
+    const { p, days, left, off } = r;
+    const used = p.minutes_total - p.minutes_left;
+    const value = Math.round(p.price_paid * p.minutes_left / Math.max(1, p.minutes_total));
+    return (
+      <div key={p.id}>
+        <div className="tz-tr" style={{ '--cols': cols } as React.CSSProperties}>
+          <div className="tz-c"><span className="tz-who"><Avatar name={p.title} /><span style={{ minWidth: 0 }}><a href={`#/insanlar/${p.owner_client_id}`} style={{ color: 'var(--text)' }}>{p.title}</a>{p.owner_name !== p.title && <span className="tz-sub">Sahibi: {p.owner_name}</span>}</span></span></div>
+          <div className="tz-c">{p.minutes_total / 60} saat · {p.cameras} kamera</div>
+          <div className="tz-c"><div className="tz-prog" role="progressbar" aria-valuemin={0} aria-valuemax={p.minutes_total / 60} aria-valuenow={used / 60} aria-label="İstifadə olunan saat"><i><i style={{ width: `${pct(used, p.minutes_total)}%` }} /></i><span className="mono">{hrs(used)} / {p.minutes_total / 60} saat</span></div></div>
+          <div className="tz-c"><span className="mono">{dmy(p.ends_on)}</span>
+            {!off && days <= 14 && <span className="tz-sub tz-sub--warn">{days} gün qalıb</span>}
+            {!off && days > 14 && left < 2 && <span className="tz-sub tz-sub--warn">qalıq {hrs(p.minutes_left)} saat</span>}
+            {off && <span className="tz-sub">{p.minutes_left <= 0 ? 'saat bitib' : 'müddət bitib'}</span>}</div>
+          <div className="tz-c tz-c--r mono">{formatMoney(value)}</div>
+          <div className="tz-c tz-actions tz-actions--end">
+            {/* TODO [API] «Xatırlat» (30 §5): müştəriyə WhatsApp şablonu üçün endpoint yoxdur. */}
+            {(r.queue || off) && <Button size="row" disabled={!online} onClick={() => { setOwner0({ id: p.owner_client_id, full_name: p.owner_name }); setSell(true); }}>Yeni paket təklif et</Button>}
+            <Button size="row" variant="text" aria-expanded={open === p.id} onClick={() => setOpen(open === p.id ? null : p.id)}>Üzvlər {p.members.length}</Button>
+          </div>
+        </div>
+        {open === p.id && <Members p={p} onChanged={pk.reload} />}
+      </div>
+    );
+  };
+  const th = (
+    <div className="tz-th" style={{ '--cols': cols } as React.CSSProperties}>
+      <span>Müştəri</span><span>Paket</span><span>İstifadə</span><span>Bitmə tarixi</span><span style={{ textAlign: 'right' }}>Qalıq dəyər</span><span style={{ textAlign: 'right' }}>Növbəti addım</span>
+    </div>
+  );
+
+  return (
+    <>
+      <PageHeader title="Paketlər və qiymətlər" sub="Bot və qaralamalar qiyməti buradan götürür" newShoot={false}
+        actions={<Button variant="primary" size="lg" icon={<V2Icon name="plus" />} disabled={!online} onClick={() => { setOwner0(null); setSell(true); }}>Paket sat</Button>} />
+      <div className="tz">
+        <Card title="Saat paketləri" aside={<span className="tz-aside">Yalnız studiya · montaj hər epizod <b className="mono" style={{ color: 'var(--text)', fontWeight: 500 }}>+100 AZN</b></span>}>
+          {gridErr && !grid ? <ErrorBox title="Qiymətlər yüklənmədi" detail="Qiymət cədvəli alınmadı." onRetry={retry} /> : !grid ? <LoadingRows rows={4} /> : (
+            <>
+              <div className="tz-th" style={{ '--cols': 'minmax(0,.8fr) minmax(0,1.2fr) repeat(3, minmax(0,1fr))' } as React.CSSProperties}><span>Paket</span><span>Müddət · endirim</span>{CAMS.map((c) => <span key={c} style={{ textAlign: 'right' }}>{c} kamera</span>)}</div>
+              {HOURS.map((h) => (
+                <div key={h} className="tz-tr" style={{ '--cols': 'minmax(0,.8fr) minmax(0,1.2fr) repeat(3, minmax(0,1fr))' } as React.CSSProperties}>
+                  <div className="tz-c"><span className="mono tz-big">{h}</span><span className="tz-unit">saat</span></div>
+                  <div className="tz-c mono">{grid[h].months} ay · −{DISC[h]}%{h === 20 && <span className="tz-best">ən sərfəli</span>}</div>
+                  {CAMS.map((c) => <div key={c} className="tz-c tz-c--r mono">{formatMoney(grid[h].prices[c]).replace(' AZN', '')}<span className="tz-unit">AZN</span></div>)}
+                </div>
+              ))}
+            </>
+          )}
+          {/* TODO [API] «Qiymət cədvəli» (çəkiliş 1 saat, müştəri özü çəkir, Reels, montaj/cover): server/money.py üçün oxu endpoint-i yoxdur (/shoots/quote yalnız konkret çəkiliş hesablayır). Bölmə gizlədilib. */}
+        </Card>
+
+        <Card title={<>Aktiv paketlər{pk.data && <span className="tz-count">{active.length}</span>}</>} aside={<span className="tz-aside">bitməsinə az qalan yuxarıda</span>}>
+          <Gate q={pk} title="Paketlər yüklənmədi">
+            {() => active.length === 0 ? (
+              <EmptyState title="Aktiv paket yoxdur" reason="Korporativ müştəriyə paket satanda burada görünəcək." action={<Button disabled={!online} onClick={() => { setOwner0(null); setSell(true); }}>Paket sat</Button>} />
+            ) : <>{th}{active.map(row)}</>}
+          </Gate>
+        </Card>
+
+        {ended.length > 0 && (
+          <Card title={<>Bitmiş paketlər<span className="tz-count">{ended.length}</span></>}>
+            {th}{ended.map(row)}
+          </Card>
+        )}
+      </div>
+      <SellDialog open={sell} onClose={closeSell} onDone={pk.reload} grid={grid} owner0={owner0} packages={pk.data ?? []} />
+    </>
+  );
+}
