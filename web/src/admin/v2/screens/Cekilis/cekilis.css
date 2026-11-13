@@ -1,6 +1,4 @@
 /* Çəkilişlər (10–15). Hamısı .v2 daxilində, ck- prefiksi ilə: ypod.css-dəki .bar/.card/.row/.chip/.nav ilə toqquşmur. */
-.v2 .ck-wide { display: none; }
-.v2 .dialog:has(.ck-wide) { width: min(780px, 100%); }
 
 /* başlıq zolağı */
 .v2 .ck-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }

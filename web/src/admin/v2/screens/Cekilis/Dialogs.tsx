@@ -312,9 +312,8 @@ export function CloseDialog({ shoot, onClose }: { shoot: Shoot | null; onClose: 
     );
   }
   return (
-    <Dialog open onClose={onClose} title="Çəkilişi bağla" subtitle={sub}
+    <Dialog open size="lg" onClose={onClose} title="Çəkilişi bağla" subtitle={sub}
       footer={<><Button variant="text" onClick={onClose}>Geri</Button><Button variant="primary" kbd="↵" disabled={!online || !quote || discBad || extrasBad || act.busy} onClick={close}>Çəkilişi bağla</Button></>}>
-      <div className="ck-wide" />
       {!reels && (
         <div className="ck-line"><div><b>Faktiki müddət</b><span className="ck-sub">Yarım saat addımla</span></div>
           <Stepper text={formatHours(minutes)} label="Faktiki müddət" onDec={() => setDur(Math.max(30, minutes - 30))} onInc={() => setDur(Math.min(600, minutes + 30))} decDisabled={minutes <= 30} incDisabled={minutes >= 600} /></div>

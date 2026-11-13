@@ -115,7 +115,7 @@ export function Insanlar({ tab, view }: { tab: InsanTab; view: 'cedvel' | 'lovhe
 
   return (
     <>
-      <PageHeader title="İnsanlar" sub={tab === 'musteri' && clients.data ? <><b className="mono">{rows.length}</b> müştəri</> : 'Kim hansı mərhələdədir və kim gözləyir'} newShoot={false}
+      <PageHeader title="İnsanlar" sub={tab === 'musteri' && clients.data ? <><b className="mono">{rows.length}</b> müştəri</> : 'Kim hansı mərhələdədir və kim gözləyir'} newShoot={false} search={false}
         actions={<Button size="lg" variant="primary" icon={<V2Icon name="plus" />} disabled={!online} onClick={() => setAdd(true)}>Yeni kontakt</Button>} />
       <div className="ins-toolbar">
         <SegmentedLinks label="İnsanlar" value={tab} options={tabs} />

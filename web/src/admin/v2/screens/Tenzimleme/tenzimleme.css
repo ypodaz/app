@@ -57,6 +57,15 @@
   .v2 .tz-members { padding-left: 12px; }
 }
 
+/* 6 sütunlu cədvəllər (Aktiv paketlər, Kampaniyalar) planşetdə (sol menyu ilə ~500px) sığmır: kart sətrinə keçir */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .v2 .tz-th.tz-wide { display: none; }
+  .v2 .tz-tr.tz-wide { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 12px; }
+  .v2 .tz-tr.tz-wide > .tz-c { flex: 1 1 30%; }
+  .v2 .tz-tr.tz-wide > .tz-c:first-child { flex: 1 1 100%; }
+  .v2 .tz-tr.tz-wide > .tz-c--r { text-align: left; }
+}
+
 /* ümumi vahid */
 .v2 .tz-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--r-pill); background: var(--bg); font-size: 13px; color: var(--text); border: 0; }
 .v2 .tz-pill--on { background: var(--primary); color: var(--on-primary); }

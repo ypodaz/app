@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
 /** Etiket + sahə + göstəriş/xəta. children render-prop id alır ki, label bağlansın. */
 export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: (id: string, invalid: boolean) => ReactNode }) {
@@ -22,10 +22,10 @@ export function UnitInput({ unit, ...props }: InputHTMLAttributes<HTMLInputEleme
   return <div className="input-unit"><TextInput {...props} /><span aria-hidden="true">{unit}</span></div>;
 }
 
-export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }) {
+export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }>(function TextArea(props, ref) {
   const { invalid, className = '', ...rest } = props;
-  return <textarea className={`input${className ? ' ' + className : ''}`} aria-invalid={invalid || undefined} {...rest} />;
-}
+  return <textarea ref={ref} className={`input${className ? ' ' + className : ''}`} aria-invalid={invalid || undefined} {...rest} />;
+});
 
 /** Açıq = qara; yalnız botun/AI-nin əsas açarı ai=true (bənövşəyi). Dərhal saxlanır (99 G9). */
 export function Switch({ checked, onChange, label, ai, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; ai?: boolean; disabled?: boolean }) {

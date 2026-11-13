@@ -89,3 +89,4 @@ body:has(.a-full) .v2 .tabbar { display: none; }
   .v2 .search__x { display: block; }
   .v2 .legacy { margin: 0 -16px; border-radius: 0; }
 }
+.v2 .search__field:focus-within { box-shadow: 0 0 0 3px rgba(124,58,237,.16); }

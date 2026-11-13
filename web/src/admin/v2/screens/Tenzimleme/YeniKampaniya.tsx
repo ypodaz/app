@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { errMsg, useAction, useAuth, useLoad } from '../../../ctx';
 import { addDays, bakuToday, dateLong, parseAzn } from '../../../format';
 import { go } from '../../../router';
@@ -109,6 +109,7 @@ export function YeniKampaniya() {
   const [pickOpen, setPickOpen] = useState(false);
   const [title, setTitle] = useState(draft?.title ?? '');
   const [body, setBody] = useState(draft?.body ?? '');
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [url, setUrl] = useState(draft?.url ?? '');
   const [confirm, setConfirm] = useState(false);
   const [leave, setLeave] = useState(false);
@@ -152,7 +153,7 @@ export function YeniKampaniya() {
   const bookRate = totR ? past.reduce((s, c) => s + c.booked_14d, 0) / totR : null;
 
   function insertVar(v: string) {
-    const el = document.querySelector<HTMLTextAreaElement>('textarea[data-kp-body]');
+    const el = bodyRef.current;
     const a = el?.selectionStart ?? body.length, b = el?.selectionEnd ?? body.length;
     const next = body.slice(0, a) + v + body.slice(b);
     setBody(next.slice(0, 400));
@@ -227,7 +228,7 @@ export function YeniKampaniya() {
                 </div>
                 <Field label="Başlıq">{(id) => <TextInput id={id} maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} />}</Field>
                 <span className="kp-hd" style={{ marginTop: -10 }}><span /><span className={`mono ${title.trim().length > 80 ? 'tz-count-bad' : 'tz-count-ok'}`}>{title.trim().length} / 80</span></span>
-                <Field label="Mətn" hint="{name} — müştərinin adı ilə əvəz olunur">{(id) => <TextArea id={id} data-kp-body maxLength={400} value={body} onChange={(e) => setBody(e.target.value)} />}</Field>
+                <Field label="Mətn" hint="{name} — müştərinin adı ilə əvəz olunur">{(id) => <TextArea id={id} ref={bodyRef} maxLength={400} value={body} onChange={(e) => setBody(e.target.value)} />}</Field>
                 <span className="kp-hd" style={{ marginTop: -10 }}><span /><span className="mono tz-count-ok">{body.trim().length} / 400</span></span>
                 <Field label="Link (ixtiyari)" error={urlOk ? undefined : 'Link https:// ilə başlamalıdır'}>{(id, bad) => <TextInput id={id} inputMode="url" autoCapitalize="none" value={url} invalid={bad} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />}</Field>
                 {/* TODO [API] Vaxt (31 §3: İndi/Planla, gecə qaydası): kampaniya yalnız dərhal göndərilir, planlama yoxdur. Qaralama da yalnız bu sessiyada saxlanır. */}

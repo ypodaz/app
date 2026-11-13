@@ -7,12 +7,14 @@ type Props = {
   subtitle?: ReactNode;
   /** Düymələr (sağda; mobildə tam enli). Dağıdıcı əməl: <Button variant="danger">. */
   footer?: ReactNode;
+  /** md = 480px (standart), lg = 780px (geniş formalar). Mobildə həmişə tam en. */
+  size?: 'md' | 'lg';
   children?: ReactNode;
 };
 
 /** Kompüterdə mərkəzdə dialoq (radius 20, --shadow-dialog, arxa --scrim), telefonda (<768px) alt vərəq: tutacaq,
  *  yuxarı radius 20, alt boşluq 28px, alt menyunu örtür. Esc və arxa fonda klik bağlayır. */
-export function Dialog({ open, onClose, title, subtitle, footer, children }: Props) {
+export function Dialog({ open, onClose, title, subtitle, footer, size = 'md', children }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -29,7 +31,7 @@ export function Dialog({ open, onClose, title, subtitle, footer, children }: Pro
   if (!open) return null;
   return (
     <div className="scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} data-v2-dialog>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={box}>
+      <div className={`dialog${size === 'lg' ? ' dialog--lg' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={box}>
         <div className="dialog__grab" aria-hidden="true" />
         <div><h2 className="dialog__title">{title}</h2>{subtitle && <div className="dialog__sub">{subtitle}</div>}</div>
         {children}

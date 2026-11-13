@@ -197,7 +197,7 @@ export function Paketler() {
     const value = Math.round(p.price_paid * p.minutes_left / Math.max(1, p.minutes_total));
     return (
       <div key={p.id}>
-        <div className="tz-tr" style={{ '--cols': cols } as React.CSSProperties}>
+        <div className="tz-tr tz-wide" style={{ '--cols': cols } as React.CSSProperties}>
           <div className="tz-c"><span className="tz-who"><Avatar name={p.title} /><span style={{ minWidth: 0 }}><a href={`#/insanlar/${p.owner_client_id}`} style={{ color: 'var(--text)' }}>{p.title}</a>{p.owner_name !== p.title && <span className="tz-sub">Sahibi: {p.owner_name}</span>}</span></span></div>
           <div className="tz-c">{p.minutes_total / 60} saat · {p.cameras} kamera</div>
           <div className="tz-c"><div className="tz-prog" role="progressbar" aria-valuemin={0} aria-valuemax={p.minutes_total / 60} aria-valuenow={used / 60} aria-label="İstifadə olunan saat"><i><i style={{ width: `${pct(used, p.minutes_total)}%` }} /></i><span className="mono">{hrs(used)} / {p.minutes_total / 60} saat</span></div></div>
@@ -217,7 +217,7 @@ export function Paketler() {
     );
   };
   const th = (
-    <div className="tz-th" style={{ '--cols': cols } as React.CSSProperties}>
+    <div className="tz-th tz-wide" style={{ '--cols': cols } as React.CSSProperties}>
       <span>Müştəri</span><span>Paket</span><span>İstifadə</span><span>Bitmə tarixi</span><span style={{ textAlign: 'right' }}>Qalıq dəyər</span><span style={{ textAlign: 'right' }}>Növbəti addım</span>
     </div>
   );

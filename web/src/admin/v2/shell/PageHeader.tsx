@@ -89,10 +89,12 @@ type Props = {
   actions?: ReactNode;
   /** Mobildə «Daha çox» ikonu (yalnız ana ekranlarda). */
   more?: boolean;
+  /** Ümumi «Axtar» düyməsi. Səhifənin öz axtarış sahəsi varsa (İnsanlar) false: bir ekranda iki axtarış olmasın. */
+  search?: boolean;
 };
 
 /** C: web başlığı (h1 + alt sətir + Axtar + Yeni çəkiliş); mobildə kiçik başlıq + Axtar və «Daha çox» ikonları. */
-export function PageHeader({ title, sub, newShoot = 'primary', actions, more = true }: Props) {
+export function PageHeader({ title, sub, newShoot = 'primary', actions, more = true, search = true }: Props) {
   return (
     <header className="phead">
       <div className="phead__t">
@@ -101,7 +103,7 @@ export function PageHeader({ title, sub, newShoot = 'primary', actions, more = t
       </div>
       <div className="phead__acts">
         {actions}
-        <Search />
+        {search && <Search />}
         {newShoot && <LinkButton href="#/shoots/new" size="lg" variant={newShoot} icon={<V2Icon name="plus" />} className="phead__new">Yeni çəkiliş</LinkButton>}
         {more && <a href="#/m/daha" className="phead__more" aria-label="Daha çox"><V2Icon name="user" size={20} /></a>}
       </div>

@@ -177,9 +177,8 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
   const money = (label: string, q: number, cls = '') => <div className={cls}><dt>{label}</dt><dd className="mono">{formatMoney(q)}</dd></div>;
 
   return (
-    <Dialog open onClose={onClose} title={title} subtitle={edit ? (o ? `${dateWd(date)} · ${time} · ${o.client_name}` : undefined) : undefined}
+    <Dialog open size="lg" onClose={onClose} title={title} subtitle={edit ? (o ? `${dateWd(date)} · ${time} · ${o.client_name}` : undefined) : undefined}
       footer={<><Button variant="text" onClick={onClose}>Ləğv et</Button><Button variant="primary" kbd="↵" disabled={!ready || discBad || past} onClick={edit ? save : create}>{submitLabel}</Button></>}>
-      <div className="ck-wide" />
       {edit && orig.err && <ErrorBox title="Çəkiliş yüklənmədi" detail={orig.err} onRetry={orig.reload} />}
       <div className="ck-form">
         <div className="ck-form__main">

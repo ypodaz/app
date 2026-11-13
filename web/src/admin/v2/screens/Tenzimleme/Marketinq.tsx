@@ -112,9 +112,9 @@ export function Marketinq() {
               <EmptyState title="Hələ kampaniya yoxdur" reason="Keşbeki olan və ya bir dəfə çəkilənlərə app bildirişi göndərmək üçün «Yeni kampaniya»-nı basın." action={<LinkButton href="#/tenzimleme/marketinq/yeni">Yeni kampaniya</LinkButton>} />
             ) : (
               <>
-                <div className="tz-th" style={{ '--cols': cols } as React.CSSProperties}><span>Ad</span><span>Alıcı</span><span>Göndərildi</span><span>Açdı</span><span>14 gündə yazıldı</span><span>Tarix</span></div>
+                <div className="tz-th tz-wide" style={{ '--cols': cols } as React.CSSProperties}><span>Ad</span><span>Alıcı</span><span>Göndərildi</span><span>Açdı</span><span>14 gündə yazıldı</span><span>Tarix</span></div>
                 {list.map((c) => (
-                  <button key={c.id} type="button" className="tz-tr" style={{ '--cols': cols } as React.CSSProperties} aria-pressed={cur === c.id} onClick={() => setSel(c.id)}>
+                  <button key={c.id} type="button" className="tz-tr tz-wide" style={{ '--cols': cols } as React.CSSProperties} aria-pressed={cur === c.id} onClick={() => setSel(c.id)}>
                     <span className="tz-c"><b>{c.title}</b><span className="tz-sub">{c.kind === 'manual' ? 'Əl ilə' : `Avtomatik · ${KIND[c.kind]}`}</span></span>
                     <span className="tz-c mono">{c.recipients}</span>
                     <span className="tz-c"><Chip tone="done">Göndərilib</Chip></span>
