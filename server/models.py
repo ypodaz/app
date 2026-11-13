@@ -494,6 +494,7 @@ class SocialItem(Base):
     tg_message_id: Mapped[Optional[str]] = mapped_column(String(32))
     model_output: Mapped[Optional[dict]] = mapped_column(JSON)
     ad_id: Mapped[Optional[str]] = mapped_column(String(32), index=True)  # IG DM reklamdan (click-to-DM) gəlibsə
+    auto_at: Mapped[Optional[datetime]] = mapped_column(TS)  # IG DM: sahibkar toxunmasa bot bu vaxt özü göndərir (crm/ig_turns.py)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     decided_at: Mapped[Optional[datetime]] = mapped_column(TS)
 

@@ -11,6 +11,7 @@ Söhbətin vəziyyəti `WaConversation.mode`-dadır:
 - `human` — xarici/şəxsi nömrə (route) və ya AI xətası: bot yazmır (köhnə qayda).
 Keçidlər: sahibkar yazdı → owner; sahibkar qaralamanı təsdiqlədi → bot; handoff → wait.
 Köhnə müştərilər (`new_auto`-da) bundan asılı deyil: onlara həmişə yalnız qaralama gedir.
+Instagram DM üçün eyni növbə `crm/ig_turns.py`-dədir (rejim `social_inbox.ig_mode`); tick onu da işlədir.
 """
 import asyncio
 import logging
@@ -41,11 +42,16 @@ def is_night(t: datetime) -> bool:
 
 def plan(conv: WaConversation, res: dict, t: datetime) -> tuple[bool, datetime | None]:
     """Avtomatik cavab alan söhbətdə botun cavabı: (dərhal göndərilsin?, qaralamanın avtomatik göndəriş vaxtı)."""
-    if conv.mode == "owner":
+    return plan_mode(conv.mode, res, t)
+
+
+def plan_mode(mode: str, res: dict, t: datetime) -> tuple[bool, datetime | None]:
+    """Eyni qayda rejim adı ilə (Instagram DM də işlədir: crm/ig_turns.py)."""
+    if mode == "owner":
         if is_night(t):
             return bool(res.get("asan")), None
         return False, t + OWNER_WAIT
-    if conv.mode == "wait":
+    if mode == "wait":
         return bool(res.get("asan")), None
     return True, None
 
@@ -178,7 +184,9 @@ def waiting_lines(db: DB) -> list[str]:
 def tick() -> None:
     with SessionLocal() as db:
         t = now()
-        for fn in (auto_send_due, remind_waiting, noon_reminder):
+        from crm import ig_turns  # dövri import olmasın: ig_turns → social_inbox → bot → turns
+        for fn in (auto_send_due, remind_waiting, noon_reminder, ig_turns.auto_send_due, ig_turns.remind_waiting,
+                   ig_turns.noon_reminder):
             try:
                 fn(db, t)
             except Exception:  # biri o birini dayandırmasın

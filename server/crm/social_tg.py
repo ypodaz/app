@@ -1,10 +1,11 @@
 """Telegram: Instagram/YouTube qaralamaları (✅ Göndər / 🔄 Yenidən yaz / ✖️ Rədd), callback_data `x:{id}:s|g|r`."""
+import math
 import threading
 
 import settings
 import tgtopics
 from crm.tg import MAX_REGENERATE, _call
-from db import now
+from db import SessionLocal, aware, now
 from models import SocialItem
 
 TITLES = {("instagram", "dm"): "📸 Instagram DM", ("instagram", "comment"): "📸 Instagram komment",
@@ -32,10 +33,26 @@ def _buttons(item: SocialItem) -> dict:
     return {"inline_keyboard": rows}
 
 
+def _turn_note(item: SocialItem) -> str:
+    """Instagram DM qaralaması: növbə vəziyyəti (WhatsApp kartı ilə eyni sözlər, crm/tg.py)."""
+    if not (item.channel == "instagram" and item.kind == "dm" and item.status == "pending"):
+        return ""
+    if item.auto_at:
+        mins = max(1, math.ceil((aware(item.auto_at) - now()).total_seconds() / 60))
+        return f"\n⏱ {mins} dəq sonra bot özü göndərəcək"
+    from crm import social_inbox  # dövri import olmasın
+    with SessionLocal() as db:
+        mode = social_inbox.ig_mode(db, item.thread_id)
+    if mode == "owner":
+        return "\n🌙 Siz baxana qədər gözləyir"
+    return "\n⏳ Komandaya ötürülüb, sizin cavabınızı gözləyir" if mode == "wait" else ""
+
+
 def send(item: SocialItem) -> str | None:
     """Qaralamanı düymələrlə göndərir, tg_message_id saxlayır (commit çağıran tərəfindədir)."""
     topic = "action" if item.kind == "dm" else "comments"
-    res = _call("sendMessage", {**tgtopics.dest(topic), "text": _body(item), "reply_markup": _buttons(item)})
+    res = _call("sendMessage", {**tgtopics.dest(topic), "text": _body(item) + _turn_note(item),
+                                "reply_markup": _buttons(item)})
     mid = ((res or {}).get("result") or {}).get("message_id")
     if mid:
         item.tg_message_id = str(mid)
@@ -134,6 +151,8 @@ def handle_callback(db, cq: dict) -> str:
                                   "reply_markup": {"inline_keyboard": [[
                                       {"text": "✖️ Rədd", "callback_data": f"x:{item.id}:r"}]]}})
         return "error"
+    if item.channel == "instagram" and item.kind == "dm":
+        social_inbox.draft_approved(db, item.thread_id)  # sahibkar təsdiqlədi: bot söhbəti yenə özü aparır
     db.commit()
     _call("answerCallbackQuery", {"callback_query_id": cq_id, "text": "✅ Göndərildi"})
     _call("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": f"✅ Göndərildi\n\n{_body(item)}"})
