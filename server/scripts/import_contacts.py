@@ -3,8 +3,8 @@
     cd server && .venv/bin/python scripts/import_contacts.py kontaktlar.json --dry-run   # yalnız saylar
     cd server && DATABASE_URL=... .venv/bin/python scripts/import_contacts.py kontaktlar.json
 
-Fayl: [[ad, [nömrələr...]], ...]. Adında «Y Pod» olan → customer (yalnız ilk ad saxlanır), qalanı → personal (ad
-saxlanmır). Eyni nömrə həm customer, həm personal olsa customer qalib gəlir. Heç bir ad çap olunmur.
+Fayl: [[ad, [nömrələr...]], ...]. Adında «Y Pod» olan → customer (ilk ad və «Y Pod»suz tam ad saxlanır; inbox-da
+WhatsApp profil adı boş olanda göstərilir), qalanı → personal (ad saxlanmır). Eyni nömrə həm customer, həm personal olsa customer qalib gəlir. Heç bir ad çap olunmur.
 Silinmiş kontaktlar bazadan silinmir.
 """
 import argparse
@@ -25,12 +25,18 @@ def first_name(name: str) -> str:
     return next((w for w in words if w), "")[:60]
 
 
-def parse(entries: list) -> dict[str, tuple[str, str]]:
-    """[[ad, [nömrələr]]] → {nömrə: (customer|personal, ilk ad)}."""
-    out: dict[str, tuple[str, str]] = {}
+def full_name(name: str) -> str:
+    """«Leyla Həsənova Y Pod» → «Leyla Həsənova»."""
+    words = [w.strip("-–—,.()|/") for w in YPOD.sub(" ", name).split()]
+    return " ".join(w for w in words if w)[:120]
+
+
+def parse(entries: list) -> dict[str, tuple[str, str, str]]:
+    """[[ad, [nömrələr]]] → {nömrə: (customer|personal, ilk ad, tam ad)}."""
+    out: dict[str, tuple[str, str, str]] = {}
     for name, phones in entries:
         name = str(name or "")
-        row = ("customer", first_name(name)) if YPOD.search(name) else ("personal", "")
+        row = ("customer", first_name(name), full_name(name)) if YPOD.search(name) else ("personal", "", "")
         for p in phones or []:
             p = normalize(str(p))
             if len(p) < 7:
@@ -40,25 +46,25 @@ def parse(entries: list) -> dict[str, tuple[str, str]]:
     return out
 
 
-def counts(rows: dict[str, tuple[str, str]]) -> dict[str, int]:
-    return {"customer": sum(k == "customer" for k, _ in rows.values()),
-            "personal": sum(k == "personal" for k, _ in rows.values()),
+def counts(rows: dict[str, tuple[str, str, str]]) -> dict[str, int]:
+    return {"customer": sum(r[0] == "customer" for r in rows.values()),
+            "personal": sum(r[0] == "personal" for r in rows.values()),
             "xarici": sum(not p.startswith("994") for p in rows)}
 
 
-def upsert(rows: dict[str, tuple[str, str]]) -> int:
+def upsert(rows: dict[str, tuple[str, str, str]]) -> int:
     from db import SessionLocal
     from models import KnownContact
     with SessionLocal() as db:
         existing = {k.phone: k for k in db.query(KnownContact).all()}
         changed = 0
-        for phone, (kind, name) in rows.items():
+        for phone, (kind, name, full) in rows.items():
             k = existing.get(phone)
             if not k:
-                db.add(KnownContact(phone=phone, kind=kind, first_name=name))
+                db.add(KnownContact(phone=phone, kind=kind, first_name=name, full_name=full))
                 changed += 1
-            elif (k.kind, k.first_name) != (kind, name):
-                k.kind, k.first_name = kind, name
+            elif (k.kind, k.first_name, k.full_name) != (kind, name, full):
+                k.kind, k.first_name, k.full_name = kind, name, full
                 changed += 1
         db.commit()
         return changed

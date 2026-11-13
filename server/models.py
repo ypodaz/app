@@ -189,8 +189,9 @@ class Shoot(Base):
 
 
 class CalendarLink(Base):
-    """Apple təqvimindəki «… Y Pod» hadisəsinin vəziyyəti (crm/calendar_sync.py). uid = hadisənin UID-si (+ təkrar nömrəsi).
-    state: card (sahibkar kimliyini deməlidir) | asking (telefon cavabı gözlənilir) | linked (çəkilişə bağlıdır) | ignored.
+    """Apple «Y Pod» təqvimindəki hadisənin vəziyyəti (crm/calendar_sync.py). uid = hadisənin UID-si (+ təkrar nömrəsi).
+    state: card (sahibkar kimliyini deməlidir) | asking (telefon cavabı gözlənilir) | linked (çəkilişə bağlıdır) |
+    block (Şahinin və ya şəxsi blok) | ignored.
     starts_at/duration_min: ICS-də axırıncı görünən dəyər (dəyişikliyi tapmaq üçün), missing: ardıcıl neçə oxunuşda yox idi."""
     __tablename__ = "calendar_links"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -384,11 +385,12 @@ class WaConversation(Base):
 
 class KnownContact(Base):
     """Sahibkarın telefon kontaktları (scripts/import_contacts.py): customer = adında «Y Pod», personal = qalanı.
-    Şəxsi kontaktların adı saxlanmır."""
+    Şəxsi kontaktların adı saxlanmır. full_name: «Y Pod»suz tam ad (WhatsApp profil adı boş olanda inbox-da)."""
     __tablename__ = "known_contacts"
     phone: Mapped[str] = mapped_column(String(32), primary_key=True)  # crm.contacts.normalize formatı: 994501112233
     kind: Mapped[str] = mapped_column(String(16))  # customer | personal
     first_name: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    full_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)
 
 

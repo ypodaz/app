@@ -1,9 +1,12 @@
 """Paylaşım dövrü: Buffer növbəsini doldurur və statusları yoxlayır (push.loop kimi, SCHEDULER bayrağı ilə).
 
-Hər 15 dəqiqədə növbə doldurma, hər 2 saatda status sinxronu,
-hər saat Buffer kanalının ayrılıb-ayrılmadığı yoxlanır (ayrılsa Telegram, qayıdanda bu günün xətalı postları təkrar). `social_queue_enabled` ayarı true deyilsə heç nə göndərilmir.
+Hər 15 dəqiqədə növbə doldurma; status sinxronu yalnız vaxtı keçmiş növbədə post olanda (ən çoxu saatda bir);
+hər 3 saatda Buffer kanalının ayrılıb-ayrılmadığı yoxlanır (ayrılsa Telegram, qayıdanda bu günün xətalı postları təkrar).
+Son yoxlama vaxtları və kanal xəritəsi bazada saxlanır ki, server yenidən başlayanda Buffer-ə əlavə sorğu getməsin
+(gündəlik limit, SOCIAL_DAILY_REQUEST_CAP). `social_queue_enabled` ayarı true deyilsə heç nə göndərilmir.
 """
 import asyncio
+import json
 import logging
 import time
 from datetime import timedelta
@@ -21,18 +24,17 @@ from views import BAKU
 
 log = logging.getLogger("social")
 INTERVAL = 15 * 60
-SYNC_EVERY = 2 * 3600
+SYNC_EVERY = 3600
 QUEUE_MAX = 10  # hər kanalda Buffer növbəsində ən çox
 LOOKAHEAD = timedelta(days=5)
 FILL_BATCH = 5
 LATE_AFTER = timedelta(minutes=45)
 MAX_ATTEMPTS = 3
 CHANNEL_TTL = 24 * 3600
-CHANNEL_CHECK_EVERY = 3600
+CHANNEL_CHECK_EVERY = 3 * 3600
+CHANNELS_KEY = "buffer_channels"
 
 _channels: dict = {"at": 0.0, "map": {}}
-_last_sync = 0.0
-_last_channel_check = 0.0
 
 
 def queue_enabled(db: DB) -> bool:
@@ -49,13 +51,57 @@ def set_queue_enabled(db: DB, enabled: bool) -> None:
     db.commit()
 
 
+def _save_channels(chans: list[dict]) -> None:
+    """Kanal xəritəsi yaddaşda və bazada (server yenidən başlayanda Buffer-ə sorğu getməsin)."""
+    _channels["map"] = {c["service"]: c["id"] for c in chans}
+    _channels["at"] = time.time()
+    with SessionLocal() as db:
+        row = db.get(Setting, CHANNELS_KEY)
+        value = json.dumps({"at": _channels["at"], "map": _channels["map"]})
+        if row:
+            row.value = value
+        else:
+            db.add(Setting(key=CHANNELS_KEY, value=value))
+        db.commit()
+
+
 def channel_map(force: bool = False) -> dict[str, str]:
-    """service → Buffer kanal id; 24 saat keşlənir."""
-    if force or not _channels["map"] or time.monotonic() - _channels["at"] > CHANNEL_TTL:
-        chans = buffer.get_channels(buffer.org_id())
-        _channels["map"] = {c["service"]: c["id"] for c in chans}
-        _channels["at"] = time.monotonic()
+    """service → Buffer kanal id; 24 saat keşlənir (yaddaşda, yoxdursa bazada)."""
+    if not force and not _channels["map"]:
+        with SessionLocal() as db:
+            row = db.get(Setting, CHANNELS_KEY)
+        try:
+            saved = json.loads(row.value) if row else {}
+        except ValueError:
+            saved = {}
+        if saved.get("map"):
+            _channels["map"], _channels["at"] = saved["map"], float(saved.get("at") or 0)
+    if force or not _channels["map"] or time.time() - _channels["at"] > CHANNEL_TTL:
+        _save_channels(buffer.get_channels(buffer.org_id()))
     return _channels["map"]
+
+
+def _due(db: DB, key: str, every: int) -> bool:
+    """Bazadakı son vaxtdan `every` saniyə keçibsə vaxtı yeniləyib True (deploy-dan sonra da yadda qalır)."""
+    row = db.get(Setting, key)
+    try:
+        last = float(row.value) if row else 0.0
+    except ValueError:
+        last = 0.0
+    if time.time() - last < every:
+        return False
+    if row:
+        row.value = str(time.time())
+    else:
+        db.add(Setting(key=key, value=str(time.time())))
+    db.commit()
+    return True
+
+
+def _queued_due(db: DB) -> bool:
+    """Növbədə vaxtı keçmiş post var (yalnız onda statusu soruşmağa dəyər)."""
+    return bool(db.scalar(select(func.count()).select_from(SocialPost).where(
+        SocialPost.status == "queued", SocialPost.scheduled_at <= now())))
 
 
 def _fail(post: SocialPost, msg: str) -> None:
@@ -235,8 +281,7 @@ def check_channels(db: DB) -> dict:
     except buffer.BufferError as e:
         log.warning("Buffer kanal yoxlaması alınmadı: %s", e)
         return out
-    _channels["map"] = {c["service"]: c["id"] for c in chans}
-    _channels["at"] = time.monotonic()
+    _save_channels(chans)
     for c in chans:
         service = c["service"]
         if service not in ENABLED_PLATFORMS:
@@ -267,7 +312,6 @@ def check_channels(db: DB) -> dict:
 
 
 def tick() -> None:
-    global _last_sync, _last_channel_check
     with SessionLocal() as db:
         if not queue_enabled(db):
             return
@@ -275,14 +319,12 @@ def tick() -> None:
             fill_queue(db)
         except Exception:  # doldurma yıxılsa da sinxron işləsin
             log.exception("növbə doldurma")
-        if time.monotonic() - _last_channel_check >= CHANNEL_CHECK_EVERY:
-            _last_channel_check = time.monotonic()
+        if _due(db, "buffer_last_channel_check", CHANNEL_CHECK_EVERY):
             try:
                 check_channels(db)
             except Exception:
                 log.exception("kanal yoxlaması")
-        if time.monotonic() - _last_sync >= SYNC_EVERY:
-            _last_sync = time.monotonic()
+        if _queued_due(db) and _due(db, "buffer_last_sync", SYNC_EVERY):
             try:
                 sync_status(db)
             except Exception:

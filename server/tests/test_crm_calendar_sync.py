@@ -5,10 +5,12 @@ from datetime import timedelta  # noqa: E402
 
 import pytest  # noqa: E402
 
+import settings  # noqa: E402
+
 from auth import new_card_code  # noqa: E402
 from crm import calendar_ics, calendar_sync as cs  # noqa: E402
-from db import SessionLocal, now  # noqa: E402
-from models import CalendarLink, Client, KnownContact, Notification, Shoot  # noqa: E402
+from db import SessionLocal, aware, now  # noqa: E402
+from models import Block, CalendarLink, Client, KnownContact, Notification, Shoot  # noqa: E402
 
 H = {"X-Telegram-Bot-Api-Secret-Token": TG_SECRET}
 PHONE = "994500000111"
@@ -102,7 +104,7 @@ def test_unrecognised_sends_one_card_with_candidates(api, crm_env, cal):
     [msg] = crm_env.tg("sendMessage")
     assert "— kimdir?" in msg["text"] and shoots() == []
     rows = [r[0] for r in msg["reply_markup"]["inline_keyboard"]]
-    assert [r["callback_data"].split(":")[1] for r in rows] == ["c", "c", "p", "n", "x"]
+    assert [r["callback_data"].split(":")[1] for r in rows] == ["c", "c", "p", "n", "b", "x"]
     link_id = rows[0]["callback_data"].split(":")[2]
     assert cb(api, f"k:c:{link_id}:{a}") == "created"
     [s] = shoots()
@@ -204,9 +206,40 @@ def test_ics_failure_does_nothing(api, crm_env, cal, monkeypatch):
     assert shoots()[0].status == "confirmed" and len(crm_env.tg("sendMessage")) == 1
 
 
-def test_sahin_and_past_and_foreign_titles_skipped(api, crm_env, cal):
+def test_past_skipped_and_title_without_ypod_synced(api, crm_env, cal):
     add_client()
-    cal["events"] = [ev("a", "Şahin podkast Y Pod"), ev("b", start=now() - timedelta(hours=5)),
-                     ev("c", "Testa Nümunəva podkast")]
+    cal["events"] = [ev("b", start=now() - timedelta(hours=5)), ev("c", "Testa Nümunəva podkast")]
+    sync()
+    assert len(shoots()) == 1 and shoots()[0].calendar_uid == "c"
+
+
+def blocks():
+    with SessionLocal() as db:
+        return [(aware(b.starts_at), b.reason) for b in db.query(Block).order_by(Block.id)]
+
+
+def test_sublet_and_personal_events_become_blocks_and_follow_calendar(api, crm_env, cal, monkeypatch):
+    monkeypatch.setattr(settings, "CALENDAR_SUBLET_RE", r"şahin|testkirayə")
+    monkeypatch.setattr(settings, "CALENDAR_PERSONAL_RE", r"test\s*şəxsi")
+    monkeypatch.setattr(settings, "CALENDAR_PERSONAL_LABEL", "Şəxsi (test)")
+    add_client()
+    cal["events"] = [ev("a", "Şahin podkast Y Pod"), ev("r", "Testkirayə 2", start=at(4)), ev("h", "Testşəxsi", start=at(5))]
+    sync()
     sync()
     assert shoots() == [] and crm_env.tg("sendMessage") == []
+    assert [r for _, r in blocks()] == ["Şahin (sub-icarə)", "Şahin (sub-icarə)", "Şəxsi (test)"]
+    cal["events"] = [ev("a", "Şahin podkast Y Pod", start=at(3, 2)), ev("h", "Testşəxsi", start=at(5))]
+    sync()
+    assert blocks()[0][0] == at(3, 2) and len(blocks()) == 3
+    sync()  # «Testkirayə 2» ardıcıl 2 oxunuşda yoxdur → gələcək blok silinir
+    assert [s for s, _ in blocks()] == [at(3, 2), at(5)]
+
+
+def test_card_sublet_button_makes_block(api, crm_env, cal):
+    cal["events"] = [ev(title="Yeni Etkinlik")]
+    sync()
+    kb = crm_env.tg("sendMessage")[0]["reply_markup"]["inline_keyboard"]
+    data = next(b["callback_data"] for row in kb for b in row if b["text"].startswith("🔒"))
+    assert cb(api, data) == "blocked"
+    assert shoots() == [] and [r for _, r in blocks()] == ["Şahin (sub-icarə)"]
+    assert cb(api, data) == "resolved"

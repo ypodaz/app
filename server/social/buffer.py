@@ -91,17 +91,27 @@ def get_organizations() -> list[dict]:
 
 
 _org = {"id": ""}
+ORG_KEY = "buffer_org_id"
 
 
 def org_id() -> str:
-    """BUFFER_ORG_ID; boşdursa və hesabda tək təşkilat varsa, onu tapıb yadda saxlayır."""
+    """BUFFER_ORG_ID; boşdursa və hesabda tək təşkilat varsa, onu tapıb yadda (və bazada) saxlayır ki,
+    server yenidən başlayanda Buffer-ə təkrar sorğu getməsin."""
     if settings.BUFFER_ORG_ID:
         return settings.BUFFER_ORG_ID
     if not _org["id"]:
+        with SessionLocal() as db:
+            row = db.get(Setting, ORG_KEY)
+            if row and row.value:
+                _org["id"] = row.value
+                return _org["id"]
         orgs = get_organizations()
         if len(orgs) != 1:
             raise BufferError("Buffer-də bir neçə təşkilat var: BUFFER_ORG_ID lazımdır")
         _org["id"] = orgs[0]["id"]
+        with SessionLocal() as db:
+            db.merge(Setting(key=ORG_KEY, value=_org["id"]))
+            db.commit()
     return _org["id"]
 
 

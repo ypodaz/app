@@ -104,16 +104,16 @@ def lead_lines(db: DB, since: datetime, until: datetime) -> list[str]:
 
 
 def calendar_lines(db: DB, until: datetime) -> list[str]:
-    """Bu günün təqvimi ilə app-ın fərqi: başlığı «… Y Pod» ilə bitən hadisələr sayılır (sub-icarə və s. yox).
+    """Bu günün təqvimi ilə app-ın fərqi: «Y Pod» təqviminin hadisələri sayılır (Şahinin və şəxsi bloklar yox).
     App-da ±60 dəqiqə içində çəkilişi olmayan hadisə siyahıya düşür (panelə əl ilə yazılmalıdır)."""
     day = aware(until).astimezone(BAKU).replace(hour=0, minute=0, second=0, microsecond=0)
-    own = [e for e in calendar_ics.titled(day, day + timedelta(days=1)) if calendar_import.is_own(e[2])]
+    own = [e for e in calendar_ics.titled(day, day + timedelta(days=1)) if not calendar_import.block_reason(e[2])]
     starts = [aware(s) for s in db.scalars(select(Shoot.starts_at).where(
         Shoot.status != "cancelled", Shoot.starts_at >= day - timedelta(hours=1), Shoot.starts_at < day + timedelta(days=1, hours=1)))]
     if not own and not starts:
         return []
     missing = [(a, t) for a, _, t in own if not any(abs(s - a) <= timedelta(minutes=60) for s in starts)]
-    lines = [f"📅 Təqvimdə bu gün {len(own)} «Y Pod» çəkilişi / app-da {len(starts)}"]
+    lines = [f"📅 Təqvimdə bu gün {len(own)} çəkiliş / app-da {len(starts)}"]
     lines += [f"• {a.astimezone(BAKU):%H:%M} {t[:80]} — app-da yoxdur (panel → Çəkilişlər → Yeni)" for a, t in missing[:8]]
     return lines
 

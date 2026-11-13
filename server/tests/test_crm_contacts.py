@@ -179,14 +179,15 @@ def test_import_parse():
         ["Nərmin Y-Pod", ["123"]],  # qısa nömrə atılır
         ["Anam", []],
     ])
-    assert rows == {"994501112233": ("customer", "Leyla"), "994552223344": ("personal", ""),
-                    "79001234567": ("personal", ""), "994705556677": ("customer", "Kamran")}
+    assert rows == {"994501112233": ("customer", "Leyla", "Leyla Həsənova"), "994552223344": ("personal", "", ""),
+                    "79001234567": ("personal", "", ""), "994705556677": ("customer", "Kamran", "Kamran")}
     assert import_contacts.counts(rows) == {"customer": 2, "personal": 2, "xarici": 1}
 
 
 def test_import_upsert(api):
     known("994552223344", "personal")
-    assert import_contacts.upsert({"994552223344": ("customer", "Leyla"), "994501112233": ("personal", "")}) == 2
-    assert import_contacts.upsert({"994552223344": ("customer", "Leyla")}) == 0
+    assert import_contacts.upsert({"994552223344": ("customer", "Leyla", "Leyla Həsənova"),
+                                   "994501112233": ("personal", "", "")}) == 2
+    assert import_contacts.upsert({"994552223344": ("customer", "Leyla", "Leyla Həsənova")}) == 0
     with SessionLocal() as db:
         assert db.get(KnownContact, "994552223344").kind == "customer"

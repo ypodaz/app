@@ -10,7 +10,7 @@ from sqlalchemy import select  # noqa: E402
 import settings  # noqa: E402
 from crm import bot, kapso  # noqa: E402
 from db import SessionLocal, aware, now
-from models import BotDraft, WaContact, WaConversation, WaMessage, WebhookEvent
+from models import BotDraft, KnownContact, WaContact, WaConversation, WaMessage, WebhookEvent
 
 
 @pytest.fixture()
@@ -155,6 +155,17 @@ def test_bsuid_contact_without_phone_and_recipient_send(api, handled, crm_env):
     assert r.status_code == 200
     (_, body), = crm_env.kapso()
     assert body["recipient"] == "BS.123" and "to" not in body and body["messaging_product"] == "whatsapp"
+
+
+def test_empty_profile_name_uses_known_customer_name(api, handled):
+    with SessionLocal() as db:
+        db.add(KnownContact(phone="994501112233", kind="customer", first_name="Nümunə", full_name="Nümunə Müştəriyeva"))
+        db.add(KnownContact(phone="994551112233", kind="personal"))
+        db.commit()
+    post_kapso(api, received("w1", name=""))
+    post_kapso(api, received("w2", name="", phone="+994551112233", conv="c2"))
+    post_kapso(api, received("w3", name="Profil Adı", phone="+994701112233", conv="c3"))
+    assert [c.name for c in rows(WaContact)] == ["Nümunə Müştəriyeva", "", "Profil Adı"]
 
 
 def test_identity_changed_updates_phone(api, handled):

@@ -74,3 +74,7 @@ YT_CHANNEL_ID = os.environ.get("YT_CHANNEL_ID", "")
 APPLE_CAL_ICS_URL = os.environ.get("APPLE_CAL_ICS_URL", "")
 # Şəxsi təqvim (ayrı link): bütün günlük hadisələr həmin günü tam məşğul edir.
 APPLE_CAL_ICS_URL_PERSONAL = os.environ.get("APPLE_CAL_ICS_URL_PERSONAL", "")
+# «Y Pod» təqvimində çəkiliş yox, blok olan hadisələr (regex, böyük-kiçik hərf fərqi yoxdur; adlar repoda saxlanmır)
+CALENDAR_SUBLET_RE = os.environ.get("CALENDAR_SUBLET_RE", r"şahin|sahin")
+CALENDAR_PERSONAL_RE = os.environ.get("CALENDAR_PERSONAL_RE", "")
+CALENDAR_PERSONAL_LABEL = os.environ.get("CALENDAR_PERSONAL_LABEL", "Şəxsi blok")

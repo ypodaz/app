@@ -24,7 +24,6 @@ def buffer_cfg(monkeypatch):
     monkeypatch.setattr(settings, "SOCIAL_DAILY_REQUEST_CAP", 80)
     monkeypatch.setattr(buffer, "_backoff_until", 0.0)
     monkeypatch.setattr(worker, "_channels", {"at": 0.0, "map": {}})
-    monkeypatch.setattr(worker, "_last_sync", 0.0)
 
     def no_network(*a, **k):
         raise AssertionError("testdə real HTTP sorğusu göndərilməməlidir")
@@ -166,6 +165,11 @@ def test_org_id_auto_when_single_org(api, monkeypatch):
     calls = []
     monkeypatch.setattr(buffer, "get_organizations", lambda: calls.append(1) or [{"id": "o9", "name": "Y Pod"}])
     assert buffer.org_id() == "o9" and buffer.org_id() == "o9" and len(calls) == 1  # keşlənir
+    monkeypatch.setattr(buffer, "_org", {"id": ""})
+    assert buffer.org_id() == "o9" and len(calls) == 1  # yenidən başlayandan sonra bazadan
+    with SessionLocal() as db:
+        db.delete(db.get(Setting, buffer.ORG_KEY))
+        db.commit()
     monkeypatch.setattr(buffer, "_org", {"id": ""})
     monkeypatch.setattr(buffer, "get_organizations", lambda: [{"id": "a"}, {"id": "b"}])
     with pytest.raises(buffer.BufferError):
@@ -588,15 +592,38 @@ def test_check_channels_buffer_error_is_silent(api, fake_buffer, alerted, monkey
     assert alerted == []
 
 
-def test_tick_checks_channels_once_per_hour(api, fake_buffer, monkeypatch):
+def test_tick_checks_channels_once_per_period(api, fake_buffer, monkeypatch):
     calls = []
     monkeypatch.setattr(worker, "check_channels", lambda db: calls.append(1))
-    monkeypatch.setattr(worker, "_last_channel_check", -10_000_000.0)
     with SessionLocal() as db:
         worker.set_queue_enabled(db, True)
     worker.tick()
     worker.tick()
     assert len(calls) == 1
+
+
+def test_tick_syncs_only_when_a_queued_post_is_due(api, fake_buffer, monkeypatch):
+    calls = []
+    monkeypatch.setattr(worker, "sync_status", lambda db: calls.append(1))
+    with SessionLocal() as db:
+        worker.set_queue_enabled(db, True)
+        queue_one(db, hours_ago_due=-2)  # hələ vaxtı gəlməyib
+    worker.tick()
+    assert calls == []
+    with SessionLocal() as db:
+        p = db.scalar(select(SocialPost).where(SocialPost.status == "queued"))
+        p.scheduled_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        db.commit()
+    worker.tick()
+    worker.tick()  # saatda ən çoxu bir
+    assert calls == [1]
+
+
+def test_channel_map_survives_restart_without_request(api, fake_buffer, monkeypatch):
+    worker.channel_map()
+    monkeypatch.setattr(worker, "_channels", {"at": 0.0, "map": {}})  # server yenidən başladı
+    monkeypatch.setattr(buffer, "get_channels", lambda org: (_ for _ in ()).throw(AssertionError("sorğu getməməli")))
+    assert worker.channel_map()["tiktok"] == "c-tiktok"
 
 
 def test_reschedule_script_one_per_day_and_moves_buffer(api, monkeypatch):  # noqa: F811

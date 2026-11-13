@@ -30,6 +30,15 @@ def test_parse_title():
     assert ci.parse("Studiya icarəsi")["kind"] == "studio_rent"
 
 
+def test_block_reason(monkeypatch):
+    assert ci.block_reason("Testa Şahin") == ci.SUBLET and ci.block_reason("Testkirayə 2") is None
+    monkeypatch.setattr(ci.settings, "CALENDAR_SUBLET_RE", r"şahin|testkirayə")
+    monkeypatch.setattr(ci.settings, "CALENDAR_PERSONAL_RE", r"test\s*şəxsi")
+    assert ci.block_reason("Testkirayə 2") == ci.SUBLET
+    assert ci.block_reason("TestŞəxsi") == ci.settings.CALENDAR_PERSONAL_LABEL
+    assert ci.block_reason("Testa Nümunəva 1 kamera") is None
+
+
 def test_own_title():
     assert ci.is_own("Testa podkast Y Pod") and ci.is_own("Reels Y-Pod ") and not ci.is_own("Y Pod-da görüş")
 
@@ -58,7 +67,7 @@ def test_digest_calendar_lines(api, monkeypatch):  # noqa: F811
     day = datetime(2026, 11, 13, 21, 0, tzinfo=BAKU)
     events = [(day.replace(hour=15), day.replace(hour=16), "Testa podkast Y Pod"),
               (day.replace(hour=18), day.replace(hour=19), "Testov reels Y Pod"),
-              (day.replace(hour=10), day.replace(hour=12), "Şahin")]
+              (day.replace(hour=10), day.replace(hour=12), "Şahin"), (day.replace(hour=13), day.replace(hour=14), "Testa Şahin")]
     monkeypatch.setattr(digest.calendar_ics, "titled", lambda a, b: events)
     with SessionLocal() as db:
         c = Client(full_name="Testa Nümunəva", phone="994500000001", card_code=new_card_code())
@@ -68,5 +77,5 @@ def test_digest_calendar_lines(api, monkeypatch):  # noqa: F811
                      duration_min=60, cameras=1))
         db.commit()
         lines = digest.calendar_lines(db, day)
-    assert lines[0].startswith("📅 Təqvimdə bu gün 2 «Y Pod» çəkilişi / app-da 1")
+    assert lines[0].startswith("📅 Təqvimdə bu gün 2 çəkiliş / app-da 1")
     assert len(lines) == 2 and "18:00 Testov reels Y Pod" in lines[1]

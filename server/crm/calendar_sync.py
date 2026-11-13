@@ -1,6 +1,8 @@
-"""Apple təqvimi → app: sahibkar təqvimə «… Y Pod» hadisəsi yazanda çəkiliş avtomatik yaranır (10 dəqiqədən bir).
+"""Apple təqvimi → app: sahibkar «Y Pod» təqviminə hadisə yazanda çəkiliş avtomatik yaranır (10 dəqiqədən bir).
 
-- Yalnız gələcək 60 gün, başlığı «Y Pod» ilə bitən və «Şahin» (sub-icarə) olmayan hadisələr.
+- Yalnız gələcək 60 gün, «Y Pod» təqviminin bütün hadisələri (başlıqda «Y Pod» lazım deyil).
+- Sub-icarəçinin və şəxsi hadisələr (settings.CALENDAR_SUBLET_RE / CALENDAR_PERSONAL_RE) çəkiliş yox, blok olur; vaxtı dəyişəndə
+  blok da dəyişir, hadisə 2 oxunuşda yoxdursa gələcək blok silinir. Tanınmayan hadisənin kartında «🔒 Şahinin» düyməsi var.
 - Hadisə UID ilə bir çəkilişə bağlanır (`Shoot.calendar_uid`); ±60 dəq içində app-da çəkiliş varsa təkrar yaranmır, bağlanır.
 - Müştəri əmin tanınanda (başlıq/təsvirdə telefon, və ya ad tək müştəriyə uyğundur) çəkiliş «Təsdiqləndi», beh istənmədən
   yaranır; sahibkara «↩️ Geri al» düyməli xəbər gedir. Tanınmayanda bir dəfə kart: namizədlər, «➕ Yeni müştəri», «🚫 Çəkiliş deyil».
@@ -9,7 +11,7 @@
 - ICS yüklənmirsə heç nə edilmir. Başlıqlar loglanmır, yalnız sahibkarın Telegram-ına gedir.
 
 Telegram callback_data (`k:`): u (geri al), c (namizəd müştəri), p (namizəd telefon), n (yeni müştəri), x (çəkiliş deyil),
-d (ləğv et), s (saxla). Sahibkarın telefon cavabı: `phone_reply`.
+b (Şahinin bloku), d (ləğv et), s (saxla). Sahibkarın telefon cavabı: `phone_reply`.
 """
 import asyncio
 import logging
@@ -29,7 +31,7 @@ from crm.contacts import normalize
 from crm.tg import _call
 from crm.todo import is_owner
 from db import SessionLocal, aware, now
-from models import CalendarLink, Client, KnownContact, Notification, Shoot
+from models import Block, CalendarLink, Client, KnownContact, Notification, Shoot
 from views import BAKU
 
 log = logging.getLogger("calendar-sync")
@@ -169,12 +171,30 @@ def _card(db: DB, link: CalendarLink) -> bool:
     rows = candidates(db, link.title)
     kb = [[{"text": label, "callback_data": "k:" + data.format(id=link.id)}] for label, data in rows]
     kb.append([{"text": "➕ Yeni müştəri", "callback_data": f"k:n:{link.id}"}])
+    kb.append([{"text": "🔒 Şahinin (blok)", "callback_data": f"k:b:{link.id}"}])
     kb.append([{"text": "🚫 Çəkiliş deyil", "callback_data": f"k:x:{link.id}"}])
     return bool(_send(f"📅 Təqvimdə yeni çəkiliş: {link.title}, {_when(link.starts_at)} — kimdir?", kb))
 
 
+def _block_of(db: DB, link: CalendarLink) -> Block | None:
+    """Hadisənin bloku: blokda hadisə id-si saxlanmır, ona görə əvvəlki başlama vaxtı ilə tapılır."""
+    return db.scalar(select(Block).where(Block.starts_at == link.starts_at).order_by(Block.id))
+
+
+def _make_block(db: DB, link: CalendarLink, ends_at: datetime, reason: str) -> None:
+    if not _block_of(db, link):
+        db.add(Block(starts_at=link.starts_at, ends_at=ends_at, reason=reason))
+    link.state = "block"
+
+
 def _new_event(db: DB, ev: dict) -> None:
     dur = ci.round_duration((ev["end"] - ev["start"]).total_seconds() / 60)
+    reason = ci.block_reason(ev["title"])
+    if reason:
+        link = CalendarLink(uid=ev["uid"], state="block", title=ev["title"][:200], starts_at=ev["start"], duration_min=dur)
+        db.add(link)
+        _make_block(db, link, ev["end"], reason)
+        return
     near = next((s for s in db.scalars(select(Shoot).where(
         Shoot.status != "cancelled", Shoot.calendar_uid.is_(None),
         Shoot.starts_at >= ev["start"] - NEAR - timedelta(minutes=1), Shoot.starts_at <= ev["start"] + NEAR + timedelta(minutes=1)))
@@ -224,6 +244,10 @@ def _changed(db: DB, link: CalendarLink, s: Shoot, ev: dict, dur: int) -> None:
 def _seen(db: DB, link: CalendarLink, ev: dict) -> None:
     dur = ci.round_duration((ev["end"] - ev["start"]).total_seconds() / 60)
     link.missing, link.asked_deleted = 0, False
+    if link.state == "block" and (aware(link.starts_at) != ev["start"] or link.duration_min != dur):
+        b = _block_of(db, link)
+        if b:
+            b.starts_at, b.ends_at = ev["start"], ev["end"]
     if link.state == "linked" and (aware(link.starts_at) != ev["start"] or link.duration_min != dur):
         s = db.scalar(select(Shoot).where(Shoot.calendar_uid == link.uid))
         if s:
@@ -235,6 +259,13 @@ def _seen(db: DB, link: CalendarLink, ev: dict) -> None:
 
 def _absent(db: DB, link: CalendarLink) -> None:
     link.missing += 1
+    if link.state == "block":
+        if link.missing >= MISSING_ASK and aware(link.starts_at) > now():
+            b = _block_of(db, link)
+            if b:
+                db.delete(b)
+            link.state = "ignored"
+        return
     s = db.scalar(select(Shoot).where(Shoot.calendar_uid == link.uid))
     if link.missing < MISSING_ASK or link.asked_deleted or not s or s.status != "confirmed" \
             or aware(s.starts_at) <= now():
@@ -251,7 +282,7 @@ def run(db: DB, t: datetime | None = None) -> int:
     events = calendar_ics.detailed(t, t + HORIZON)
     if events is None:
         return 0
-    own = {e["uid"]: e for e in events if ci.is_own(e["title"]) and not ci.is_skipped(e["title"])}
+    own = {e["uid"]: e for e in events}
     links = {l.uid: l for l in db.scalars(select(CalendarLink))}
     for uid, ev in own.items():
         try:
@@ -266,7 +297,7 @@ def run(db: DB, t: datetime | None = None) -> int:
             db.rollback()
             log.warning("təqvim hadisəsi emal edilmədi (%s)", type(e).__name__)
     for uid, link in links.items():
-        if uid in own or link.state != "linked" or aware(link.starts_at) > t + HORIZON - timedelta(days=1):
+        if uid in own or link.state not in ("linked", "block") or aware(link.starts_at) > t + HORIZON - timedelta(days=1):
             continue
         try:
             _absent(db, link)
@@ -346,6 +377,12 @@ def handle_callback(db: DB, cq: dict) -> str:
     if link.state not in ("card", "asking"):
         _answer(cq, "artıq həll olunub")
         return "resolved"
+    if act == "b":
+        _make_block(db, link, aware(link.starts_at) + timedelta(minutes=link.duration_min), ci.SUBLET)
+        db.commit()
+        _answer(cq, "🔒 Blok yazıldı")
+        _edit(cq, f"🔒 Şahinin (blok): {link.title}, {_when(link.starts_at)}")
+        return "blocked"
     if act == "x":
         link.state = "ignored"
         db.commit()

@@ -3,10 +3,13 @@ Başlıqdan iş növü, kamera, qiymət və ad çıxarılır; ad yalnız əmin o
 Şəbəkə və baza işi skriptdədir. Başlıqlar loglanmır."""
 import re
 
+import settings
+
 SHOOT_RE = re.compile(r"çəkiliş|cekilis|çekiliş|podkas|podcast|reels?\b|rils|kamera|intervü|interviu|müsahib|icarə|"
                       r"green\s*scr|studiya|video", re.I)
 SKIP_RE = re.compile(r"şahin|sahin", re.I)  # sub-icarə: müştəri çəkilişi deyil (sahibkar, 2026-11-13)
 OWN_RE = re.compile(r"y\s*-?\s*pod\s*$", re.I)  # sahibkarın öz çəkilişləri başlığı «… Y Pod» ilə bitir
+SUBLET = "Şahin (sub-icarə)"
 RENT_RE = re.compile(r"icarə|özü\s*çək", re.I)
 REELS_RE = re.compile(r"reels?\b|rils", re.I)
 PODCAST_RE = re.compile(r"podkas|podcast|intervü|müsahib", re.I)
@@ -37,6 +40,17 @@ def is_shoot(title: str) -> bool:
 
 def is_skipped(title: str) -> bool:
     return bool(SKIP_RE.search(title or ""))
+
+
+def block_reason(title: str) -> str | None:
+    """Təqvim hadisəsi çəkiliş yox, blokdursa onun səbəbi (crm/calendar_sync.py, digest).
+    Nümunələr settings-dədir (CALENDAR_SUBLET_RE: sub-icarəçinin hadisələri, CALENDAR_PERSONAL_RE: şəxsi)."""
+    t = title or ""
+    if settings.CALENDAR_SUBLET_RE and re.search(settings.CALENDAR_SUBLET_RE, t, re.I):
+        return SUBLET
+    if settings.CALENDAR_PERSONAL_RE and re.search(settings.CALENDAR_PERSONAL_RE, t, re.I):
+        return settings.CALENDAR_PERSONAL_LABEL
+    return None
 
 
 def is_own(title: str) -> bool:

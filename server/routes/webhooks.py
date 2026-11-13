@@ -17,9 +17,9 @@ from sqlalchemy.orm import Session as DB
 import alerts
 import settings
 import tgtopics
-from crm import bot, calendar_sync, chat, conf, friends, kapso, social_tg, tg, todo, turns
+from crm import bot, calendar_sync, chat, conf, contacts, friends, kapso, social_tg, tg, todo, turns
 from db import SessionLocal, aware, get_db, now
-from models import WaContact, WaConversation, WaMessage, WebhookEvent
+from models import KnownContact, WaContact, WaConversation, WaMessage, WebhookEvent
 
 log = logging.getLogger("webhooks")
 router = APIRouter(prefix="/api/webhooks")
@@ -61,6 +61,10 @@ def find_contact(db: DB, conversation: dict, create: bool = True) -> WaContact |
     phone = chat.digits(conversation.get("phone_number")) or None
     bsuid = conversation.get("business_scoped_user_id") or None
     name = (conversation.get("contact_name") or "").strip()
+    if not name and phone:  # WhatsApp profil adı boşdursa sahibkarın telefonundakı «… Y Pod» adı
+        known = db.get(KnownContact, contacts.normalize(phone))
+        if known and known.kind == "customer":
+            name = known.full_name or known.first_name
     c = None
     if phone:
         c = db.scalar(select(WaContact).where(WaContact.phone == phone))
