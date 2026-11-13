@@ -1,5 +1,5 @@
 from test_auth import admin_token, api, bearer  # noqa: F401,I001  (env-i əvvəl qurur)
-from crm_helpers import crm_env, jreply, mk_conv, post_kapso  # noqa: F401,I001
+from crm_helpers import crm_env, jreply, mk_conv, post_kapso, received  # noqa: F401,I001
 
 from datetime import datetime, timedelta, timezone  # noqa: E402
 
@@ -12,7 +12,7 @@ import ai  # noqa: E402
 import booking  # noqa: E402
 import settings  # noqa: E402
 from ai import AiError  # noqa: E402
-from crm import bot, bot_prompt, conf, kapso, slots, worker  # noqa: E402
+from crm import bot, bot_prompt, chat, conf, kapso, slots, worker  # noqa: E402
 from crm_helpers import CHAT, TG_SECRET  # noqa: E402
 from db import SessionLocal, now  # noqa: E402
 from models import (BotDraft, Block, Client, Faq, Lead, LeadEvent, Shoot, UnansweredQuestion, WaContact,  # noqa: E402
@@ -1008,6 +1008,47 @@ def test_work_message_silent_handoff(api, crm_env, mode):
     assert one(WaConversation).mode == ("human" if mode == "auto" else "bot")
     (key, text), = crm_env.alerts
     assert text.startswith("🧾 İş yazışması") and "Dünənki montaj" in text
+
+
+def test_partner_offer_thanks_without_lead(api, crm_env):
+    # özünü təqdim edib xidmət təklif edən (aparıcı, səsləndirici): qısa təşəkkür gedir, lead yox, söhbət sahibkara keçir
+    _, conv_id = mk_conv(text="Kamera qarşısında çəkilişlərdə iştirak edirəm, freelancer kimi əməkdaşlıq edirəm.")
+    with SessionLocal() as db:
+        conf.put(db, "bot_mode", "auto")
+        db.commit()
+    crm_env.gemini(jreply("Təşəkkür edirik! Məlumatınızı komandamıza ötürdüm 🙏", handoff=True, handoff_reason="emekdasliq",
+                          lead={"name": "X", "service": "reels"}, stage="maraqlanir"))
+    assert bot.handle(conv_id) == "handoff:emekdasliq"
+    assert len(crm_env.kapso()) == 1 and count(Lead) == 0
+    assert one(WaConversation).mode == "human"
+    (key, text), = crm_env.alerts
+    assert text.startswith("🤝 Əməkdaşlıq") and "söhbət sizə keçdi" in text
+
+
+def test_customer_message_after_bot_reply_is_answered(api, crm_env):
+    # 2026-11-13: «Salam»a cavab yazılanda növbəti mesajın WhatsApp vaxtı cavabdan əvvəl idi, mesaj cavabsız qaldı
+    t0 = int(now().timestamp()) - 5
+    post_kapso(api, received("w1", "Salam", ts=t0))
+    conv_id = one(WaConversation).id
+    with SessionLocal() as db:
+        db.add(WaMessage(conversation_id=conv_id, wamid="out1", direction="out", source="bot", text="Salam!", created_at=now()))
+        db.commit()
+    post_kapso(api, received("w2", "Əsl sualım: reels neçəyədir?", ts=t0 + 2))
+    with SessionLocal() as db:
+        assert chat.last_message(db, conv_id).text == "Əsl sualım: reels neçəyədir?"
+        assert bot.skip_reason(db, db.get(WaConversation, conv_id), one(WaContact)) is None
+
+
+def test_greeting_waits_for_follow_up(api, crm_env, monkeypatch):
+    slept = []
+    monkeypatch.setattr(bot, "GREETING_WAIT", 12)
+    monkeypatch.setattr(bot.time, "sleep", slept.append)
+    _, conv_id = mk_conv(text="Salam")
+    bot._greeting_wait(conv_id)
+    assert slept and 0 < slept[0] <= 12
+    _, other = mk_conv(phone="994559990001", text="Salam, reels neçəyədir?")
+    bot._greeting_wait(other)
+    assert len(slept) == 1  # əsl mesaj: gözləmədən cavab
 
 
 @pytest.mark.parametrize("bad", ["Aleykum salam! Buyurun", "Salam əleyküm, necə kömək edə bilərik?",

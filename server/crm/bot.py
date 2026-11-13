@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -42,6 +43,7 @@ ALEYKUM_RE = re.compile(r"[əae]l[eə]y?k[uü]m", re.I)  # «Aleykum salam» din
 # Video və sənədi bot aça bilmir: sabit cavab, söhbət sahibkara keçir (AI çağırılmır). routes/webhooks.MEDIA_LABEL
 FILE_LABELS = ("[video]", "[sənəd]")
 FILE_REPLY = "Mən Y Pod-un virtual köməkçisiyəm, faylı komandamıza ötürürəm, baxıb sizə məlumat verəcəklər 🙏"
+PARTNER_REASONS = ("emekdasliq",)  # özünü təqdim edib xidmət/iş təklif edən: qısa təşəkkür, satış yox, söhbət sahibkara
 SILENT_REASONS = ("is",)  # iş yazışması (montaj materialı, mövcud layihə, komanda): bot heç nə yazmır
 
 
@@ -322,9 +324,29 @@ def _lock_for(cid: int) -> threading.Lock:
         return _locks.setdefault(cid, threading.Lock())
 
 
+GREETING_RE = re.compile(r"^[\W\d_]*(salam|slm|salam\s+[əae]l[eə]yk[uü]m|hi|hello|hey|привет|здравствуйте|"
+                         r"merhaba|selam|sabahınız xeyir|axşamınız xeyir|günaydın|xoş gördük)[\W\d_]*$", re.I)
+GREETING_WAIT = 12  # saniyə: yalnız «Salam» yazılıbsa əsl mesajı gözləyirik (çox vaxt dərhal ardınca gəlir)
+
+
+def _greeting_wait(conversation_id: int) -> None:
+    """Son müştəri mesajı təkcə salamdırsa və təzədirsə, bir az gözlə: ardınca gələn mesajla birlikdə bir cavab yazılsın."""
+    if GREETING_WAIT <= 0:
+        return
+    with SessionLocal() as db:
+        last = chat.last_message(db, conversation_id)
+        if not last or last.source != "customer" or not GREETING_RE.match((last.text or "").strip()):
+            return
+        left = GREETING_WAIT - (now() - aware(last.created_at)).total_seconds()
+    if left > 0:
+        time.sleep(min(left, GREETING_WAIT))
+
+
 def handle(conversation_id: int, *, avoid: str | None = None, instruction: str | None = None) -> str:
     """Söhbət üçün bir cavab dövrü. Nəticə kodunu qaytarır (testlər və log üçün); heç vaxt xəta atmır.
     `avoid`: sahibkarın bəyənmədiyi qaralama — bot başqa cür yazır və nəticə həmişə qaralama olur."""
+    if not avoid:
+        _greeting_wait(conversation_id)
     with _lock_for(conversation_id):  # eyni söhbətdə paralel iki işləmə olmasın
         try:
             with SessionLocal() as db:
@@ -442,9 +464,10 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     if problem:  # iki dəfə filtrə düşdü: cavab getmir, söhbət insana keçir
         res = {**res, "handoff": True, "handoff_reason": "filtr", "reply": ""}
     silent = res["handoff"] and res["handoff_reason"] in SILENT_REASONS
+    partner = res["handoff"] and res["handoff_reason"] in PARTNER_REASONS
     if silent:  # iş yazışması: müştəriyə heç nə getmir, satış lead-i də yaranmır
         res = {**res, "reply": ""}
-    else:
+    elif not partner:  # əməkdaşlıq təklifi satış deyil: lead yaranmır, yalnız qısa təşəkkür gedir
         apply_result(db, conv, contact, res)
     if not avoid:  # «Yenidən yaz»da eyni sual ikinci dəfə yazılmasın
         note_gap(db, conv.id, res, last_in.text if last_in else "")
@@ -456,7 +479,7 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         # Avtomatik rejimdə söhbət sahibkarın cavabını gözləyir (asan suala bot yenə cavab verir, crm/turns.py).
         # Qaralama rejimində sahibkar hər cavabı onsuz da təsdiqləyir, ona görə yalnız xəbərdarlıq gedir.
         auto = auto_reply(db, conv, contact)
-        if auto and silent:  # iş yazışması satış söhbəti deyil: bot bu söhbətə ümumiyyətlə yazmır
+        if auto and (silent or partner):  # satış söhbəti deyil: bot bu söhbətə daha yazmır
             conv.mode = "human"
         elif auto:
             turns.to_wait(db, conv, now())
@@ -465,8 +488,10 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         urgent = f"🔴 TƏCİLİ: {why}, zəng edin: {contact.phone or '-'}\n" if why else ""
         if res["handoff_reason"] in SILENT_REASONS:
             urgent = "🧾 İş yazışması (montaj, layihə və ya komanda), bot cavab yazmadı, özünüz cavab verin\n"
+        elif partner:
+            urgent = "🤝 Əməkdaşlıq və ya iş təklifi (müştəri deyil), bot qısa təşəkkür yazdı\n"
         alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}", topic="action",
-                      text=f"{urgent}{'söhbət sizə keçdi' if auto and silent else 'bot komandaya ötürdü, sizin cavabınızı gözləyir (asan suallara özü cavab verir)' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
+                      text=f"{urgent}{'söhbət sizə keçdi' if auto and (silent or partner) else 'bot komandaya ötürdü, sizin cavabınızı gözləyir (asan suallara özü cavab verir)' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
                       f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
                       f"Səbəb: {res['handoff_reason'] or '-'}\nMüştəri: {(last_in.text if last_in else '')[:500]}\n"
                       f"Botun cavabı: {res['reply'][:500] or '(göndərilmədi: ' + (problem or '') + ')'}\n"

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DB
 
@@ -120,6 +120,13 @@ def on_received(db: DB, ev: dict, bot_convs: list[int]) -> None:
     text, transcript = extract_text(msg)
     t = _msg_time(msg)
     history = _origin(ev, msg) == "history_sync"
+    if not history:
+        # WhatsApp vaxtı göndərilmə anıdır: bot bu arada cavab yazıbsa, mesaj o cavabdan SONRA sayılır (cavabsız qalmasın).
+        # 2026-11-13: «Salam»a cavab 2 s gec yazıldı, 9 s sonrakı əsl mesaj «son mesaj bizimdir» deyə cavabsız qaldı.
+        newest = db.scalar(select(func.max(WaMessage.created_at)).where(
+            WaMessage.conversation_id == conv.id, WaMessage.direction == "out", WaMessage.source != "history"))
+        if newest and aware(newest) >= aware(t):
+            t = aware(newest) + timedelta(milliseconds=1)
     # history_sync idxalında bizim köhnə mesajlarımız da gəlir: istiqamət kapso.direction-dan götürülür
     outbound = history and (msg.get("kapso") or {}).get("direction") == "outbound"
     db.add(WaMessage(conversation_id=conv.id, wamid=wamid, direction="out" if outbound else "in",

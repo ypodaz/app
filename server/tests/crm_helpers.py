@@ -55,6 +55,7 @@ def crm_env(monkeypatch):
     for k, v in {"KAPSO_API_KEY": "k", "KAPSO_WEBHOOK_SECRET": SECRET, "KAPSO_PHONE_NUMBER_ID": "pn1",
                  "TG_BOT_TOKEN": "tok", "TG_CHAT_ID": CHAT, "TG_WEBHOOK_SECRET": TG_SECRET}.items():
         monkeypatch.setattr(settings, k, v)
+    monkeypatch.setattr("crm.bot.GREETING_WAIT", 0)  # testlərdə «Salam» gözləməsi yoxdur (ayrıca testi var)
 
     def fake_post(url, **kw):
         env.http.append((url, kw.get("json")))

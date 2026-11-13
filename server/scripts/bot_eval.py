@@ -65,7 +65,8 @@ def check(res: dict, expect: dict, global_bad: list[str]) -> list[str]:
         bad.append(f"filtrə düşdü: {res['filtered']}")
     if "handoff" in expect and res["handoff"] != expect["handoff"]:
         bad.append(f"handoff={res['handoff']} (gözlənən {expect['handoff']})")
-    if "handoff_reason" in expect and res["handoff_reason"] != expect["handoff_reason"]:
+    want = expect.get("handoff_reason")
+    if "handoff_reason" in expect and res["handoff_reason"] not in (want if isinstance(want, list) else [want]):
         bad.append(f"handoff_reason={res['handoff_reason']} (gözlənən {expect['handoff_reason']})")
     if "language" in expect:
         lang = detect_lang(reply) or res.get("language")
