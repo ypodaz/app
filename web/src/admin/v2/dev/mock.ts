@@ -200,6 +200,7 @@ function tenzimlemeRoute(path: string, method: string): unknown {
   const camp = (id: number, title: string, rec: number, op: number, bk: number, ago: number) => ({ id, kind: 'manual', title, body: '{name}, yeni təklifimiz var.', url: null, filters: { has_package: false }, recipients: rec, push_on: rec - 3, created_at: iso(Date.now() - ago * 24 * H), created_by: 'Admin', opened: op, booked_14d: bk });
   const camps = [camp(1, 'Noyabr təklifi', 42, 25, 4, 3), camp(2, 'Reels endirimi', 30, 12, 2, 12)];
   if (p === '/whoami') return { name: 'Nümunə Admin' };
+  if (p === '/calendar-feed') return { enabled: true, path: '/calendar/numune-acar.ics' };
   if (p === '/bot/settings') return { bot_enabled: true, bot_mode: 'draft', kapso_month_count: 640, kapso_month_limit: 1000 };
   if (p === '/packages/quote') {
     const q = new URLSearchParams(path.split('?')[1] ?? ''); const h = Number(q.get('hours') || 5); const c = Number(q.get('cameras') || 1);

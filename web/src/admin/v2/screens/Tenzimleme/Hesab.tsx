@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { apiUrl } from '../../../../shared/api';
 import { useAction, useAuth, useLoad } from '../../../ctx';
 import type { Dashboard } from '../../../types';
 import { PageHeader } from '../../shell/PageHeader';
@@ -7,6 +8,7 @@ import { Gate } from './kit';
 import type { Settings } from './Bot';
 import './tenzimleme.css';
 
+type Feed = { enabled: boolean; path: string | null };
 type Info = { channels: { service: string; queue_paused: boolean | null }[] | { error: string } | null };
 
 /** Hesab (35-hesab-giris.md). Route: /tenzimleme/hesab. Köhnə Panel-dəki «App istifadəsi» burada saxlanır. */
@@ -17,6 +19,13 @@ export function Hesab() {
   const dash = useLoad<Dashboard>('/dashboard');
   const bot = useLoad<Settings>('/bot/settings');
   const [out, setOut] = useState(false);
+  const feed = useLoad<Feed>('/calendar-feed');
+  const [copied, setCopied] = useState('');
+  async function copyFeed() {
+    if (!feed.data?.path) return;
+    try { await navigator.clipboard.writeText(apiUrl(feed.data.path)); setCopied('Kopyalandı'); }
+    catch { setCopied('Kopyalanmadı'); }
+  }
   // Buffer statusu Buffer-ə sorğu atır (gündə limit var): yalnız «Yoxla» düyməsi ilə
   const buf = useAction();
   const [info, setInfo] = useState<Info | null>(null);
@@ -43,6 +52,9 @@ export function Hesab() {
               <span className="tz-sub">{!info ? 'Yoxlanmayıb' : ch === null ? 'Qoşulmayıb' : ch && !Array.isArray(ch) ? `Xəta: ${ch.error}` : Array.isArray(ch) && ch.length ? ch.map((c) => c.service).join(', ') : 'Kanal yoxdur'}</span></span>
               <Button size="row" variant="text" disabled={buf.busy || !online} onClick={check}>{buf.busy ? '…' : 'Yoxla'}</Button></div>
             {buf.err && <ErrorBox title="Buffer yoxlanmadı" detail={buf.err} />}
+            <div className="hs-kv"><span><b>Apple təqvimi (app çəkilişləri)</b>
+              <span className="tz-sub">{copied ? copied : feed.data ? (feed.data.enabled ? 'iPhone: Təqvim → Abunə təqvimi əlavə et' : 'Qoşulmayıb') : feed.err ? 'Yüklənmədi' : '…'}</span></span>
+              <Button size="row" variant="text" disabled={!feed.data?.enabled} onClick={copyFeed}>Təqvim linkini kopyala</Button></div>
             {/* TODO [API] Meta/Instagram, Telegram, Google, Resend, Railway/R2 qoşulma vəziyyəti, son sinxron: yalnız Kapso sayı və Buffer kanalları gəlir. */}
           </Card>
         </div>

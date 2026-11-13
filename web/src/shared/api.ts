@@ -1,4 +1,6 @@
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api';
+/** Tam API ünvanı (məs. təqvim feed-i üçün kopyalanan link). */
+export const apiUrl = (path: string) => BASE + path;
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public data?: unknown) { super(message); }

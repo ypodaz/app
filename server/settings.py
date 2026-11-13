@@ -78,3 +78,5 @@ APPLE_CAL_ICS_URL_PERSONAL = os.environ.get("APPLE_CAL_ICS_URL_PERSONAL", "")
 CALENDAR_SUBLET_RE = os.environ.get("CALENDAR_SUBLET_RE", r"şahin|sahin")
 CALENDAR_PERSONAL_RE = os.environ.get("CALENDAR_PERSONAL_RE", "")
 CALENDAR_PERSONAL_LABEL = os.environ.get("CALENDAR_PERSONAL_LABEL", "Şəxsi blok")
+# App çəkilişlərinin ICS feed-i (routes/calendar_feed.py): uzun təsadüfi açar, boşdursa feed bağlıdır
+CALENDAR_FEED_TOKEN = os.environ.get("CALENDAR_FEED_TOKEN", "")
