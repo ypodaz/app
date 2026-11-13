@@ -124,6 +124,7 @@
 @keyframes v2-sheet { from { transform: translateY(100%); } to { transform: none; } }
 
 /* ---- Toast ---- */
+.v2.v2-toasts { min-height: 0; background: transparent; }
 .v2-toasts { position: fixed; z-index: var(--z-toast); left: 0; right: 0; bottom: 24px; display: flex; justify-content: center; pointer-events: none; padding: 0 16px; }
 .v2 .toast { pointer-events: auto; display: flex; align-items: center; gap: 14px; min-height: 44px; max-width: 520px; padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--primary); color: var(--on-primary); font-size: 14px; box-shadow: var(--shadow-float); animation: v2-up var(--t-menu) var(--ease-out) both; }
 .v2 .toast--error { background: #7F1D1D; }

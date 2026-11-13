@@ -30,7 +30,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={api}>
       {children}
-      <div className="v2-toasts" aria-live="polite" role="status">
+      <div className="v2 v2-toasts" aria-live="polite" role="status">
         {t && (
           <div key={t.id} className={`toast${t.error ? ' toast--error' : ''}`}>
             <span>{t.msg}</span>
