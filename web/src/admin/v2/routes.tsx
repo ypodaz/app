@@ -1,19 +1,9 @@
 import { useEffect } from 'react';
-import { ShootDetail } from '../components/ShootDetail';
-import { useRoute, useWide } from '../router';
-import { useLoad } from '../ctx';
-import { bakuParts } from '../format';
-import { Calendar } from '../pages/Calendar';
-import { CancelShoot } from '../pages/CancelShoot';
-import { CloseShoot } from '../pages/CloseShoot';
-import { Materials } from '../pages/Materials';
+import { useRoute } from '../router';
 import { Panel } from '../pages/Panel';
-import { ShootForm } from '../pages/ShootForm';
-import type { Shoot } from '../types';
-import { AdminShell } from '../../shared/ui';
-import { PageHead } from '../components/neon';
 import { MoreMenu } from './Account';
-import { CEKILIS_TABS, Legacy, SectionTabs } from './Legacy';
+import { Legacy } from './Legacy';
+import { CekilisRoute } from './screens/Cekilis/CekilisRoute';
 import { Inbox } from './screens/Inbox/Inbox';
 import { Hesabat } from './screens/Insanlar/Hesabat';
 import { InsanlarRoute } from './screens/Insanlar/Insanlar';
@@ -27,20 +17,7 @@ import { Paketler } from './screens/Tenzimleme/Paketler';
 import { Paylasim } from './screens/Tenzimleme/Paylasim';
 import { YeniKampaniya } from './screens/Tenzimleme/YeniKampaniya';
 import { Today } from './screens/Today/Today';
-import { Soon } from './screens/Soon';
 import { V2Shell } from './shell/Shell';
-
-// B9: mobil tam ekran; planşet/desktopda təqvim + sağ detal paneli (köhnə main.tsx-dən köçürülüb)
-function ShootPage({ id }: { id: number }) {
-  const wide = useWide();
-  const s = useLoad<Shoot>(wide ? `/shoots/${id}` : null).data;
-  if (wide) {
-    const q = new URLSearchParams({ v: 'week', d: s ? bakuParts(s.starts_at).date : '' });
-    if (!s) q.delete('d');
-    return <Calendar query={q} selectedId={id} detail={<ShootDetail id={id} />} />;
-  }
-  return <AdminShell active="calendar" title="Çəkiliş" bare full><PageHead title="Çəkiliş" back="calendar" /><ShootDetail id={id} /></AdminShell>;
-}
 
 /** Route cədvəli. Yeni ekranı bağlamaq üçün: aşağıda uyğun sətirdə <Legacy>…</Legacy> və ya <Soon/> əvəzinə yeni komponenti qoy
  *  (sənədin «Route» sətri ilə eyni yol). Köhnə (v1) yollar da işləyir — köhnə səhifələrin daxili keçidləri onlara baxır. */
@@ -55,12 +32,7 @@ function Page() {
     case 'inbox': return <Inbox id={num || undefined} />; // TODO [API] kanal filtrləri və /inbox/komment/…: Instagram DM/komment üçün admin endpoint yoxdur
 
     // ---- Çəkilişlər (10–15) ----
-    case 'cekilisler':
-      if (b === 'siyahi') return <><Soon title="Çəkilişlər" sub="Siyahı" /></>; // 12-cekilis-siyahi.md
-      if (b === 'teqvim-ferqi') return <Soon title="Təqvim fərqi" />; // 11-teqvim-ferqi.md
-      if (b === 'montaj') return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="montaj" label="Çəkilişlər" />}><Materials /></Legacy>; // 13-montaj.md
-      if (b === 'yeni') return <Legacy><ShootForm key={location.hash} query={query} /></Legacy>; // 14-yeni-cekilis.md (v2-də modal)
-      return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="teqvim" label="Çəkilişlər" />}><Calendar query={query} /></Legacy>; // 10-teqvim.md
+    case 'cekilisler': return <CekilisRoute path={path} query={query} />;
 
     // ---- İnsanlar (20–22) ----
     case 'insanlar':
@@ -87,17 +59,13 @@ function Page() {
       return <MoreMenu />;
 
     // ---- Köhnə (v1) yollar: eyni səhifələr, yeni qabıqda ----
-    case 'calendar': return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="teqvim" label="Çəkilişlər" />}><Calendar query={query} /></Legacy>;
+    case 'calendar': return <CekilisRoute path={path} query={query} />;
     case 'clients': return num ? <ClientCardV2 key={num} id={num} /> : <InsanlarRoute query={query} tab="musteri" />;
     case 'shoots':
-      if (b === 'new') return <Legacy><ShootForm key={location.hash} query={query} /></Legacy>;
-      if (!num) break;
-      if (c === 'edit') return <Legacy><ShootForm key={num} query={query} editId={num} /></Legacy>;
-      if (c === 'close') return <Legacy><CloseShoot id={num} /></Legacy>;
-      if (c === 'cancel') return <Legacy><CancelShoot id={num} /></Legacy>;
-      return <Legacy><ShootPage key={num} id={num} /></Legacy>;
+      if (b === 'new' || num) return <CekilisRoute path={path} query={query} />;
+      break;
     case 'packages': return <Paketler />;
-    case 'materials': return <Legacy tabs={<SectionTabs options={CEKILIS_TABS} value="montaj" label="Çəkilişlər" />}><Materials /></Legacy>;
+    case 'materials': return <CekilisRoute path={path} query={query} />;
     case 'campaigns': return b === 'new' ? <YeniKampaniya /> : <Marketinq />;
     case 'automations': return <Avtomat />;
     case 'report': return <Hesabat />;
