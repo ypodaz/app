@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 import tgtopics
-from crm import conf, friends, social_inbox, social_tg, tg, turns
+from crm import conf, events, friends, social_inbox, social_tg, tg, turns
 from db import aware
 from models import Setting, SocialItem
 from views import BAKU
@@ -50,6 +50,7 @@ def auto_send_due(db: DB, t: datetime) -> int:
             log.warning("avtomatik DM qaralaması getmədi (item %s): %s", item.id, e)
             continue
         item.auto_at = None
+        events.auto_sent(db, events.IG, item.thread_id)
         db.commit()
         social_tg.close(item, "⏱ 1 saat toxunulmadı, bot özü göndərdi")
         n += 1
@@ -79,6 +80,8 @@ def remind_waiting(db: DB, t: datetime) -> int:
             SocialItem.channel == "instagram", SocialItem.kind == "dm", SocialItem.thread_id == thread)
             .order_by(SocialItem.id.desc()).limit(1))
         mins = int((t - since).total_seconds() // 60)
+        events.reminded(db, events.IG, thread, mins)
+        db.commit()
         tg._call("sendMessage", {**tgtopics.dest("action"), "disable_web_page_preview": True,
                                  "text": f"⏳ Instagram müştərisi {mins} dəqiqədir cavab gözləyir (bot komandaya ötürüb)\n"
                                          f"{_who(db, thread)}\nSon mesaj: {(last or '-')[:500]}"})

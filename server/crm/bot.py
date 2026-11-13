@@ -15,7 +15,7 @@ import ai
 import alerts
 import tgtopics
 from ai import WD, AiError
-from crm import bot_prompt, chat, conf, contacts, customer_card, kapso, slots, tg, turns, voice
+from crm import bot_prompt, chat, conf, contacts, customer_card, events, kapso, slots, tg, turns, voice
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -484,6 +484,8 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         elif auto:
             turns.to_wait(db, conv, now())
         outcome = f"handoff:{res['handoff_reason']}"
+        if auto:  # rejim dəyişdi: söhbətdə sistem sətri (02 #17)
+            events.handoff(db, events.WA, conv.id, res["handoff_reason"])
         why = URGENT_REASONS.get(res["handoff_reason"] or "")
         urgent = f"🔴 TƏCİLİ: {why}, zəng edin: {contact.phone or '-'}\n" if why else ""
         if res["handoff_reason"] in SILENT_REASONS:
@@ -512,6 +514,7 @@ def _file_handoff(db: DB, conv: WaConversation, contact: WaContact, last_in: WaM
         except kapso.KapsoError as e:
             log.warning("fayl cavabı getmədi (söhbət %s): %s", conv.id, e.message)
         turns.to_wait(db, conv, now())
+        events.handoff(db, events.WA, conv.id, "fayl")
     db.commit()
     alerts.notify(f"handoff:{conv.id}:{last_in.id}", topic="action",
                   text=f"📎 Fayl göndərildi, {'bot qısa cavab verdi, sizin cavabınızı gözləyir' if sent else 'bot cavab yazmadı'}\n"

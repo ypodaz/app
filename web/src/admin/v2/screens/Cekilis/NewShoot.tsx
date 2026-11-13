@@ -43,10 +43,10 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
   const [prep, setPrep] = useState(15);
   const [wrap, setWrap] = useState(0);
   const [kind, setKind] = useState<Kind>('shoot');
-  const [tag, setTag] = useState<Tag>('podcast');
+  const [tag, setTag] = useState<Tag>((['podcast', 'reels', 'other'] as const).find((t) => t === query.get('xidmet')) ?? 'podcast'); // Inbox «Çəkiliş yarat»
   const [locSel, setLoc] = useState<Location>('studio');
   const [address, setAddress] = useState('');
-  const [cameras, setCameras] = useState(2);
+  const [cameras, setCameras] = useState([1, 2, 3].includes(Number(query.get('kamera'))) ? Number(query.get('kamera')) : 2);
   const [editing, setEditing] = useState(false);
   const [reels, setReels] = useState(0);
   const [payWanted, setPayWanted] = useState<'paid' | 'package'>('paid');
@@ -194,7 +194,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
                 {edit ? <Ic name="lock" size={16} /> : <Button size="sm" variant="text" aria-label="Seçimi sil" onClick={() => { setClientId(null); setPick(true); }}><V2Icon name="x" /></Button>}
               </div>
             ) : (
-              <ClientPicker onPick={(c) => { setClientId(c.id); setPayWanted('paid'); setUseCb(false); setPick(false); }} />
+              <ClientPicker initialQuery={query.get('tel') || query.get('ad') || ''} onPick={(c) => { setClientId(c.id); setPayWanted('paid'); setUseCb(false); setPick(false); }} />
             )}
           </section>
 

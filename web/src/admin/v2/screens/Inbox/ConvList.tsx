@@ -3,7 +3,8 @@ import type { Conv } from '../../../components/crm';
 import { go } from '../../../router';
 import { channelLabel, inKanal, KANAL, socialGroup, socialName, socialPath, type Kanal, type SocialThread } from '../../data/social';
 import { fmtWait, msOf } from '../../data/time';
-import { Avatar, EmptyState, ErrorBox, LoadingRows, Segmented, V2Icon } from '../../ui';
+import { Avatar, Button, EmptyState, ErrorBox, LoadingRows, Segmented, V2Icon } from '../../ui';
+import { NewContactDialog } from '../Insanlar/Dialogs';
 import { IbIcon } from './icons';
 import { clockOf, effMode, groupOf, phoneLabel, preview, rank, sortGroup, type Group } from './logic';
 
@@ -156,6 +157,7 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
   const [q, setQ] = useState('');
   useEffect(() => { const t = window.setTimeout(() => setQ(raw), 200); return () => window.clearTimeout(t); }, [raw]); // 02: 200 ms gecikmə
   const [mSearch, setMSearch] = useState(false);
+  const [newContact, setNewContact] = useState(false); // «Yeni kontakt yarat» (99 G8)
 
   const groups = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -238,8 +240,8 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
         {loaded && total === 0 && <div className="ib__pad"><EmptyState title="Hələ söhbət yoxdur" reason="Müştəri WhatsApp və ya Instagram-dan yazanda burada görünəcək." /></div>}
         {loaded && total > 0 && !searching && empty && <div className="ib__pad"><EmptyState title="Bu kanalda söhbət yoxdur" reason="Başqa kanal seçin." /></div>}
         {none && (
-          <div className="ib__pad"><EmptyState title={`«${q.trim()}» tapılmadı`} reason="Axtarış ad, telefon, Instagram adı və mesaj mətnində aparılır." /></div>
-          /* TODO [API] «Yeni kontakt yarat» (99 G8): kontakt yaratmaq üçün admin endpoint yoxdur. */
+          <div className="ib__pad"><EmptyState title={`«${q.trim()}» tapılmadı`} reason="Axtarış ad, telefon, Instagram adı və mesaj mətnində aparılır."
+            action={<Button size="sm" onClick={() => setNewContact(true)}>Yeni kontakt yarat</Button>} /></div>
         )}
 
         {loaded && !empty && flat && groups.recent.map((r) => row(r.e, r.g, false, true))}
@@ -295,6 +297,8 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
           </>
         )}
       </div>
+      <NewContactDialog open={newContact} initialName={/\d{3}/.test(q) ? '' : q.trim()} initialPhone={/\d{3}/.test(q) ? q.trim() : ''}
+        onClose={() => setNewContact(false)} onCreated={(c) => { setNewContact(false); go(`insanlar/${c.id}`); }} />
     </section>
   );
 }

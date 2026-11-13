@@ -3,9 +3,11 @@ import { stageName, usePoll, type ConvMode, type ConvOpen, type Msg, type Park }
 import { parkOf } from '../../data/queue';
 import { errMsg, useAuth, useLoad } from '../../../ctx';
 import { bakuParts } from '../../../format';
+import { useMedia } from '../../../router';
 import { msOf } from '../../data/time';
 import { Avatar, ErrorBox, LoadingRows, useOnline, useToast, V2Icon } from '../../ui';
-import { BotBar, DraftCard, FreeComposer, SilentBar } from './Composer';
+import { BotBar, DraftCard, FreeComposer, NoteComposer, ReplyTabs, SilentBar, type ReplyTab } from './Composer';
+import { EventLine, mergeTimeline } from './Events';
 import { IbIcon } from './icons';
 import { dayLabel, effMode, MODE_META, phoneLabel, typing } from './logic';
 import { ModeChip } from './ModeMenu';
@@ -68,6 +70,9 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const [busy, setBusy] = useState(false);
   const [hiddenDraft, setHiddenDraft] = useState<number | null>(null); // 5 s gecikmədə gizlədilən qaralama
   const [sendErr, setSendErr] = useState('');
+  const [tabSel, setTab] = useState<ReplyTab>('reply'); // «Cavab | Daxili qeyd» (02 #19), yalnız kompüterdə
+  const [noteBusy, setNoteBusy] = useState(false);
+  const mobile = useMedia('(max-width: 767px)');
   const endRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
 
@@ -75,8 +80,8 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const loaded = !!data;
   useEffect(() => { if (loaded) onChanged(); }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setModeOv(null); setExclOv(null); }, [data?.mode, data?.contact.excluded]);
-  useEffect(() => { setWriting(false); setHiddenDraft(null); setSendErr(''); }, [id]);
-  const n = data?.messages.length ?? 0;
+  useEffect(() => { setWriting(false); setHiddenDraft(null); setSendErr(''); setTab('reply'); }, [id]);
+  const n = (data?.messages.length ?? 0) + (data?.thread_events?.length ?? 0);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [n, id, loaded]);
 
   const refresh = useCallback(() => { conv.reload(); onChanged(); }, [conv, onChanged]);
@@ -154,6 +159,17 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
       setParkOv(undefined);
       toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void park(to) });
     }
+  }
+
+  /** «Daxili qeyd»: müştəriyə getmir, rejim və qaralama dəyişmir; İnsan kartının tarixçəsinə də düşür. */
+  async function saveNote(text: string): Promise<boolean> {
+    setNoteBusy(true);
+    try {
+      await call(`/inbox/${id}/note`, { method: 'POST', body: { text } });
+      refresh();
+      toast.show('Qeyd yazıldı · müştəriyə getmir');
+      return true;
+    } catch (e) { toast.show(`Alınmadı: ${errMsg(e)}`, { error: true }); return false; } finally { setNoteBusy(false); }
   }
 
   async function sendFree(text: string): Promise<boolean> {
@@ -242,9 +258,12 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const last = data.messages[data.messages.length - 1];
   const sinceMin = last && last.direction === 'in' ? Math.max(1, Math.round((Date.now() - new Date(last.created_at).getTime()) / 60_000)) : 0;
   const reason = mode === 'wait' ? [...data.drafts].reverse().find((d) => d.model_output?.handoff_reason)?.model_output?.handoff_reason : null;
-  // TODO [API] sistem sətirləri (ötürmə vaxtı, «Xatırlatma göndərildi», «Bot özü göndərdi», rejim dəyişikliyi) mesaj siyahısında yoxdur; səbəb yalnız qaralamanın handoff_reason sahəsindən göstərilir.
-  // TODO [API] «Bot yazır» göstəricisi və «Daxili qeyd» (tablar, İnsan kartına yazılması): endpoint yoxdur, gizlədilib.
+  const tevents = data.thread_events ?? [];
+  const reasonLogged = tevents.some((e) => e.meta?.code === 'handoff_reason'); // yeni söhbətlərdə səbəb sistem sətridir
+  // TODO [API] «Bot yazır» göstəricisi: bot cavab hazırlayarkən vəziyyət serverdə açıq deyil, gizlədilib.
+  const noteTab = tabSel === 'note' && !mobile;
   const showFree = !draft && (mode !== 'bot' || writing);
+  const timeline = mergeTimeline(data.messages, (m) => m.created_at, tevents);
 
   return (
     <div className="ib__cw">
@@ -270,27 +289,31 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
         </div>
         {!data.window_open && <div className="ib__warn" role="status">24 saat keçib · müştəri yazmayınca sərbəst mətn göndərilmir</div>}
         <div className="ibt" tabIndex={-1}>
-          {data.messages.length === 0 && <p className="ibt__empty">Hələ mesaj yoxdur</p>}
-          {data.messages.map((m, i) => {
-            const day = dayLabel(m.created_at);
-            const prev = data.messages[i - 1];
+          {timeline.length === 0 && <p className="ibt__empty">Hələ mesaj yoxdur</p>}
+          {timeline.map((r, i) => {
+            const day = dayLabel(r.at);
+            const prev = timeline[i - 1];
             return (
-              <Fragment key={m.id}>
-                {(!prev || dayLabel(prev.created_at) !== day) && <div className="ibt__day">{day}</div>}
-                <Bubble m={m} />
+              <Fragment key={r.t === 'm' ? `m${r.m.id}` : `e${r.e.id}`}>
+                {(!prev || dayLabel(prev.at) !== day) && <div className="ibt__day">{day}</div>}
+                {r.t === 'm' ? <Bubble m={r.m} /> : <EventLine e={r.e} />}
               </Fragment>
             );
           })}
-          {reason && <div className="ibt__sys ibt__sys--why">Bot niyə ötürdü: {reason}</div>}
+          {reason && !reasonLogged && <div className="ibt__sys ibt__sys--why">Bot niyə ötürdü: {reason}</div>}
           <div ref={endRef} />
         </div>
         <div className="ibf-wrap">
+          {!mobile && <ReplyTabs value={tabSel} onChange={setTab} />}
+          {noteTab && <NoteComposer online={online} busy={noteBusy} onSave={saveNote} />}
+          {!noteTab && <>
           {sendErr && <ErrorBox title="Mesaj getmədi" detail={sendErr} />}
           {mode === 'human' && <SilentBar friend={excluded} disabled={!online} onFriend={(v) => void setFriend(v)} onBot={() => void setFriend(false)} />}
           {draft && <DraftCard draft={draft} mode={mode} windowOpen={data.window_open} online={online} onSend={sendDraft} onReject={() => void reject()}
             note={draft.auto_at && mode === 'owner' && msOf(draft.auto_at) > Date.now() ? `${Math.ceil((msOf(draft.auto_at) - Date.now()) / 60_000)} dəq sonra bot özü göndərəcək` : undefined} />}
           {mode === 'bot' && !draft && !writing && <BotBar friend={excluded} disabled={!online} onFriend={(v) => void setFriend(v)} onWrite={() => setWriting(true)} />}
           {showFree && <FreeComposer autoFocus={writing} windowOpen={data.window_open} online={online} busy={busy} onSend={sendFree} />}
+          </>}
         </div>
       </section>
       <Side data={data} mode={mode} />

@@ -53,10 +53,10 @@ export function Extras({ rows, onChange }: { rows: ExtraRow[]; onChange: (r: Ext
 export { extrasOf };
 
 /** Müştəri seçimi: axtarış + yeni kontakt (köhnə ClientPickerSheet-in v2 versiyası). */
-export function ClientPicker({ onPick, onCancel }: { onPick: (c: Client) => void; onCancel?: () => void }) {
+export function ClientPicker({ onPick, onCancel, initialQuery = '' }: { onPick: (c: Client) => void; onCancel?: () => void; initialQuery?: string }) {
   const { call } = useAuth();
   const { data, err, reload } = useLoad<Client[]>('/clients');
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(initialQuery);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');

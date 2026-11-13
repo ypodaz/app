@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 from auth import current_admin
-from crm import conf, friends, instagram, social_inbox, social_tg
+from crm import conf, events, friends, instagram, social_inbox, social_tg
 from crm.tg import MAX_REGENERATE
 from db import aware, get_db, now
 from models import SocialItem
@@ -129,7 +129,7 @@ def dm_open(thread: str, db: DB = Depends(get_db)):
     msgs.sort(key=lambda m: m["at"] or "")
     return {"thread_id": thread, "author": _author(items), "mode": social_inbox.ig_mode(db, thread),
             "lead_id": social_inbox.item_lead_id(db, items[-1]), "friend": friends.is_ig_friend(db, thread),
-            "park": _park(db, thread), "window_open": _window_open(items), "window_expires_at": iso(aware(items[-1].created_at) + instagram.WINDOW),
+            "park": _park(db, thread), "thread_events": events.listing(db, events.IG, thread), "window_open": _window_open(items), "window_expires_at": iso(aware(items[-1].created_at) + instagram.WINDOW),
             "messages": msgs, "pending": [item_out(i) for i in items if i.status == "pending"]}
 
 
@@ -321,6 +321,24 @@ class ModeIn(BaseModel):
 
 class FriendIn(BaseModel):
     friend: bool
+
+
+class NoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/dm/{thread}/note")
+def dm_note(thread: str, body: NoteIn, db: DB = Depends(get_db)):
+    """«Daxili qeyd» (02 #19): Instagram-a getmir, rejim və qaralama dəyişmir. Söhbət lead-ə bağlıdırsa İnsan kartına da düşür."""
+    items = _thread_items(db, "instagram", "dm", thread)
+    if not items:
+        raise HTTPException(404, "Söhbət tapılmadı")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(422, "Qeyd boşdur")
+    e = events.note(db, events.IG, thread, text, lead_id=social_inbox.item_lead_id(db, items[-1]))
+    db.commit()
+    return events.out(e)
 
 
 @router.post("/dm/{thread}/friend")

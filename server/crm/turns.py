@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from crm import chat, conf, kapso, tg
+from crm import chat, conf, events, kapso, tg
 import tgtopics
 from db import SessionLocal, aware, now
 from models import BotDraft, WaContact, WaConversation, WaMessage
@@ -62,8 +62,10 @@ def _clear_wait(db: DB, conv_id: int) -> None:
 
 def owner_wrote(db: DB, conv: WaConversation) -> None:
     """Sahibkar telefondan və ya paneldən yazdı: söhbəti o aparır, gözləyən qaralamalar köhnəlib."""
+    old = conv.mode
     if conv.mode != "human":
         conv.mode = "owner"
+    events.mode_changed(db, events.WA, conv.id, old, conv.mode)
     _clear_wait(db, conv.id)
     chat.reject_pending(db, conv.id, "sahibkar özü yazdı")
 
@@ -71,6 +73,7 @@ def owner_wrote(db: DB, conv: WaConversation) -> None:
 def draft_approved(db: DB, conv: WaConversation) -> None:
     """Sahibkar qaralamanı təsdiqlədi: bot söhbəti yenidən özü aparır."""
     if conv.mode in ("owner", "wait"):
+        events.mode_changed(db, events.WA, conv.id, conv.mode, "bot")
         conv.mode = "bot"
         _clear_wait(db, conv.id)
 
@@ -118,6 +121,7 @@ def auto_send_due(db: DB, t: datetime) -> int:
             log.warning("avtomatik qaralama getmədi (söhbət %s): %s", conv.id, e.message)
             continue
         d.status, d.decided_at, d.auto_at = "auto", t, None
+        events.auto_sent(db, events.WA, conv.id)
         db.commit()
         _edit_card(d, f"⏱ 1 saat toxunulmadı, bot özü göndərdi\n\n{d.text[:3000]}")
         n += 1
@@ -143,6 +147,8 @@ def remind_waiting(db: DB, t: datetime) -> int:
         contact = db.get(WaContact, conv.contact_id)
         last = chat.last_message(db, conv.id, "customer")
         mins = int((t - since).total_seconds() // 60)
+        events.reminded(db, events.WA, conv.id, mins)
+        db.commit()
         tg._call("sendMessage", {**tgtopics.dest("action"), "disable_web_page_preview": True,
                                  "text": f"⏳ Müştəri {mins} dəqiqədir cavab gözləyir (bot komandaya ötürüb)\n"
                                          f"{contact.name or 'Naməlum'} ({contact.phone or 'telefonsuz'})\n"

@@ -9,7 +9,7 @@ Telegram düymələri (callback_data `f:{kanal}:{id}:{off|on}`):
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from crm import chat, conf
+from crm import chat, conf, events
 from crm.tg import _call
 from crm.todo import _thread, is_owner
 from db import now
@@ -40,8 +40,11 @@ def customer_button(contact_id: int) -> dict:
 
 
 def set_wa(db: DB, contact: WaContact, friend: bool) -> None:
+    changed = contact.excluded != friend
     contact.excluded = friend
     for conv in db.scalars(select(WaConversation).where(WaConversation.contact_id == contact.id)).all():
+        if changed:
+            events.friend_changed(db, events.WA, conv.id, friend)
         if friend:
             chat.reject_pending(db, conv.id, "dostdur, bot yazmır")
         elif conv.mode == "human":  # şəxsi kontakt kimi ötürülmüşdü: sahibkar «müştəridir» dedi
@@ -49,6 +52,8 @@ def set_wa(db: DB, contact: WaContact, friend: bool) -> None:
 
 
 def set_ig(db: DB, thread: str, friend: bool) -> None:
+    if is_ig_friend(db, thread) != friend:
+        events.friend_changed(db, events.IG, thread, friend)
     conf.put(db, _ig_key(thread), "1" if friend else "")
     if friend:
         for item in db.scalars(select(SocialItem).where(SocialItem.channel == "instagram", SocialItem.kind == "dm",

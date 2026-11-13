@@ -464,6 +464,24 @@ class LeadEvent(Base):
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
 
 
+class ConversationEvent(Base):
+    """Söhbət tarixçəsi sətirləri (müştəriyə görünmür): daxili qeyd (note) və sistem sətri (system).
+    channel: wa | ig; ref: WA söhbət id-si (mətn kimi) və ya Instagram thread id.
+    client_id/lead_id: qeyd yazılanda söhbət bağlı idisə İnsan kartının tarixçəsi üçün."""
+    __tablename__ = "conversation_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    business_id: Mapped[str] = mapped_column(String(16), default="ypod", server_default="ypod", index=True)
+    channel: Mapped[str] = mapped_column(String(8))
+    ref: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(8))  # note | system
+    text: Mapped[str] = mapped_column(Text)
+    meta: Mapped[Optional[dict]] = mapped_column(JSON)
+    client_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    lead_id: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    __table_args__ = (Index("ix_conversation_events_chan_ref", "channel", "ref"),)
+
+
 class Faq(Base):
     __tablename__ = "faqs"
     id: Mapped[int] = mapped_column(primary_key=True)

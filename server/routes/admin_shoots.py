@@ -16,9 +16,9 @@ import growth
 import money
 import subscriptions
 from auth import current_admin
-from crm import chat
+from crm import chat, events
 from db import get_db, now
-from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot, SubscriptionPayment, WaContact, WaConversation
+from models import Admin, Block, CashbackLedger, Client, ConversationEvent, Material, Package, PackageMember, PushSubscription, Shoot, SubscriptionPayment, WaContact, WaConversation
 from routes.admin import blank_to_none, client_full, client_out
 from views import (baku_today, day_bounds, iso, material_out, materials_of, payment_line, shoot_core,
                    studio_balance, utc)
@@ -588,12 +588,20 @@ def client_detail(client_id: int, db: DB = Depends(get_db)):
     pids |= set(db.scalars(select(Package.id).where(Package.owner_client_id == c.id)))
     packages = [package_out(db, p) for p in db.scalars(select(Package).where(Package.id.in_(pids)).order_by(Package.id))]
     recent = db.scalars(select(Shoot).where(Shoot.client_id == c.id).order_by(Shoot.starts_at.desc()).limit(20)).all()
+    wa = _wa_link(db, c)
+    # İnsan kartının tarixçəsi (22 #11, #13): Inbox-da bu müştəriyə yazılmış daxili qeydlər
+    cond = ConversationEvent.client_id == c.id
+    if wa["conversation_id"]:
+        cond = cond | ((ConversationEvent.channel == events.WA) & (ConversationEvent.ref == str(wa["conversation_id"])))
+    notes = db.scalars(select(ConversationEvent).where(ConversationEvent.kind == events.NOTE, cond)
+                       .order_by(ConversationEvent.created_at.desc(), ConversationEvent.id.desc()).limit(100)).all()
     return {
         **client_full(db, c), "notes": c.notes, "deposit_required": c.deposit_required,
         "cashback_balance": booking.cashback_balance(db, c.id),
         "cashback_rows": [{"id": r.id, "kind": r.kind, "amount": r.amount, "note": r.note, "shoot_id": r.shoot_id,
                            "created_at": iso(r.created_at)} for r in ledger],
-        "packages": packages, "shoots": shoots_out(db, list(recent)), **_wa_link(db, c),
+        "packages": packages, "shoots": shoots_out(db, list(recent)), **wa,
+        "chat_notes": [events.out(e) for e in notes],
     }
 
 

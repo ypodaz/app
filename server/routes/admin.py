@@ -152,6 +152,29 @@ def add_client(body: ClientIn, db: DB = Depends(get_db)):
     return client_out(c)
 
 
+class ContactIn(BaseModel):
+    full_name: str = Field(min_length=2, max_length=120)
+    phone: str = Field(min_length=1, max_length=32)
+    note: str = Field(default="", max_length=2000)
+
+
+@router.post("/contacts")
+def add_contact(body: ContactIn, db: DB = Depends(get_db)):
+    """«Yeni kontakt yarat» (Inbox/axtarış, 99 G8): POST /clients kimi müştəri kartı yaradır, amma telefon məcburidir
+    və eyni nömrə (son 9 rəqəm) artıq kartdadırsa 409 + mövcud kartın id-si qaytarır. Müştəriyə mesaj getmir."""
+    name, phone = clean_name(body.full_name), clean_phone(body.phone)
+    tail = re.sub(r"\D", "", phone)[-9:]
+    if len(tail) < 7:
+        raise HTTPException(422, "Telefon nömrəsi düzgün deyil")
+    for c in db.scalars(select(Client).where(Client.phone != "")):
+        if re.sub(r"\D", "", c.phone)[-9:] == tail:
+            raise HTTPException(409, {"message": f"Bu nömrə artıq «{c.full_name}» kartındadır", "client_id": c.id})
+    c = Client(full_name=name, phone=phone, notes=body.note.strip(), card_code=new_card_code())
+    db.add(c)
+    db.commit()
+    return client_out(c)
+
+
 @router.patch("/clients/{client_id}")
 def edit_client(client_id: int, body: ClientEdit, db: DB = Depends(get_db), admin: Admin = Depends(current_admin)):
     """Ad, telefon, qeyd, profil, teqlər və dəvət edən; köhnə və yeni dəyər jurnala yazılır.
