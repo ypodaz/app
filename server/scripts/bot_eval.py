@@ -30,6 +30,7 @@ CRM_DIR = Path.home() / "Claude Projects/Biznes CRM"
 SCENARIOS = CRM_DIR / "tapsiriqlar/bot-ssenariler.json"
 OUT = CRM_DIR / "bot-sinaq.md"
 USD_PER_SCENARIO = 0.009  # təxmini: ~10.5k input × $0.75/1M + ~300 output × $3.75/1M (gemini-3.8-flash, 2026-11)
+USD_PER_SCENARIO_OPENAI = 0.0011  # ölçülüb 2026-11-13: 86 ssenari ≈ 771k input + 22k output (gpt-6-luna $0.10/$0.50)
 STOP_CODES = (402, 403, 429)  # 402: balans bitib
 
 EN_WORDS = {"the", "you", "your", "our", "we", "is", "are", "and", "to", "of", "hello", "hi", "studio", "located",
@@ -122,6 +123,18 @@ def esc(v: str, n: int = 300) -> str:
     return (v[:n] + "…" if len(v) > n else v).replace("|", "\\|")
 
 
+_oai_usage = [0, 0]
+
+
+def _openai_generate(system, contents, tools=None, max_tokens=900, json_mode=False):
+    out = ai._openai(system, contents, max_tokens, json_mode, "eval")
+    if not out:
+        raise ai.AiError("OpenAI cavab vermədi")
+    _oai_usage[0] += out["usage"][0]
+    _oai_usage[1] += out["usage"][1]
+    return out
+
+
 def parse_ids(spec: str) -> set[int]:
     out = set()
     for part in spec.split(","):
@@ -136,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limit", type=int)
     ap.add_argument("--ids", help="yalnız bu ssenarilər: 3,7,12-15")
     ap.add_argument("--full", action="store_true", help="bütün ssenarilər (real rejimdə xərclidir)")
+    ap.add_argument("--openai", action="store_true", help="Gemini yox, ehtiyat OpenAI modeli ilə (ai._openai)")
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--scenarios", type=Path, default=SCENARIOS)
     args = ap.parse_args(argv)
@@ -151,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     scenarios = scenarios[:args.limit] if args.limit else scenarios
     if not args.mock:
-        print(f"{len(scenarios)} ssenari, təxmini xərc ~${len(scenarios) * USD_PER_SCENARIO:.2f}")
+        print(f"{len(scenarios)} ssenari, təxmini xərc "
+              f"~${len(scenarios) * (USD_PER_SCENARIO_OPENAI if args.openai else USD_PER_SCENARIO):.2f}")
     global_bad = data.get("global_must_not_contain", [])
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
@@ -159,12 +174,15 @@ def main(argv: list[str] | None = None) -> int:
         print("GEMINI_API_KEY yoxdur")
         return 2
     orig_generate, orig_post = ai.generate, ai.httpx.post
-    ai.generate = mock_generate if args.mock else orig_generate
+    ai.generate = mock_generate if args.mock else _openai_generate if args.openai else orig_generate
     ai.httpx.post = orig_post if args.mock else _track_status(orig_post)
     try:
         return run(args, scenarios, data, global_bad, engine)
     finally:  # testlərdə sızmasın
         ai.generate, ai.httpx.post = orig_generate, orig_post
+        if args.openai:
+            i, o = _oai_usage
+            print(f"OpenAI: {i} input + {o} output token")
 
 
 def run(args, scenarios, data, global_bad, engine) -> int:
@@ -192,7 +210,7 @@ def run(args, scenarios, data, global_bad, engine) -> int:
 
     done = len(rows)
     lines = [f"# Bot sınağı (prompt v{bot_prompt.VERSION})", "",
-             f"Tarix: {datetime.now():%Y-%m-%d %H:%M}. Model: {'saxta (--mock)' if args.mock else settings.GEMINI_MODEL}. "
+             f"Tarix: {datetime.now():%Y-%m-%d %H:%M}. Model: {'saxta (--mock)' if args.mock else settings.OPENAI_FALLBACK_MODEL if args.openai else settings.GEMINI_MODEL}. "
              f"Ssenari: {done}/{len(data['scenarios'])}.", ""]
     if stopped:
         lines += [f"**⚠ {stopped}.**", ""]

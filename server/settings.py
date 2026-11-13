@@ -34,6 +34,8 @@ ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 # Faza 2: AI (Gemini) və Web Push
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")  # ehtiyat: Gemini işləməyəndə mətn cavabları
+OPENAI_FALLBACK_MODEL = os.environ.get("OPENAI_FALLBACK_MODEL", "gpt-6-luna")
 AI_DAILY_CLIENT_LIMIT = int(os.environ.get("AI_DAILY_CLIENT_LIMIT", "30"))
 AI_DAILY_GLOBAL_LIMIT = int(os.environ.get("AI_DAILY_GLOBAL_LIMIT", "500"))
 AI_DAILY_ADMIN_LIMIT = int(os.environ.get("AI_DAILY_ADMIN_LIMIT", "200"))

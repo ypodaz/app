@@ -4,6 +4,7 @@ Müştəri AI-ı heç nəyi dəyişə bilmir (aləti yoxdur). Admin köməkçisi
 yazan əməliyyatları isə yalnız TƏKLİF edir: admin ekranda «Təsdiqlə» basanda mövcud API çağırılır.
 """
 
+import logging
 import time
 from collections import defaultdict, deque
 from datetime import timedelta
@@ -21,6 +22,9 @@ from models import AiUsage, Client, Shoot
 from views import BAKU, baku_today, payment_line
 
 API = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+OPENAI_API = "https://api.openai.com/v1/chat/completions"
+FALLBACK_STATUS = (402, 429, 500, 502, 503, 504)  # balans, limit, Google tərəfində xəta
+log = logging.getLogger("ai")
 MAX_QUESTION = 1000
 WD = ["Bazar ertəsi", "Çərşənbə axşamı", "Çərşənbə", "Cümə axşamı", "Cümə", "Şənbə", "Bazar"]
 
@@ -87,11 +91,21 @@ def generate(system: str, contents: list[dict], tools: list[dict] | None = None,
         r = httpx.post(API.format(model=settings.GEMINI_MODEL), json=body, timeout=60,
                        headers={"x-goog-api-key": settings.GEMINI_API_KEY})
     except httpx.HTTPError as e:
+        out = None if tools else _openai(system, contents, max_tokens, json_mode, "əlaqə xətası")
+        if out:
+            return out
         raise AiError("AI ilə əlaqə alınmadı, bir az sonra yenidən yoxlayın") from e
     if r.status_code != 200:
-        if r.status_code == 402:  # prepay krediti bitib: bütün AI (bot, sosial, app) dayanır, sahibkar bilsin
-            alerts.notify("gemini-balance", topic="action", text="Gemini balansı bitib, bot cavab yaza bilmir. "
-                          "AI Studio → Billing-də krediti artırın: https://ai.studio/projects")
+        out = None
+        if r.status_code in FALLBACK_STATUS and not tools:
+            out = _openai(system, contents, max_tokens, json_mode, f"HTTP {r.status_code}")
+        if r.status_code == 402:  # prepay krediti bitib: sahibkar bilsin (ehtiyat işləsə də, işləməsə də)
+            alerts.notify("gemini-balance", topic="action", text=(
+                "Gemini balansı bitib. " + ("Bot hələlik ehtiyat modellə (OpenAI) cavab yazır. " if out else
+                                            "Bot cavab yaza bilmir. ")
+                + "AI Studio → Billing-də krediti artırın: https://ai.studio/projects"))
+        if out:
+            return out
         raise AiError("AI cavab vermədi, bir az sonra yenidən yoxlayın")
     data = r.json()
     cands = data.get("candidates") or []
@@ -100,6 +114,37 @@ def generate(system: str, contents: list[dict], tools: list[dict] | None = None,
     u = data.get("usageMetadata", {})
     return {"content": cands[0]["content"],
             "usage": (u.get("promptTokenCount", 0), u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0))}
+
+
+def _openai(system: str, contents: list[dict], max_tokens: int, json_mode: bool, why: str) -> dict | None:
+    """Ehtiyat: Gemini işləməyəndə eyni mətnli sorğu OpenAI-a gedir və Gemini formatında qaytarılır. Səs, şəkil və
+    alət (admin köməkçisi) sorğuları ehtiyata düşmür. Alınmasa None (çağıran tərəf adi xətanı qaldırır)."""
+    if not settings.OPENAI_API_KEY:
+        return None
+    msgs = [{"role": "system", "content": system}]
+    for c in contents:
+        parts = c.get("parts", [])
+        if any(set(p) - {"text", "thought", "thoughtSignature"} for p in parts):
+            return None
+        msgs.append({"role": "assistant" if c.get("role") == "model" else "user",
+                     "content": "".join(p.get("text", "") for p in parts if not p.get("thought"))})
+    body = {"model": settings.OPENAI_FALLBACK_MODEL, "messages": msgs, "reasoning_effort": "low",
+            "max_completion_tokens": max_tokens + 600}  # düşünmə tokenləri də bu limitə daxildir
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    try:
+        r = httpx.post(OPENAI_API, json=body, timeout=60, headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"})
+        data = r.json() if r.status_code == 200 else None
+        text = (data["choices"][0]["message"].get("content") or "").strip() if data else ""
+    except (httpx.HTTPError, ValueError, KeyError, IndexError):
+        data, text = None, ""
+    if not text:
+        log.warning("Gemini (%s) və OpenAI ehtiyatı alınmadı", why)
+        return None
+    log.warning("Gemini (%s): cavabı ehtiyat model %s yazdı", why, settings.OPENAI_FALLBACK_MODEL)
+    u = data.get("usage") or {}
+    return {"content": {"role": "model", "parts": [{"text": text}]},
+            "usage": (u.get("prompt_tokens", 0), u.get("completion_tokens", 0)), "fallback": True}
 
 
 def text_of(content: dict) -> str:

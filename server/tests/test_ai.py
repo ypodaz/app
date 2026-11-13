@@ -171,6 +171,7 @@ def test_assistant_extras_on_create_and_edit(api, gemini):
 def test_402_alerts_owner_once(monkeypatch):
     import alerts
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "test")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
     sent = []
     monkeypatch.setattr(alerts, "notify", lambda key, text, topic="server": sent.append((key, topic, text)) or True)
     monkeypatch.setattr(ai.httpx, "post", lambda *a, **k: type("R", (), {"status_code": 402})())
@@ -178,3 +179,50 @@ def test_402_alerts_owner_once(monkeypatch):
         ai.generate("s", [{"role": "user", "parts": [{"text": "salam"}]}])
     assert "balans" not in str(e.value)  # müştəri app-ında daxili səbəb görünmür
     assert sent and sent[0][0] == "gemini-balance" and sent[0][1] == "action" and "balansı bitib" in sent[0][2]
+
+
+def _r(code, body=None):
+    return type("R", (), {"status_code": code, "json": lambda _s: body or {}})()
+
+
+@pytest.fixture()
+def fallback(monkeypatch):
+    """Gemini 402 qaytarır, OpenAI saxta cavab verir (heç bir real sorğu getmir)."""
+    import alerts
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "test")
+    calls, sent = [], []
+    monkeypatch.setattr(alerts, "notify", lambda key, text, topic="server": sent.append((key, text)) or True)
+
+    def post(url, json=None, timeout=None, headers=None):
+        calls.append((url, json))
+        if url.startswith(ai.OPENAI_API):
+            return _r(200, {"choices": [{"message": {"content": '{"reply": "Salam"}'}}],
+                            "usage": {"prompt_tokens": 50, "completion_tokens": 7}})
+        return _r(402)
+    monkeypatch.setattr(ai.httpx, "post", post)
+    return calls, sent
+
+
+def test_402_falls_back_to_openai(fallback):
+    calls, sent = fallback
+    out = ai.generate("sistem", [{"role": "user", "parts": [{"text": "salam"}]},
+                                 {"role": "model", "parts": [{"text": "buyurun"}]},
+                                 {"role": "user", "parts": [{"text": "qiymət?"}]}], json_mode=True)
+    assert ai.text_of(out["content"]) == '{"reply": "Salam"}' and out["usage"] == (50, 7)
+    body = calls[-1][1]
+    assert [m["role"] for m in body["messages"]] == ["system", "user", "assistant", "user"]
+    assert body["response_format"] == {"type": "json_object"} and body["model"] == settings.OPENAI_FALLBACK_MODEL
+    assert sent[0][0] == "gemini-balance" and "ehtiyat" in sent[0][1]
+
+
+def test_no_fallback_for_tools_audio_or_without_key(fallback, monkeypatch):
+    calls, _ = fallback
+    with pytest.raises(ai.AiError):  # admin köməkçisi (alətlər)
+        ai.generate("s", [{"role": "user", "parts": [{"text": "x"}]}], tools=[{"name": "t"}])
+    with pytest.raises(ai.AiError):  # səsli mesaj
+        ai.generate("s", [{"role": "user", "parts": [{"inlineData": {"mimeType": "audio/ogg", "data": "AA"}}]}])
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "")
+    with pytest.raises(ai.AiError):
+        ai.generate("s", [{"role": "user", "parts": [{"text": "x"}]}])
+    assert not any(u.startswith(ai.OPENAI_API) for u, _ in calls)
