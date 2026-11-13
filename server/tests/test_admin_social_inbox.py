@@ -243,3 +243,34 @@ def test_dm_friend_toggle(api, net):
     assert rows["dm:instagram:777"]["friend"] is True and rows["dm:instagram:777"]["pending"] == 0
     assert api.get(f"{BASE}/dm/777", headers=tok).json()["friend"] is True
     assert api.post(f"{BASE}/dm/777/friend", json={"friend": False}, headers=tok).json() == {"friend": False}
+
+
+def test_send_deleted_comment_closes_item(api, net):
+    """«Cavabla» silinmiş kommentdə (kod 100/33) 502 yox, element bağlanır; başqa xəta 502 qalır."""
+    tok = bearer(admin_token(api))
+    iid = mk(kind="comment", thread="media9", parent_id="c9")
+    net.ig_error = {"message": "Object does not exist", "code": 100, "error_subcode": 33}
+    r = api.post(f"{BASE}/items/{iid}/send", json={}, headers=tok)
+    assert r.status_code == 200 and r.json()["gone"] is True and r.json()["status"] == "ignored"
+    net.ig_error = {"message": "Rate limit", "code": 4}
+    other = mk(kind="comment", thread="media9", parent_id="c10")
+    assert api.post(f"{BASE}/items/{other}/send", json={}, headers=tok).status_code == 502
+    assert get(other).status == "pending"
+
+
+def test_dm_park(api, net):
+    """IG DM «Cavab gözləyirəm» / «Arxivə at»: qaralama rədd, wait → owner, siyahıda və söhbətdə `park`, null geri qaytarır."""
+    tok = bearer(admin_token(api))
+    iid = mk(thread="666")
+    assert api.post(f"{BASE}/dm/999/park", json={"to": "theirs"}, headers=tok).status_code == 404
+    api.post(f"{BASE}/dm/666/mode", json={"mode": "wait"}, headers=tok)
+    r = api.post(f"{BASE}/dm/666/park", json={"to": "theirs"}, headers=tok).json()
+    assert r["park"]["to"] == "theirs" and r["park"]["at"]
+    assert get(iid).status == "rejected"
+    rows = {t["key"]: t for t in api.get(BASE, headers=tok).json()["threads"]}
+    assert rows["dm:instagram:666"]["park"]["to"] == "theirs" and rows["dm:instagram:666"]["mode"] == "owner"
+    assert api.get(f"{BASE}/dm/666", headers=tok).json()["park"]["to"] == "theirs"
+    assert api.post(f"{BASE}/dm/666/park", json={"to": "archive"}, headers=tok).json()["park"]["to"] == "archive"
+    assert api.post(f"{BASE}/dm/666/park", json={"to": None}, headers=tok).json() == {"park": None}
+    rows = {t["key"]: t for t in api.get(BASE, headers=tok).json()["threads"]}
+    assert rows["dm:instagram:666"]["park"] is None

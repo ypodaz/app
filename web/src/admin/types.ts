@@ -24,7 +24,7 @@ export type Material = { id: number; title: string; drive_url: string };
 export type Extra = { name: string; amount: number };
 
 export type Shoot = {
-  id: number; client_id: number; client_name: string | null; package_id: number | null;
+  id: number; client_id: number; client_name: string | null; client_phone?: string | null; package_id: number | null;
   starts_at: string; duration_min: number; kind: Kind; tag: Tag; location: Location; address: string | null;
   cameras: number; editing: boolean; reels_count: number; title: string | null; status: ShootStatus;
   production: Production; delivery_on: string | null;
@@ -56,6 +56,7 @@ export type LedgerRow = { id: number; kind: 'earn' | 'earn_first' | 'spend' | 's
 export type ClientDetail = Client & {
   notes: string | null; deposit_required: boolean; cashback_balance: number;
   cashback_rows: LedgerRow[]; packages: Package[]; shoots: Shoot[];
+  conversation_id: number | null; wa_contact: { id: number; excluded: boolean } | null;
 };
 
 export type AppUsage = { clients: number; joined: number; home_screen: number; push_on: number; active_7d: number };

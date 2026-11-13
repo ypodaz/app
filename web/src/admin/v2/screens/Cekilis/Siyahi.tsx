@@ -27,9 +27,10 @@ export function Siyahi() {
 
   const list = useMemo(() => {
     const t = text.trim().toLowerCase();
-    // TODO [API] telefona görə axtarış: Shoot-da telefon sahəsi yoxdur, yalnız ada görə axtarılır.
+    const digits = t.replace(/\D/g, '');
     return (q.data ?? [])
-      .filter((s) => (t ? (s.client_name ?? '').toLowerCase().includes(t) : true))
+      .filter((s) => (t ? (s.client_name ?? '').toLowerCase().includes(t)
+        || (digits.length >= 3 && (s.client_phone ?? '').replace(/\D/g, '').includes(digits)) : true))
       .filter((s) => {
         const st = shootStatus(s, now);
         if (f === 'all') return true;
@@ -47,7 +48,7 @@ export function Siyahi() {
     <>
       <CekHead tab="siyahi" sub={q.data ? <><b className="mono">{list.length}</b> çəkiliş</> : undefined} />
       <div className="ck-filters">
-        <TextInput type="search" aria-label="Müştəri adına görə axtar" placeholder="Müştəri adı" value={text} onChange={(e) => { setText(e.target.value); setLim(PAGE); }} />
+        <TextInput type="search" aria-label="Müştəri adına və ya telefona görə axtar" placeholder="Müştəri adı və ya telefon" value={text} onChange={(e) => { setText(e.target.value); setLim(PAGE); }} />
         <Segmented<F> label="Status süzgəci" value={f} onChange={(v) => { setF(v); setLim(PAGE); }} options={FILTERS} />
       </div>
       {q.err ? <ErrorBox title="Siyahı yüklənmədi" detail={q.err} onRetry={q.reload} />

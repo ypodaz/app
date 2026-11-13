@@ -16,8 +16,9 @@ import growth
 import money
 import subscriptions
 from auth import current_admin
+from crm import chat
 from db import get_db, now
-from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot, SubscriptionPayment
+from models import Admin, Block, CashbackLedger, Client, Material, Package, PackageMember, PushSubscription, Shoot, SubscriptionPayment, WaContact, WaConversation
 from routes.admin import blank_to_none, client_full, client_out
 from views import (baku_today, day_bounds, iso, material_out, materials_of, payment_line, shoot_core,
                    studio_balance, utc)
@@ -159,10 +160,12 @@ def get_open_shoot(db: DB, shoot_id: int) -> Shoot:
 
 
 def shoots_out(db: DB, shoots: list[Shoot]) -> list[dict]:
-    names = {c.id: c.full_name for c in db.scalars(select(Client).where(Client.id.in_({s.client_id for s in shoots})))}
+    clients = {c.id: c for c in db.scalars(select(Client).where(Client.id.in_({s.client_id for s in shoots})))}
+    names = {i: c.full_name for i, c in clients.items()}
     mats = materials_of(db, [s.id for s in shoots])
     return [{
         **shoot_core(s), "client_id": s.client_id, "client_name": names.get(s.client_id),
+        "client_phone": clients[s.client_id].phone if s.client_id in clients else None,
         "note": s.note, "source_note": s.source_note, "cashback_used": s.cashback_used,
         "deposit_expected": s.deposit_expected, "deposit_amount": s.deposit_amount,
         "deposit_received_at": iso(s.deposit_received_at), "deposit_waived": s.deposit_waived,
@@ -437,6 +440,19 @@ def package_quote(hours: int, cameras: int):
     return {"price": prices[cameras], "months": months}
 
 
+@router.get("/price-list")
+def price_list():
+    """Qiymət cədvəli (yalnız oxu), hamısı money.py-dən. Məbləğlər qəpiklə."""
+    return {
+        "shoot_per_hour": money.SHOOT_PER_HOUR,
+        "studio_rent": {h: money.studio_rent_price(h * 60) for h in (1, 2, 3)},
+        "reels_pack": money.REELS_PACK,
+        "editing": money.EDITING,
+        "reel": money.REEL,
+        "extra_camera_per_hour": money.EXTRA_CAMERA_PER_HOUR,
+    }
+
+
 @router.get("/packages")
 def list_packages(db: DB = Depends(get_db)):
     return [package_out(db, p) for p in db.scalars(select(Package).order_by(Package.ends_on, Package.id))]
@@ -553,6 +569,14 @@ def delete_manual_cashback(row_id: int, db: DB = Depends(get_db), admin: Admin =
     return {"balance": booking.cashback_balance(db, client_id)}
 
 
+def _wa_link(db: DB, c: Client) -> dict:
+    """Müştərinin WhatsApp kontaktı və söhbəti (telefonun son 9 rəqəmi, Inbox-un _client_card-ının tərsi)."""
+    tail = chat.digits(c.phone)[-9:]
+    ct = next((w for w in db.scalars(select(WaContact).where(WaContact.phone.is_not(None))) if chat.digits(w.phone)[-9:] == tail), None) if len(tail) >= 7 else None
+    conv_id = db.scalar(select(WaConversation.id).where(WaConversation.contact_id == ct.id).order_by(WaConversation.id.desc())) if ct else None
+    return {"conversation_id": conv_id, "wa_contact": {"id": ct.id, "excluded": ct.excluded} if ct else None}
+
+
 @router.get("/clients/{client_id}")
 def client_detail(client_id: int, db: DB = Depends(get_db)):
     c = db.get(Client, client_id)
@@ -569,7 +593,7 @@ def client_detail(client_id: int, db: DB = Depends(get_db)):
         "cashback_balance": booking.cashback_balance(db, c.id),
         "cashback_rows": [{"id": r.id, "kind": r.kind, "amount": r.amount, "note": r.note, "shoot_id": r.shoot_id,
                            "created_at": iso(r.created_at)} for r in ledger],
-        "packages": packages, "shoots": shoots_out(db, list(recent)),
+        "packages": packages, "shoots": shoots_out(db, list(recent)), **_wa_link(db, c),
     }
 
 
@@ -608,14 +632,8 @@ def _month(month: str) -> tuple[datetime, datetime]:
     return day_bounds(first)[0], day_bounds(booking.add_months(first, 1))[0]
 
 
-@router.get("/report")
-def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db)):
-    """Aylıq hesabat. «Kassa» = həmin ay əldə olan pul (beh, studiyada ödəniş, paket satışı, geri qaytarılan çıxılır);
-    «çəkilişlər» = həmin ay keçirilən çəkilişlər (başlama tarixinə görə)."""
-    a, b = _month(month)
-    shoots = db.scalars(select(Shoot).where(Shoot.starts_at >= a, Shoot.starts_at < b)).all()
-    done = [s for s in shoots if s.status == "completed"]
-
+def _cash(db: DB, a: datetime, b: datetime) -> dict:
+    """[a, b) aralığında əldə olan pul (Kassa). «pkgs» daxili sahədir, çağıran çıxarır."""
     def total(col, when):
         return sum(getattr(s, col) for s in db.scalars(select(Shoot).where(when >= a, when < b)))
 
@@ -625,6 +643,35 @@ def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db
     pkgs = db.scalars(select(Package).where(Package.created_at >= a, Package.created_at < b)).all()
     subs = sum(p.amount for p in db.scalars(select(SubscriptionPayment).where(
         SubscriptionPayment.status == "paid", SubscriptionPayment.paid_at >= a, SubscriptionPayment.paid_at < b)))
+    pk = sum(p.price_paid for p in pkgs)
+    return {"deposits": deposits, "at_studio": at_studio, "packages": pk, "subscriptions": subs, "refunds": refunds,
+            "net": deposits + at_studio + pk + subs - refunds, "pkgs": pkgs}
+
+
+def _compare(db: DB, month: str) -> dict:
+    """Cari ay üçün «keçən ayın eyni günləri»: 1..bu günə qədər olan xalis pul əvvəlki ayın eyni sayda günü ilə
+    (əvvəlki ay qısadırsa, onun sonuna qədər). Bitmiş ay üçün həm ay, həm əvvəlki ay tam götürülür."""
+    first = date(int(month[:4]), int(month[5:]), 1)
+    prev_first = booking.add_months(first, -1)
+    a, b = day_bounds(first)[0], day_bounds(booking.add_months(first, 1))[0]
+    pa, pb = day_bounds(prev_first)[0], day_bounds(first)[0]
+    today = baku_today()
+    days = today.day if (today.year, today.month) == (first.year, first.month) else (b - a).days
+    cur_end = min(b, day_bounds(first + timedelta(days=days))[0])
+    prev_end = min(pb, day_bounds(prev_first + timedelta(days=days))[0])
+    return {"days": days, "net": _cash(db, a, cur_end)["net"], "prev_net": _cash(db, pa, prev_end)["net"]}
+
+
+@router.get("/report")
+def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db)):
+    """Aylıq hesabat. «Kassa» = həmin ay əldə olan pul (beh, studiyada ödəniş, paket satışı, geri qaytarılan çıxılır);
+    «çəkilişlər» = həmin ay keçirilən çəkilişlər (başlama tarixinə görə)."""
+    a, b = _month(month)
+    shoots = db.scalars(select(Shoot).where(Shoot.starts_at >= a, Shoot.starts_at < b)).all()
+    done = [s for s in shoots if s.status == "completed"]
+
+    cash = _cash(db, a, b)
+    pkgs = cash.pop("pkgs")
     ledger = db.scalars(select(CashbackLedger).where(CashbackLedger.created_at < b)).all()
     in_month = [r for r in ledger if utc(r.created_at) >= a]
     by_kind = {}
@@ -635,9 +682,8 @@ def report(month: str = Query(pattern=r"^\d{4}-\d{2}$"), db: DB = Depends(get_db
         k["total"] += s.total
     return {
         "month": month,
-        "cash": {"deposits": deposits, "at_studio": at_studio, "packages": sum(p.price_paid for p in pkgs),
-                 "subscriptions": subs, "refunds": refunds,
-                 "net": deposits + at_studio + sum(p.price_paid for p in pkgs) + subs - refunds},
+        "cash": cash,
+        "compare": _compare(db, month),
         "shoots": {"completed": len(done), "cancelled": sum(s.status == "cancelled" for s in shoots),
                    "no_show": sum(s.status == "no_show" for s in shoots),
                    "upcoming": sum(s.status == "confirmed" for s in shoots),

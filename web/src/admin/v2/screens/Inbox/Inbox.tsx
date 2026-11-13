@@ -46,7 +46,10 @@ export function Inbox({ id, social }: { id?: number; social?: SocialSel }) {
   const firstId = convs && (kanal === 'hamisi' || kanal === 'whatsapp') ? sortGroup(convs.filter((c) => groupOf(c, botOn) === 'you'), 'you', botOn)[0]?.id : undefined;
   // «Sizi gözləyir» yığılıbsa (ConvList, ypod.v2.inbox.closed) avtomatik açılmır: sahibkar son yazışmalara baxmaq istəyir.
   const youClosed = (() => { try { return !!JSON.parse(localStorage.getItem('ypod.v2.inbox.closed') ?? '{}').you; } catch { return false; } })();
-  useEffect(() => { if (wide && !open && firstId && !youClosed) location.replace(`#/inbox/${firstId}`); }, [wide, open, firstId, youClosed]);
+  // Söhbət bir dəfə açılıbsa geri qayıdanda yenidən avtomatik açılmır («Oxunmamış et» söhbəti dərhal geri açmasın).
+  const opened = useRef(false);
+  if (open) opened.current = true;
+  useEffect(() => { if (wide && !open && firstId && !youClosed && !opened.current) location.replace(`#/inbox/${firstId}`); }, [wide, open, firstId, youClosed]);
 
   // J/K: növbəti/əvvəlki söhbət; /: axtarış.
   const keyRef = useRef<(e: KeyboardEvent) => void>();

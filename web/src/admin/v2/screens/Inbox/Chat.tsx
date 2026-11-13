@@ -59,6 +59,8 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const data = conv.data?.id === id ? conv.data : null;
 
   const [menu, setMenu] = useState(false);
+  const [more, setMore] = useState(false); // ⋯ menyusu
+  const moreRef = useRef<HTMLDivElement>(null);
   const [modeOv, setModeOv] = useState<ConvMode | null>(null);
   const [exclOv, setExclOv] = useState<boolean | null>(null);
   const [parkOv, setParkOv] = useState<Park['to'] | null | undefined>(undefined); // undefined: serverdəki kimi
@@ -84,6 +86,27 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   const lastMsg = data?.messages[data.messages.length - 1] ?? null;
   const parked = parkOv !== undefined ? parkOv : data ? parkOf({ park: data.park, pending_drafts: data.drafts.filter((d) => d.status === 'pending').length,
     last_message: lastMsg, last_message_at: lastMsg?.created_at ?? null }) : null;
+
+  useEffect(() => {
+    if (!more) return;
+    const onDown = (e: MouseEvent) => { if (!moreRef.current?.contains(e.target as Node)) setMore(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMore(false); };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [more]);
+
+  /** «Oxunmamış et»: söhbət açıq qalsa GET yenə oxunmuş edərdi, ona görə siyahıya çıxırıq. */
+  async function markUnread() {
+    setMore(false);
+    try {
+      await call(`/inbox/${id}/unread`, { method: 'POST' });
+      onChanged();
+      onBack();
+    } catch (e) {
+      toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void markUnread() });
+    }
+  }
 
   async function apiMode(m: ConvMode) { await call(`/inbox/${id}/mode`, { method: 'POST', body: { mode: m } }); }
 
@@ -178,6 +201,7 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
   };
   useEffect(() => { const on = (e: KeyboardEvent) => keyRef.current?.(e); window.addEventListener('keydown', on); return () => window.removeEventListener('keydown', on); }, []);
 
+  const humanHref = data?.client ? `#/insanlar/${data.client.id}` : data?.lead ? `#/insanlar/lead-${data.lead.id}` : '';
   const head = (
     <header className="ibh">
       <button type="button" className="ibh__back" aria-label="Geri" onClick={onBack}><V2Icon name="back" size={20} /></button>
@@ -189,7 +213,17 @@ export function Chat({ id, botOn, onChanged, onBack }: Props) {
             <p className="ibh__meta">{(data.contact.name || '').trim() && <span className="ibh__ph"><span className="mono">{phoneLabel(data.contact.phone)}</span> · </span>}WhatsApp{data.lead && <span className="ibh__lead"> · lead · {stageName(data.lead.stage)}</span>}</p>
           </div>
           <ModeChip current={mode} friend={excluded} open={menu} setOpen={setMenu} disabled={!online} onPick={(m) => void pickMode(m)} />
-          {/* TODO [API] «Daha çox» (⋯) menyusu: «İnsan kartını aç» (kontaktdan müştəri id-si yoxdur), «Oxunmamış et» (endpoint yoxdur). */}
+          <div className="ibm ibm--more" ref={moreRef}>
+            <button type="button" className="ibh__more" aria-haspopup="menu" aria-expanded={more} aria-label="Daha çox" disabled={!online} onClick={() => setMore(!more)}><IbIcon name="more" size={18} /></button>
+            {more && (
+              <div className="ibm__pop ibm__pop--sm">
+                <div role="menu" aria-label="Daha çox" className="ibm__list">
+                  {humanHref && <a role="menuitem" className="ibm__item" href={humanHref} onClick={() => setMore(false)}><span className="ibm__t">İnsan kartını aç</span></a>}
+                  <button type="button" role="menuitem" className="ibm__item" onClick={() => void markUnread()}><span className="ibm__t">Oxunmamış et</span></button>
+                </div>
+              </div>
+            )}
+          </div>
         </>
       ) : <span className="ibh__name">Söhbət</span>}
     </header>

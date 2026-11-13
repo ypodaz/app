@@ -94,3 +94,32 @@ def test_ig_friend_button_and_skip(api, crm_env):  # noqa: F811
 def test_ig_comment_has_no_friend_button(api):  # noqa: F811
     item = SocialItem(id=1, channel="instagram", kind="comment", external_id="c", thread_id="media", text="x")
     assert len(social_tg._buttons(item)["inline_keyboard"]) == 1
+
+
+def test_unread_endpoint_keeps_conversation_unread(api, crm_env):  # noqa: F811
+    from test_auth import admin_token, bearer
+    adm = bearer(admin_token(api))
+    _, conv_id = mk_conv(phone="994500000101")
+    api.get(f"/api/admin/inbox/{conv_id}", headers=adm)  # açanda 0 olur
+    r = api.post(f"/api/admin/inbox/{conv_id}/unread", headers=adm)
+    assert r.json() == {"id": conv_id, "unread": 1}
+    assert api.post(f"/api/admin/inbox/{conv_id}/unread", headers=adm).json()["unread"] == 1  # artmır
+    assert api.post("/api/admin/inbox/9999/unread", headers=adm).status_code == 404
+
+
+def test_client_detail_links_conversation_and_contact(api, crm_env):  # noqa: F811
+    from test_auth import admin_token, bearer
+    from models import Client
+    adm = bearer(admin_token(api))
+    with SessionLocal() as db:
+        c = Client(full_name="Test Müştəri", phone="050 000 01 02", card_code="TST00102")
+        lone = Client(full_name="Tək Müştəri", phone="050 000 09 99", card_code="TST00999")
+        db.add_all([c, lone])
+        db.commit()
+        cid, lone_id = c.id, lone.id
+    ct_id, conv_id = mk_conv(phone="994500000102")
+    assert api.post(f"/api/admin/contacts/{ct_id}/exclude", json={"excluded": True}, headers=adm).status_code == 200
+    d = api.get(f"/api/admin/clients/{cid}", headers=adm).json()
+    assert d["conversation_id"] == conv_id and d["wa_contact"] == {"id": ct_id, "excluded": True}
+    d = api.get(f"/api/admin/clients/{lone_id}", headers=adm).json()
+    assert d["conversation_id"] is None and d["wa_contact"] is None

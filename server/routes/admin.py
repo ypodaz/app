@@ -225,3 +225,19 @@ def invite(client_id: int, db: DB = Depends(get_db)):
 @router.get("/whoami")
 def whoami(admin: Admin = Depends(current_admin)):
     return {"name": admin.name}
+
+
+@router.get("/connections")
+def connections():
+    """Xidmət qoşulmalarının vəziyyəti: yalnız «quraşdırılıb/yox». Açarın özü heç vaxt qaytarılmır, şəbəkə sorğusu yoxdur."""
+    return {
+        "whatsapp": bool(settings.KAPSO_API_KEY),
+        "telegram": bool(settings.TG_BOT_TOKEN),
+        "instagram": bool(settings.IG_ACCESS_TOKEN),
+        "facebook": bool(settings.FB_PAGE_TOKEN),
+        "buffer": bool(settings.BUFFER_API_KEY),
+        "youtube": bool(settings.YT_REFRESH_TOKEN),
+        "gemini": bool(settings.GEMINI_API_KEY),
+        "r2": bool(settings.R2_PUBLIC_BASE_URL),
+        "push": bool(settings.VAPID_PRIVATE_KEY),
+    }

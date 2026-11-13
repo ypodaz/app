@@ -9,6 +9,8 @@ import type { Settings } from './Bot';
 import './tenzimleme.css';
 
 type Feed = { enabled: boolean; path: string | null };
+type Conn = Record<'whatsapp' | 'telegram' | 'instagram' | 'facebook' | 'buffer' | 'youtube' | 'gemini' | 'r2' | 'push', boolean>;
+const CONN: [keyof Conn, string][] = [['telegram', 'Telegram'], ['instagram', 'Instagram'], ['facebook', 'Facebook səhifəsi'], ['youtube', 'YouTube'], ['gemini', 'Google (Gemini)'], ['r2', 'Cloudflare R2'], ['push', 'Push bildirişləri']];
 type Info = { channels: { service: string; queue_paused: boolean | null }[] | { error: string } | null };
 
 /** Hesab (35-hesab-giris.md). Route: /tenzimleme/hesab. Köhnə Panel-dəki «App istifadəsi» burada saxlanır. */
@@ -20,6 +22,7 @@ export function Hesab() {
   const bot = useLoad<Settings>('/bot/settings');
   const [out, setOut] = useState(false);
   const feed = useLoad<Feed>('/calendar-feed');
+  const conn = useLoad<Conn>('/connections');
   const [copied, setCopied] = useState('');
   async function copyFeed() {
     if (!feed.data?.path) return;
@@ -55,7 +58,10 @@ export function Hesab() {
             <div className="hs-kv"><span><b>Apple təqvimi (app çəkilişləri)</b>
               <span className="tz-sub">{copied ? copied : feed.data ? (feed.data.enabled ? 'iPhone: Təqvim → Abunə təqvimi əlavə et' : 'Qoşulmayıb') : feed.err ? 'Yüklənmədi' : '…'}</span></span>
               <Button size="row" variant="text" disabled={!feed.data?.enabled} onClick={copyFeed}>Təqvim linkini kopyala</Button></div>
-            {/* TODO [API] Meta/Instagram, Telegram, Google, Resend, Railway/R2 qoşulma vəziyyəti, son sinxron: yalnız Kapso sayı və Buffer kanalları gəlir. */}
+            {CONN.map(([k, label]) => (
+              <div key={k} className="hs-kv"><span><b>{label}</b></span>
+                {conn.data ? <Chip tone={conn.data[k] ? 'done' : 'neutral'}>{conn.data[k] ? 'Qoşulub' : 'Qoşulmayıb'}</Chip> : <span className="tz-sub">{conn.err ? 'Yüklənmədi' : '…'}</span>}</div>
+            ))}
           </Card>
         </div>
         <Card title="App istifadəsi" aside={<span className="tz-aside">müştəri app-ı</span>}>

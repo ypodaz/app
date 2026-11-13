@@ -36,7 +36,7 @@ const UNDO_MS = 5000; // 99 G2
 type DmMsg = { key: string; role: 'in' | 'bot' | 'you'; text: string; at: string };
 type DmOpen = {
   thread_id: string; author: string; mode: SocialMode; window_open: boolean; window_expires_at: string | null; lead_id: number | null;
-  messages: DmMsg[]; pending: SocialItem[]; friend?: boolean;
+  messages: DmMsg[]; pending: SocialItem[]; friend?: boolean; park?: { to: 'theirs' | 'archive'; at: string } | null;
 };
 type PostOpen = {
   channel: 'instagram' | 'youtube'; thread_id: string; comment_mode: 'auto' | 'draft'; items: SocialItem[];
@@ -81,6 +81,8 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
   useEffect(() => { setModeOv(null); }, [data?.mode]);
   const [friendOv, setFriendOv] = useState<boolean | null>(null);
   useEffect(() => { setFriendOv(null); }, [data?.friend]);
+  const [parkOv, setParkOv] = useState<'theirs' | 'archive' | null | undefined>(undefined); // undefined: serverdəki kimi
+  useEffect(() => { setParkOv(undefined); }, [data?.park]);
   const endRef = useRef<HTMLDivElement>(null);
   const n = data?.messages.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [n]);
@@ -130,6 +132,22 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
     } catch (e) { setFriendOv(null); toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void setFriend(v) }); }
   }
 
+  /** «Cavab gözləyirəm» / «Arxivə at»: WhatsApp-dakı (Chat.tsx park) kimi; müştəri yazanda söhbət «Sizi gözləyir»ə qayıdır. */
+  async function park(to: 'theirs' | 'archive' | null) {
+    const prev = parked;
+    setParkOv(to);
+    const send = (v: 'theirs' | 'archive' | null) => call(`/social-inbox/dm/${encodeURIComponent(thread)}/park`, { method: 'POST', body: { to: v } });
+    try {
+      await send(to);
+      refresh();
+      const msg = to === 'theirs' ? '«Müştəridən cavab gözləyirik»ə keçdi' : to === 'archive' ? 'Arxivə atıldı · müştəri yazanda geri qayıdır' : 'Geri qaytarıldı';
+      toast.show(msg, to ? { undo: () => { setParkOv(prev); void send(prev).then(refresh); } } : undefined);
+    } catch (e) {
+      setParkOv(undefined);
+      toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void park(to) });
+    }
+  }
+
   async function pickMode(m: SocialMode) {
     if (!data) return;
     const prev = modeOv ?? data.mode;
@@ -156,6 +174,9 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
   const mode = modeOv ?? data.mode;
   const meta = MODE_META[mode];
   const friend = friendOv ?? data.friend ?? false;
+  const lastIn = data.messages[data.messages.length - 1];
+  const parked = parkOv !== undefined ? parkOv
+    : data.park && data.pending.length === 0 && !(lastIn?.role === 'in' && new Date(lastIn.at).getTime() > new Date(data.park.at).getTime()) ? data.park.to : null;
   const autoMin = draftItem?.auto_at ? Math.max(1, Math.ceil((msOf(draftItem.auto_at) - Date.now()) / 60_000)) : 0;
   const note = autoMin ? `${autoMin} dəq sonra bot özü göndərəcək` : mode === 'wait' ? 'Siz baxana qədər gözləyir' : 'Siz göndərənə qədər gözləyir';
   const noDraftPending = data.pending.some((i) => !i.draft_text);
@@ -167,9 +188,19 @@ export function DmChat({ thread, onChanged, onBack }: DmProps) {
           <LeadButton itemId={data.pending[0]?.id ?? lastId(data)} leadId={data.lead_id} who={name} onDone={refresh} />
           <ModeChip current={mode} friend={friend} modes={IG_MODES} open={menu} setOpen={setMenu} disabled={!online} onPick={(m) => void pickMode(m as SocialMode)} />
         </Head>
-        <div className={`ibs ibs--${friend ? 'park' : mode}`}>
-          <span className="ibs__txt" role="status">{friend ? <><b>Dost</b><span> · bot bu söhbətə yazmır</span></> : <><b>{meta.label}</b><span> · {meta.hint}</span></>}</span>
-          <span className="ibs__acts"><FriendSwitch on={friend} disabled={!online} onChange={(v) => void setFriend(v)} /></span>
+        <div className={`ibs ibs--${friend || parked ? 'park' : mode}`}>
+          <span className="ibs__txt" role="status">{friend ? <><b>Dost</b><span> · bot bu söhbətə yazmır</span></>
+            : parked ? <><b>{parked === 'archive' ? 'Arxivdə' : 'Müştəridən cavab gözləyirik'}</b><span> · müştəri yazanda «Sizi gözləyir»ə qayıdır</span></>
+            : <><b>{meta.label}</b><span> · {meta.hint}</span></>}</span>
+          <span className="ibs__acts">
+            <FriendSwitch on={friend} disabled={!online} onChange={(v) => void setFriend(v)} />
+            {!friend && (parked
+              ? <button type="button" className="ibs__btn" disabled={!online} onClick={() => void park(null)}>Geri qaytar</button>
+              : <>
+                <button type="button" className="ibs__btn" disabled={!online} title="Zənglə danışdınız və ya cavab gözləyirsiniz" onClick={() => void park('theirs')}>Cavab gözləyirəm</button>
+                <button type="button" className="ibs__btn" disabled={!online} title="Söhbət bitib: siyahıdan gizlənir" onClick={() => void park('archive')}>Arxivə at</button>
+              </>)}
+          </span>
         </div>
         {!data.window_open && <div className="ib__warn" role="status">24 saat keçib · müştəri yazmayınca Instagram cavaba icazə vermir</div>}
         <div className="ibt" tabIndex={-1}>

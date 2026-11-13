@@ -3,7 +3,7 @@ import { formatHours, formatMoney } from '../../../../shared/ui';
 import { ProfileSheet } from '../../../components/ProfileSheet';
 import { sourceName } from '../../../components/common';
 import { lostLabel, serviceLabel } from '../../../components/crm';
-import { useLoad } from '../../../ctx';
+import { errMsg, useAuth, useLoad } from '../../../ctx';
 import { appLine, bakuParts, dateFull, dateShort } from '../../../format';
 import { goBack } from '../../../router';
 import type { ClientDetail, LedgerRow } from '../../../types';
@@ -11,7 +11,8 @@ import { shootStatus } from '../../data/status';
 import { ddmmTime } from '../../data/time';
 import { shootLabel } from '../Today/helpers';
 import { PageHeader } from '../../shell/PageHeader';
-import { Avatar, Button, Card, Chip, EmptyState, ErrorBox, LoadingRows, Segmented, StatusChip, V2Icon, useAfter, useOnline } from '../../ui';
+import { Avatar, Button, Card, Chip, EmptyState, ErrorBox, LoadingRows, Segmented, StatusChip, V2Icon, useAfter, useOnline, useToast } from '../../ui';
+import { FriendSwitch } from '../Inbox/Composer';
 import { CashbackDialog, CashbackRowDialog, EditClientDialog, InviteDialog } from './CardDialogs';
 import { LostDialog, RemindDialog } from './Dialogs';
 import { StageChip } from './LeadViews';
@@ -57,8 +58,11 @@ function KV({ label, children }: { label: string; children: ReactNode }) {
 export function ClientCardV2({ id }: { id: number }) {
   const detail = useLoad<ClientDetail>(`/clients/${id}`);
   const online = useOnline();
+  const { call } = useAuth();
+  const toast = useToast();
   const showSkeleton = useAfter();
   const c = detail.data;
+  const [friendOv, setFriendOv] = useState<boolean | null>(null);
   const [tab, setTab] = useState<'all' | 'shoot' | 'cb'>('all');
   const [cb, setCb] = useState(false);
   const [row, setRow] = useState<LedgerRow | null>(null);
@@ -66,6 +70,19 @@ export function ClientCardV2({ id }: { id: number }) {
   const [prof, setProf] = useState(false);
   const [inv, setInv] = useState(false);
   const now = Date.now();
+
+  async function setFriend(v: boolean) {
+    if (!c?.wa_contact) return;
+    setFriendOv(v);
+    try {
+      await call(`/contacts/${c.wa_contact.id}/exclude`, { method: 'POST', body: { excluded: v } });
+      detail.reload();
+      toast.show(v ? 'Dostdur · bot yazmır' : 'Bot yenə yazır');
+    } catch (e) {
+      setFriendOv(null);
+      toast.show(`Alınmadı: ${errMsg(e)}`, { error: true, retry: () => void setFriend(v) });
+    }
+  }
 
   const history = useMemo(() => {
     if (!c) return [];
@@ -118,8 +135,7 @@ export function ClientCardV2({ id }: { id: number }) {
             </div>
             <div className="ins-acts">
               {wa
-                // TODO [API] «Yaz WhatsApp» Inbox söhbətini açmalıdır (/inbox/:söhbət); müştəri ilə söhbət arasında əlaqə endpoint-i yoxdur, indi wa.me açılır.
-                ? <a className="btn btn--primary btn--lg" href={wa} target="_blank" rel="noopener noreferrer">Yaz WhatsApp</a>
+                ? <a className="btn btn--primary btn--lg" {...(c.conversation_id ? { href: `#/inbox/${c.conversation_id}` } : { href: wa, target: '_blank', rel: 'noopener noreferrer' })}>Yaz WhatsApp</a>
                 : <Button variant="primary" size="lg" disabled title="Telefon yoxdur">Yaz WhatsApp</Button>}
               {c.phone ? <a className="btn btn--secondary btn--lg" href={`tel:+${waNumber(c.phone)}`}>Zəng et</a> : <Button size="lg" disabled>Zəng et</Button>}
               <a className="btn btn--secondary btn--lg" href={`#/shoots/new?client=${c.id}`}>Çəkiliş yaz</a>
@@ -198,7 +214,7 @@ export function ClientCardV2({ id }: { id: number }) {
             </div>
             {c.profile_complete === false && <p className="ins-hint">Profil tam doldurulmayıb.</p>}
             <Button size="sm" onClick={() => setInv(true)} disabled={!online}>{c.activated ? 'Yeni dəvət linki' : 'Dəvət linki'}</Button>
-            {/* TODO [API] «Dostdur · bot yazmır» açarı: müştəri ilə WhatsApp kontaktı arasında əlaqə yoxdur (POST /contacts/:id/exclude yalnız kontakt id ilə işləyir). */}
+            {c.wa_contact && <FriendSwitch on={friendOv ?? c.wa_contact.excluded} disabled={!online} onChange={(v) => void setFriend(v)} />}
           </Card>
         </aside>
       </div>

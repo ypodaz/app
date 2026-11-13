@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useAuth } from '../ctx';
+import { useAuth, useLoad } from '../ctx';
 import { formatMoney } from '../../shared/ui';
+import { bakuToday } from '../format';
 import { useShellData } from './data/ShellData';
 import { PageHeader } from './shell/PageHeader';
 import { Button, Card, Dialog, V2Icon, useToast } from './ui';
@@ -13,6 +14,9 @@ export function MoreMenu() {
   const toast = useToast();
   const [out, setOut] = useState(false);
   const { revenue, now, raw } = useShellData();
+  const rep = useLoad<{ compare?: { net: number; prev_net: number } }>(`/report?month=${bakuToday().slice(0, 7)}`).data;
+  const c = rep?.compare;
+  const delta = c && c.prev_net > 0 ? Math.round(((c.net - c.prev_net) / c.prev_net) * 100) : null;
   const rows: [string, string, string?][] = [
     ['Hesabat', '#/hesabat'],
     ['Bot', '#/m/bot', raw?.botEnabled === undefined || raw?.botEnabled === null ? undefined : raw.botEnabled ? '24/7 aktiv' : 'söndürülüb'],
@@ -24,8 +28,8 @@ export function MoreMenu() {
       {revenue !== null && (
         <Card small label="Gəlir">
           <div className="rev__l" style={{ color: 'var(--text-2)', fontSize: 12 }}>{MONTHS[new Date(now + 4 * 3600_000).getUTCMonth()]} gəliri</div>
-          {/* TODO [API] «↑ N%» müqayisəsi: /report keçən ayın eyni günlərini vermir. */}
           <div className="mono" style={{ fontSize: 24, fontWeight: 500 }}>{formatMoney(revenue)}</div>
+          {delta !== null && <div className={`mono ins-delta ins-delta--${delta >= 0 ? 'up' : 'down'}`}>{delta >= 0 ? '↑' : '↓'} {Math.abs(delta)}% keçən ayın eyni günlərinə görə</div>}
         </Card>
       )}
       <Card flush label="Bölmələr">

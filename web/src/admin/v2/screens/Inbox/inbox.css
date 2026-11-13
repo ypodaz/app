@@ -60,6 +60,10 @@
 .v2 .ibh { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--hairline); min-height: 68px; }
 .v2 .ibh__back { flex: none; width: 36px; height: 36px; margin-left: -8px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: var(--text); }
 .v2 .ibh__back:hover { background: var(--bg); }
+.v2 .ibh__more { width: 36px; height: 36px; margin-right: -8px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; }
+.v2 .ibh__more:hover { background: var(--bg); color: var(--text); }
+.v2 .ibm__pop--sm { width: 220px; }
+@media (max-width: 767px) { .v2 .ibh .ibm--more { display: none; } } /* 02: ⋯ menyusu mobildə yoxdur */
 .v2 .ibh__id { flex: 1; min-width: 0; }
 .v2 .ibh__name { font-size: var(--fs-h3); font-weight: var(--fw-semibold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .v2 .ibh__meta { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

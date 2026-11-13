@@ -7,6 +7,8 @@ export type SocialThread = {
   pending: number; drafted: number; total: number; mode: SocialMode | null; window_open: boolean | null;
   /** IG DM: «Dostdur · bot yazmır» (friends.is_ig_friend). */
   friend?: boolean;
+  /** IG DM: «Cavab gözləyirəm» / «Arxivə at» (server crm conf ig_park:<thread>). */
+  park?: { to: 'theirs' | 'archive'; at: string } | null;
 };
 export type SocialList = { threads: SocialThread[]; comment_mode: 'auto' | 'draft' };
 
@@ -16,11 +18,12 @@ export type SocialItem = {
   hidden: boolean; regen: number; lead_id?: number | null; auto_at: string | null; created_at: string; decided_at: string | null;
 };
 
-export type SocialGroup = 'you' | 'bot' | 'theirs' | 'friends';
+export type SocialGroup = 'you' | 'bot' | 'theirs' | 'friends' | 'archive';
 
 /** 03 §Q8: cavabsız (gözləyən) hər şey «Sizi gözləyir»; cavablanmış komment postu «Bot aparır»da soluq durur. */
 export function socialGroup(t: SocialThread): SocialGroup {
   if (t.friend) return 'friends';
+  if (t.park && t.pending === 0 && !(t.last_in && new Date(t.customer_at ?? 0).getTime() > new Date(t.park.at).getTime())) return t.park.to;
   if (t.pending > 0) return 'you';
   if (t.kind === 'comment' || t.mode === 'bot') return 'bot';
   return t.last_in ? 'you' : 'theirs';

@@ -143,7 +143,7 @@ const ibWrapped: typeof fetch = async (input, init) => {
     { key: 'dm:instagram:222', channel: 'instagram', kind: 'dm', thread_id: '222', author: 'dost.numune', last_text: 'Axşam görüşək?', last_in: true, last_at: ibMin(25), customer_at: ibMin(25), pending: 0, drafted: 0, total: 4, mode: 'bot', window_open: true, friend: true },
     { key: 'comment:youtube:v1', channel: 'youtube', kind: 'comment', thread_id: 'v1', author: 'Nümunə İzləyici', last_text: 'Çox gözəl alınıb', last_in: false, last_at: ibMin(300), customer_at: ibMin(320), pending: 0, drafted: 0, total: 1, mode: null, window_open: null },
   ] });
-  if (p === '/social-inbox/dm/111' && method === 'GET') return ibJson({ thread_id: '111', author: 'numune.m', mode: 'owner', window_open: true, window_expires_at: ibMin(-600),
+  if (p === '/social-inbox/dm/111' && method === 'GET') return ibJson({ thread_id: '111', author: 'numune.m', mode: 'owner', park: null, window_open: true, window_expires_at: ibMin(-600),
     messages: [{ key: 'i1', role: 'in', text: 'Salam, studiya harada yerləşir?', at: ibMin(90) }, { key: 'o1', role: 'bot', text: 'Salam! Ünvanımız: Nümunə küç. 1, Bakı.', at: ibMin(89) }, { key: 'i2', role: 'in', text: 'Reels paketinə nə daxildir?', at: ibMin(12) }],
     pending: [soItem(3, 'dm', 'instagram', '111', 'numune.m', 'Reels paketinə nə daxildir?', '1 saat çəkiliş və 5 hazır Reels, montaj daxil. İstəsəniz, uyğun gün və saata baxaq?', 'pending', 12)] });
   if (p === '/social-inbox/post/instagram/m1' && method === 'GET') return ibJson({ channel: 'instagram', thread_id: 'm1', comment_mode: 'draft',

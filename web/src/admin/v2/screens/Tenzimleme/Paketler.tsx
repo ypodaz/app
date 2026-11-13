@@ -275,6 +275,32 @@ function Subscriptions() {
 }
 
 /** Paketlər və qiymətlər (30-paketler.md). Routes: /tenzimleme/paketler, /tenzimleme/paketler/yeni, ?paket-sat=1, köhnə /packages. */
+type PriceListData = {
+  shoot_per_hour: Record<'studio' | 'onsite', Record<number, number>>; studio_rent: Record<number, number>;
+  reels_pack: Record<'studio' | 'onsite', number>; editing: number; reel: number; extra_camera_per_hour: number;
+};
+
+/** Qiymət cədvəli (30): yalnız oxunur, rəqəmlər server/money.py-dən (/price-list). */
+function PriceList() {
+  const q = useLoad<PriceListData>('/price-list');
+  const m = (n: number) => formatMoney(n);
+  return (
+    <Gate q={q} title="Qiymətlər yüklənmədi" rows={4}>
+      {(p) => (
+        <>
+          <div className="hs-kv"><span><b>Çəkiliş, 1 saat · studiya</b><span className="tz-sub">1 / 2 / 3 kamera</span></span><span className="mono">{CAMS.map((c) => m(p.shoot_per_hour.studio[c]).replace(' AZN', '')).join(' / ')} AZN</span></div>
+          <div className="hs-kv"><span><b>Çəkiliş, 1 saat · məkanda</b><span className="tz-sub">1 / 2 / 3 kamera</span></span><span className="mono">{CAMS.map((c) => m(p.shoot_per_hour.onsite[c]).replace(' AZN', '')).join(' / ')} AZN</span></div>
+          <div className="hs-kv"><span><b>Müştəri özü çəkir</b><span className="tz-sub">1 / 2 / 3 saat</span></span><span className="mono">{[1, 2, 3].map((h) => m(p.studio_rent[h]).replace(' AZN', '')).join(' / ')} AZN</span></div>
+          <div className="hs-kv"><span><b>Reels paketi</b><span className="tz-sub">studiya / məkanda</span></span><span className="mono">{m(p.reels_pack.studio).replace(' AZN', '')} / {m(p.reels_pack.onsite).replace(' AZN', '')} AZN</span></div>
+          <div className="hs-kv"><span><b>Montaj</b><span className="tz-sub">hər epizod</span></span><span className="mono">{m(p.editing)}</span></div>
+          <div className="hs-kv"><span><b>Cover / Reels videosu</b><span className="tz-sub">hər video</span></span><span className="mono">{m(p.reel)}</span></div>
+          <div className="hs-kv"><span><b>Əlavə kamera</b><span className="tz-sub">paket çəkilişində, saatda</span></span><span className="mono">{m(p.extra_camera_per_hour)}</span></div>
+        </>
+      )}
+    </Gate>
+  );
+}
+
 export function Paketler() {
   const { path, query } = useRoute();
   const online = useOnline();
@@ -349,7 +375,10 @@ export function Paketler() {
               ))}
             </>
           )}
-          {/* TODO [API] «Qiymət cədvəli» (çəkiliş 1 saat, müştəri özü çəkir, Reels, montaj/cover): server/money.py üçün oxu endpoint-i yoxdur (/shoots/quote yalnız konkret çəkiliş hesablayır). Bölmə gizlədilib. */}
+        </Card>
+
+        <Card title="Qiymət cədvəli" aside={<span className="tz-aside">yalnız oxunur</span>}>
+          <PriceList />
         </Card>
 
         <Card title={<>Aktiv paketlər{pk.data && <span className="tz-count">{active.length}</span>}</>} aside={<span className="tz-aside">bitməsinə az qalan yuxarıda</span>}>

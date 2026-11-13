@@ -13,6 +13,7 @@ type ReportData = {
   cash: { deposits: number; at_studio: number; packages: number; refunds: number; net: number };
   shoots: { completed: number; cancelled: number; no_show: number; upcoming: number; minutes: number; revenue: number; discounts: number; retained: number; by_kind: Partial<Record<'shoot' | 'reels_pack' | 'studio_rent', ByKind>> };
   packages_sold: number;
+  compare?: { days: number; net: number; prev_net: number };
   cashback: { earned: number; manual: number; spent: number; liability: number; bonuses?: number };
   growth?: {
     new_clients: number; by_source: Record<string, number>; referrals: number; repeat_rate: number; avg_check: number; avg_client_value: number;
@@ -61,8 +62,10 @@ export function Hesabat() {
   const d = data && data.month === month ? data : null;
   const [y, m] = month.split('-').map(Number);
 
-  // Dəyişmə: yalnız bitmiş ay tam əvvəlki ayla müqayisə olunur. TODO [API] 99 G10 «keçən ayın eyni günləri» (cari ay üçün) endpoint-i yoxdur.
-  const delta = d && prev && prev.month === shiftMonth(month, -1) && prev.cash.net > 0 ? Math.round(((d.cash.net - prev.cash.net) / prev.cash.net) * 100) : null;
+  // Dəyişmə: cari ay keçən ayın eyni günləri ilə (99 G10), bitmiş ay tam əvvəlki ayla. Əvvəlki 0-dırsa faiz göstərilmir.
+  const base = d && isCur ? d.compare?.prev_net ?? 0 : prev && prev.month === shiftMonth(month, -1) ? prev.cash.net : 0;
+  const cmp = d && isCur ? d.compare?.net ?? 0 : d?.cash.net ?? 0;
+  const delta = d && base > 0 ? Math.round(((cmp - base) / base) * 100) : null;
 
   const picker = (
     <div className="ins-mo">
@@ -83,7 +86,7 @@ export function Hesabat() {
       <>
         {empty && <EmptyState title="Bu dövrdə çəkiliş yoxdur · hesabat çəkiliş olanda dolur" reason="Rəqəmlər 0 göstərilir." />}
         <div className="ins-rep">
-          <Card label="Gəlir" title={`${MONTHS[m - 1]} gəliri`} aside={delta !== null ? <span className={`mono ins-delta ins-delta--${delta >= 0 ? 'up' : 'down'}`}>{delta >= 0 ? '↑' : '↓'} {Math.abs(delta)}% əvvəlki aya görə</span> : undefined}>
+          <Card label="Gəlir" title={`${MONTHS[m - 1]} gəliri`} aside={delta !== null ? <span className={`mono ins-delta ins-delta--${delta >= 0 ? 'up' : 'down'}`}>{delta >= 0 ? '↑' : '↓'} {Math.abs(delta)}% {isCur ? 'keçən ayın eyni günlərinə görə' : 'əvvəlki aya görə'}</span> : undefined}>
             <div className="ins-big mono">{formatMoney(r.cash.net)}</div>
             <p className="ins-hint">Kassa: həmin ay əldə olan xalis pul (beh, studiyada ödəniş, paket satışı; qaytarılan çıxılır).</p>
             <Tiles items={[['Çəkiliş', done], ['Orta çek', done ? formatMoney(Math.round(r.shoots.revenue / done / 100) * 100) : '—'], ['Saat', formatHours(r.shoots.minutes).replace(' saat', '')], ['Gözlənilən', r.shoots.upcoming]]} />

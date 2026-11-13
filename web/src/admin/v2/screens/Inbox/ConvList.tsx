@@ -173,7 +173,7 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
       bot: [...wa.bot.map(waE), ...so.bot].sort(byTimeDesc),
       theirs: [...wa.theirs.map(waE), ...so.theirs].sort(byTimeDesc),
       friends: [...wa.friends.map(waE), ...so.friends].sort(byTimeDesc),
-      archive: wa.archive.map(waE).sort(byTimeDesc),
+      archive: [...wa.archive.map(waE), ...so.archive].sort(byTimeDesc),
     };
   }, [convs, social, kanal, q, botOn]);
 

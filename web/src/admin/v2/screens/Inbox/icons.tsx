@@ -1,5 +1,6 @@
 // Inbox-a məxsus ikonlar (ui/Icon.tsx-ə toxunmuram). Ortaq ola bilər: send, clock, moon, chevDown, play, pause, bot.
 const P = {
+  more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
   chevDown: <path d="m6 9 6 6 6-6" />,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,

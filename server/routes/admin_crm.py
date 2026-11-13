@@ -199,6 +199,15 @@ def inbox_park(conv_id: int, body: ParkIn, db: DB = Depends(get_db)):
     return {"id": c.id, "mode": c.mode, "park": _park(db, c.id)}
 
 
+@router.post("/inbox/{conv_id}/unread")
+def inbox_unread(conv_id: int, db: DB = Depends(get_db)):
+    """«Oxunmamış et» (⋯ menyusu): söhbət yenə oxunmamış sayılır, müştəriyə mesaj getmir."""
+    c = get_or_404(db, WaConversation, conv_id, "Söhbət")
+    c.unread = max(c.unread, 1)
+    db.commit()
+    return {"id": c.id, "unread": c.unread}
+
+
 # --- qaralamalar ---
 
 class DraftSendIn(BaseModel):

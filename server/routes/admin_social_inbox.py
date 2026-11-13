@@ -86,6 +86,7 @@ def social_list(db: DB = Depends(get_db)):
                     "drafted": sum(1 for i in pending if i.draft_text), "total": len(items),
                     "mode": social_inbox.ig_mode(db, thread) if kind == "dm" else None,
                     "friend": kind == "dm" and friends.is_ig_friend(db, thread),
+                    "park": _park(db, thread) if kind == "dm" else None,
                     "window_open": _window_open(items) if kind == "dm" else None})
     out.sort(key=lambda r: r["last_at"] or "", reverse=True)
     if lookups < NAME_LOOKUPS:
@@ -128,7 +129,7 @@ def dm_open(thread: str, db: DB = Depends(get_db)):
     msgs.sort(key=lambda m: m["at"] or "")
     return {"thread_id": thread, "author": _author(items), "mode": social_inbox.ig_mode(db, thread),
             "lead_id": social_inbox.item_lead_id(db, items[-1]), "friend": friends.is_ig_friend(db, thread),
-            "window_open": _window_open(items), "window_expires_at": iso(aware(items[-1].created_at) + instagram.WINDOW),
+            "park": _park(db, thread), "window_open": _window_open(items), "window_expires_at": iso(aware(items[-1].created_at) + instagram.WINDOW),
             "messages": msgs, "pending": [item_out(i) for i in items if i.status == "pending"]}
 
 
@@ -153,7 +154,8 @@ def _pending_item(db: DB, item_id: int) -> SocialItem:
     return item
 
 
-def _send_or_raise(db: DB, item: SocialItem) -> None:
+def _send_or_raise(db: DB, item: SocialItem) -> dict | None:
+    """Komment Instagram-da silinibsə `_gone` cavabını qaytarır (DM-də və başqa xətalarda istisna qalxır)."""
     try:
         social_inbox.send(db, item)
     except social_inbox.WindowClosed as e:
@@ -161,6 +163,8 @@ def _send_or_raise(db: DB, item: SocialItem) -> None:
         raise HTTPException(409, str(e)) from e
     except social_inbox.SEND_ERRORS as e:
         db.rollback()
+        if item.kind == "comment" and getattr(e, "gone", False):
+            return _gone(db, item)
         raise HTTPException(502, f"Göndərilmədi: {str(e)[:300]}") from e
 
 
@@ -187,7 +191,9 @@ def item_send(item_id: int, body: SendIn | None = None, db: DB = Depends(get_db)
         if not (item.draft_text or "").strip():
             raise HTTPException(400, "Cavab mətni boşdur")
         item.auto_at = None
-        _send_or_raise(db, item)
+        gone = _send_or_raise(db, item)
+        if gone:
+            return gone
         if item.kind == "dm":
             social_inbox.draft_approved(db, item.thread_id)
         db.commit()
@@ -337,6 +343,36 @@ def dm_mode(thread: str, body: ModeIn, db: DB = Depends(get_db)):
         social_inbox.set_mode(db, thread, body.mode)
         db.commit()
     return {"mode": social_inbox.ig_mode(db, thread)}
+
+
+class ParkIn(BaseModel):
+    to: Literal["theirs", "archive"] | None = None
+
+
+def _park(db: DB, thread: str) -> dict | None:
+    """Sahibkar DM söhbətini kənara qoyub (WhatsApp `_park` ilə eyni): «theirs» və ya «archive»."""
+    to, _, at = (conf.get(db, f"ig_park:{thread}") or "").partition("|")
+    return {"to": to, "at": at} if to in ("theirs", "archive") and at else None
+
+
+@router.post("/dm/{thread}/park")
+def dm_park(thread: str, body: ParkIn, db: DB = Depends(get_db)):
+    """«Cavab gözləyirəm» (theirs) / «Arxivə at» (archive): söhbət «Sizi gözləyir»dən çıxır, müştəriyə mesaj getmir.
+    Gözləyən qaralamalar rədd olunur, «Komandaya ötürülüb» «Siz yazdınız» olur. to=null: geri qaytar."""
+    if not _thread_items(db, "instagram", "dm", thread):
+        raise HTTPException(404, "Söhbət tapılmadı")
+    with social_inbox._thread_lock(thread):
+        if body.to:
+            for i in _thread_items(db, "instagram", "dm", thread):
+                if i.status == "pending":
+                    i.status, i.decided_at, i.auto_at = "rejected", now(), None
+            if social_inbox.ig_mode(db, thread) == "wait":
+                social_inbox.set_mode(db, thread, "owner")
+            conf.put(db, f"ig_park:{thread}", f"{body.to}|{now().isoformat()}")
+        else:
+            conf.put(db, f"ig_park:{thread}", "")
+        db.commit()
+        return {"park": _park(db, thread)}
 
 
 @router.post("/items/{item_id}/lead")
