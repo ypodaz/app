@@ -36,11 +36,11 @@ function ChAvatar({ ch, children }: { ch: keyof typeof CH; children: React.React
   );
 }
 
-function Row({ c, g, sel, now, botOn, faded }: { c: Conv; g: Group; sel: boolean; now: number; botOn: boolean; faded?: boolean }) {
+function Row({ c, g, sel, now, botOn, faded, clock }: { c: Conv; g: Group; sel: boolean; now: number; botOn: boolean; faded?: boolean; clock?: boolean }) {
   const name = nameOf(c);
   const sub = subLine(c, g, now, botOn);
   const unread = c.unread > 0;
-  const time = g === 'you' ? clockOf(c.last_message_at) : c.last_message_at ? fmtWait(now - msOf(c.last_message_at)) : '';
+  const time = g === 'you' || clock ? clockOf(c.last_message_at) : c.last_message_at ? fmtWait(now - msOf(c.last_message_at)) : '';
   return (
     <button type="button" className={`ibr${sel ? ' ibr--sel' : ''}${faded ? ' ibr--faded' : ''}`} aria-current={sel ? 'true' : undefined} onClick={() => go(`inbox/${c.id}`)} data-conv={c.id}>
       <ChAvatar ch="wa">{personal(c) ? <span className="av av--lg" aria-hidden="true"><V2Icon name="user" /></span> : <Avatar name={name} tone={sel ? 'brand' : 'neutral'} large />}</ChAvatar>
@@ -72,10 +72,10 @@ function socialSub(t: SocialThread, commentMode: 'auto' | 'draft' | undefined): 
   return { text: t.mode === 'bot' ? `${ch} · bot aparır` : ch };
 }
 
-function SocialRow({ t, g, sel, now, faded, commentMode }: { t: SocialThread; g: Group; sel: boolean; now: number; faded?: boolean; commentMode?: 'auto' | 'draft' }) {
+function SocialRow({ t, g, sel, now, faded, commentMode, clock }: { t: SocialThread; g: Group; sel: boolean; now: number; faded?: boolean; commentMode?: 'auto' | 'draft'; clock?: boolean }) {
   const sub = socialSub(t, commentMode);
-  const at = g === 'you' ? t.customer_at : t.last_at;
-  const time = g === 'you' ? clockOf(at) : at ? fmtWait(now - msOf(at)) : '';
+  const at = g === 'you' && !clock ? t.customer_at : t.last_at;
+  const time = g === 'you' || clock ? clockOf(at) : at ? fmtWait(now - msOf(at)) : '';
   const tag = t.channel === 'youtube' ? 'YouTube' : t.kind === 'comment' ? 'Komment' : 'Instagram';
   return (
     <button type="button" className={`ibr${sel ? ' ibr--sel' : ''}${faded ? ' ibr--faded' : ''}`} aria-current={sel ? 'true' : undefined} onClick={() => go(socialPath(t))}>
@@ -122,6 +122,11 @@ const readClosed = (): Closed => {
     return { you: !!v.you, bot: !!v.bot, theirs: !!v.theirs, friends: v.friends !== false, archive: v.archive !== false };
   } catch { return { you: false, bot: false, theirs: false, friends: true, archive: true }; }
 };
+// Görünüş: «Bölmələr» (03 §Q8) və ya «Son yazışmalar» — hamısı bir siyahıda, ən son yazışma yuxarıda, bölməsiz
+type View = 'bolme' | 'son';
+const VIEW_KEY = 'ypod.v2.inbox.view';
+const readView = (): View => { try { return localStorage.getItem(VIEW_KEY) === 'son' ? 'son' : 'bolme'; } catch { return 'bolme'; } };
+const VIEWS: { value: View; label: string }[] = [{ value: 'bolme', label: 'Bölmələr' }, { value: 'son', label: 'Son yazışmalar' }];
 const ALL_OPEN: Closed = { you: false, bot: false, theirs: false, friends: false, archive: false };
 
 /** Bölmə başlığı: basanda yığılır/açılır, seçim bu brauzerdə yadda qalır. */
@@ -143,6 +148,9 @@ const byTimeDesc = (a: Entry, b: Entry) => (b.at ?? '').localeCompare(a.at ?? ''
 export function ConvList({ convs, social, commentMode, kanal, onKanal, error, onRetry, botOn, now, sel, searchRef, onOrder }: Props) {
   const [more, setMore] = useState(false);
   const [closedSt, setClosed] = useState<Closed>(readClosed);
+  const [view, setViewSt] = useState<View>(readView);
+  const setView = (v: View) => { setViewSt(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* yaddaş bağlıdır */ } };
+  const flat = view === 'son';
   const toggle = (g: Group) => setClosed((c) => { const n = { ...c, [g]: !c[g] }; try { localStorage.setItem(CLOSED_KEY, JSON.stringify(n)); } catch { /* yaddaş bağlıdır */ } return n; });
   const [raw, setRaw] = useState('');
   const [q, setQ] = useState('');
@@ -174,15 +182,18 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
       theirs: [...wa.theirs.map(waE), ...so.theirs].sort(byTimeDesc),
       friends: [...wa.friends.map(waE), ...so.friends].sort(byTimeDesc),
       archive: [...wa.archive.map(waE), ...so.archive].sort(byTimeDesc),
+      // «Son yazışmalar»: filtrsiz, hər söhbətin son mesajı ilə (dostlar və arxiv də daxil)
+      recent: (Object.keys(wa) as Group[]).flatMap((g) => [...wa[g].map((c) => ({ e: waE(c), g })),
+        ...so[g].map((e) => ({ e: e.t === 'so' ? { ...e, at: e.s.last_at } : e, g }))]).sort((a, b) => byTimeDesc(a.e, b.e)),
     };
   }, [convs, social, kanal, q, botOn]);
 
   // Axtarışda bütün bölmələr açıq görünür (tapılan gizli qalmasın)
   const closed: Closed = q.trim() ? ALL_OPEN : closedSt;
   const botShown = more || q.trim() ? groups.bot : groups.bot.slice(0, 2);
-  const order = useMemo(() => [...(closed.you ? [] : groups.you), ...(closed.bot ? [] : botShown), ...(closed.theirs ? [] : groups.theirs),
+  const order = useMemo(() => flat ? groups.recent.map((r) => r.e.path) : [...(closed.you ? [] : groups.you), ...(closed.bot ? [] : botShown), ...(closed.theirs ? [] : groups.theirs),
     ...(closed.friends ? [] : groups.friends), ...(closed.archive ? [] : groups.archive)].map((e) => e.path),
-  [groups, botShown, closed]);
+  [groups, botShown, closed, flat]);
   const orderKey = order.join(',');
   useEffect(() => onOrder(order), [orderKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -193,9 +204,9 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
   const empty = !groups.you.length && !groups.bot.length && !groups.theirs.length && !groups.friends.length && !groups.archive.length;
   const none = loaded && searching && empty;
   const pendingComments = (social ?? []).filter((t) => t.kind === 'comment').reduce((n, t) => n + t.pending, 0);
-  const row = (e: Entry, g: Group, faded?: boolean) => e.t === 'wa'
-    ? <Row key={e.path} c={e.c} g={g} sel={e.path === sel} now={now} botOn={botOn} faded={faded} />
-    : <SocialRow key={e.path} t={e.s} g={g} sel={e.path === sel} now={now} faded={faded} commentMode={commentMode} />;
+  const row = (e: Entry, g: Group, faded?: boolean, clock?: boolean) => e.t === 'wa'
+    ? <Row key={e.path} c={e.c} g={g} sel={e.path === sel} now={now} botOn={botOn} faded={faded} clock={clock} />
+    : <SocialRow key={e.path} t={e.s} g={g} sel={e.path === sel} now={now} faded={faded} commentMode={commentMode} clock={clock} />;
 
   return (
     <section className="ib__list" aria-label="Söhbətlər">
@@ -217,6 +228,9 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
         <Segmented label="Kanal" value={kanal} onChange={onKanal}
           options={KANAL.map((k) => (k.value === 'komment' && pendingComments > 0 ? { ...k, count: pendingComments } : k))} />
       </div>
+      <div className="ib__kanal ib__view">
+        <Segmented label="Görünüş" value={view} onChange={setView} options={VIEWS} />
+      </div>
 
       <div className="ib__scroll">
         {error && <div className="ib__pad"><ErrorBox title="Söhbətlər yüklənmədi" detail="İnternet bağlantısını yoxlayın" onRetry={onRetry} /></div>}
@@ -228,7 +242,9 @@ export function ConvList({ convs, social, commentMode, kanal, onKanal, error, on
           /* TODO [API] «Yeni kontakt yarat» (99 G8): kontakt yaratmaq üçün admin endpoint yoxdur. */
         )}
 
-        {loaded && !empty && (
+        {loaded && !empty && flat && groups.recent.map((r) => row(r.e, r.g, false, true))}
+
+        {loaded && !empty && !flat && (
           <>
             <GroupHead g="you" label="Sizi gözləyir" n={groups.you.length} closed={closed.you} onToggle={toggle}>
               <span className="ibg__keys"><kbd className="mono">J</kbd><kbd className="mono">K</kbd></span>

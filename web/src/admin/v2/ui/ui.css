@@ -79,7 +79,7 @@
 .v2 .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--bg); }
 .v2 .seg__b { flex: none; white-space: nowrap; overflow-wrap: normal; height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: var(--fw-medium); display: inline-flex; align-items: center; gap: 6px; }
 .v2 .seg__b[aria-checked="true"] { background: var(--primary); color: var(--on-primary); }
-.v2 .seg__b:not([aria-checked="true"]):hover { color: var(--text); }
+.v2 .seg__b:not([aria-checked="true"]):not([aria-current="page"]):hover { color: var(--text); }
 .v2 .seg__b .mono { font-size: 12px; opacity: .8; }
 .v2 .seg--on-surface { background: var(--bg); }
 @media (max-width: 767px) { .v2 .seg__b { height: 38px; font-size: 14px; } }
