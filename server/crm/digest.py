@@ -90,7 +90,8 @@ LOST_LABELS = {"qiymet": "qiymət", "vaxt": "vaxt", "cavab_yox": "cavab yox", "b
 def lead_lines(db: DB, since: datetime, until: datetime) -> list[str]:
     """Bu gün vaxtı çatan «sonra yazacaq» sayı və son 7 gündə itirilmiş leadlər səbəb üzrə (yalnız sıfır deyilsə)."""
     day_end = aware(since) + timedelta(days=1)
-    due = db.scalar(select(func.count()).select_from(Lead).where(Lead.remind_at.is_not(None), Lead.remind_at < day_end)) or 0
+    due = db.scalar(select(func.count()).select_from(Lead).where(Lead.remind_at.is_not(None), Lead.remind_at < day_end,
+                                                                 Lead.stage.not_in(("geldi", "itirildi")))) or 0
     lost = Counter(e.data.get("lost_reason") for e in db.scalars(select(LeadEvent).where(
         LeadEvent.kind == "stage", *_in(LeadEvent.created_at, until - WEEK, until))) if (e.data or {}).get("to") == "itirildi")
     lines = []

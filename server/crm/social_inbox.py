@@ -126,7 +126,16 @@ def _mode_key(thread: str) -> str:
 def ig_mode(db: DB, thread: str) -> str:
     """Bu DM söhbətində növbə kimdədir: bot | owner | wait (crm/turns.py ilə eyni mənada)."""
     v = conf.get(db, _mode_key(thread))
-    return v if v in ("owner", "wait") else "bot"
+    if v in ("owner", "wait"):
+        return v
+    if v is None:  # köhnə qayda (2026-11-13-ə qədər): son 7 gündə `ig_human` olan söhbət sahibkardadır
+        old = conf.get(db, f"ig_human:{thread}"[:64])
+        try:
+            if old and now() - aware(datetime.fromisoformat(old)) < timedelta(days=7):
+                return "owner"
+        except ValueError:
+            pass
+    return "bot"
 
 
 def _clear_wait(db: DB, thread: str) -> None:

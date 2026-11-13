@@ -159,7 +159,8 @@ def send_reminders(db: DB, t=None) -> int:
     if hour >= NIGHT_START or hour < NIGHT_END:
         return 0
     n = 0
-    for lead in db.scalars(select(Lead).where(Lead.remind_at.is_not(None), Lead.remind_at <= t).order_by(Lead.id)).all():
+    for lead in db.scalars(select(Lead).where(Lead.remind_at.is_not(None), Lead.remind_at <= t,
+                                              Lead.stage.not_in(("geldi", "itirildi"))).order_by(Lead.id)).all():
         day = aware(lead.remind_at).astimezone(BAKU)
         text = f"🔔 {lead.name or 'Naməlum'} {day:%d.%m} yazacağını demişdi"
         if lead.remind_note:

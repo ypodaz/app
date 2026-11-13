@@ -160,3 +160,15 @@ def test_new_auto_old_customer_stays_draft_only(api, net, crm_env, monkeypatch):
     [it] = items()
     assert it.status == "pending" and it.auto_at is None and not graph_sends(net)
     assert "dəq sonra" not in crm_env.tg("sendMessage")[-1]["text"]
+
+
+def test_legacy_ig_human_counts_as_owner(api):
+    # 2026-11-13-dən əvvəl 7 günlük susmada olan söhbət deploydan sonra sahibkarda qalır, köhnəsi bota qayıdır
+    with SessionLocal() as db:
+        conf.put(db, "ig_human:T-legacy-1", (now() - timedelta(days=2)).isoformat())
+        conf.put(db, "ig_human:T-legacy-2", (now() - timedelta(days=9)).isoformat())
+        db.commit()
+        assert social_inbox.ig_mode(db, "T-legacy-1") == "owner"
+        assert social_inbox.ig_mode(db, "T-legacy-2") == "bot"
+        social_inbox.draft_approved(db, "T-legacy-1")
+        assert social_inbox.ig_mode(db, "T-legacy-1") == "bot"
