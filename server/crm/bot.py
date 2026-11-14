@@ -38,6 +38,9 @@ POLISH = (
     (re.compile(r"([Qq])alan məbləğ"), r"\1alan hissə"),
     (re.compile(r"məbləğ"), "qiymət"),
 )
+# GPT bir neçə qiyməti bir abzasa yığır, oxunmur (IG, 14.11): uzun abzas cümlə-cümlə alt-alta yazılır
+LONG_PARA = 160
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[0-9«A-ZƏÖÜĞÇŞİА-ЯЁ])")
 SERVICES = ("podkast", "reels", "korporativ", "diger")
 STAGES = ["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itirildi"]
 BOT_MAX_STAGE = "beh"  # bot bundan yuxarı qaldırmır
@@ -146,6 +149,19 @@ def polish(reply: str) -> str:
     return reply
 
 
+def layout(reply: str) -> str:
+    """160 simvoldan uzun, 3+ cümləli, sətir sonu olmayan abzası hər cümlə ayrı sətirdə yazır.
+    Abzas bölgüsü (\\n\\n, iki mesaj) dəyişmir."""
+    paras = []
+    for p in reply.split("\n\n"):
+        if len(p.strip()) > LONG_PARA and "\n" not in p.strip():
+            parts = SENTENCE_END.split(p.strip())
+            if len(parts) >= 3:
+                p = "\n".join(parts)
+        paras.append(p)
+    return "\n\n".join(paras)
+
+
 def check_filter(reply: str, language: str | None = None) -> str | None:
     """Müştəriyə getməzdən əvvəl: kart nömrəsi ehtimalı, qadağan söz, uzunluq. Pozuntunun səbəbini qaytarır."""
     if re.search(r"\d{12,}", re.sub(r"[\s\-]", "", reply)):
@@ -221,7 +237,7 @@ def converse(system: str, contents: list[dict]) -> tuple[dict, tuple[int, int], 
         used[1] += out["usage"][1]
         try:
             res = parse_reply(ai.text_of(out["content"]))
-            res["reply"] = polish(res["reply"])
+            res["reply"] = layout(polish(res["reply"]))
         except BotFormatError as e:
             res, problem = None, f"cavab JSON deyil ({e})"
         else:

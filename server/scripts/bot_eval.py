@@ -119,7 +119,8 @@ def _track_status(real_post):
 
 
 def esc(v: str, n: int = 300) -> str:
-    v = " ⏎⏎ ".join(" ".join(p.split()) for p in str(v).split("\n\n"))  # ⏎⏎ = iki ayrı mesaj
+    v = " ⏎⏎ ".join(" ↵ ".join(" ".join(ln.split()) for ln in p.strip().splitlines())  # ⏎⏎ = iki ayrı mesaj,
+                    for p in str(v).split("\n\n"))  # ↵ = eyni mesajda yeni sətir
     return (v[:n] + "…" if len(v) > n else v).replace("|", "\\|")
 
 

@@ -1115,3 +1115,19 @@ def test_polish_replaces_bookish_phrases():
     assert polish("Podkast planlaşdırırsınız, yoxsa Reels?") == "Podkast fikirləşirsiniz, yoxsa Reels?"
     assert polish("Qalan məbləğ studiyada ödənilir.") == "Qalan hissə studiyada ödənilir."
     assert polish("Salam! 1 saatı 70 AZN-dir.") == "Salam! 1 saatı 70 AZN-dir."
+
+
+def test_layout_puts_long_paragraph_sentences_on_lines():
+    from crm.bot import layout
+    dense = ("Podkast çəkilişində operator, işıq və səs daxildir: studiyada 1 kamera ilə saatı 70 AZN, montaj isə "
+             "1 saatlıq epizod üçün 100 AZN-dir. Podkastdan Reels hərəsi 10 AZN. Reels paketi isə 1 saat çəkiliş "
+             "və 5 hazır video ilə 150 AZN-dir.\n\nHansı sizə uyğundur?")
+    out = layout(dense)
+    head, tail = out.split("\n\n")
+    assert head.count("\n") == 2 and tail == "Hansı sizə uyğundur?"
+    assert head.splitlines()[1] == "Podkastdan Reels hərəsi 10 AZN."
+    short = "Salam! Mən Y Pod-un virtual köməkçisiyəm. Necə kömək edə bilərəm?"
+    assert layout(short) == short  # qısa abzasa toxunmur
+    listed = "Podkast: saatı 70 AZN\nMontaj: 100 AZN. Reels paketi: 150 AZN. " + "x" * 120
+    assert layout(listed) == listed  # artıq sətirlərə bölünübsə toxunmur
+    assert layout("1.5 saat. " * 30).count("\n") >= 2  # «1.5» bölünmür, cümlə sonu bölünür
