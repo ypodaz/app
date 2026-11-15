@@ -742,3 +742,16 @@ def test_komment_command(api, net, crm_env):
     assert len(crm_env.tg("sendMessage")) == n
     with SessionLocal() as db:
         assert conf.get(db, "comment_mode") == "auto"
+
+
+def test_ig_same_text_twice_answered_once_and_keeps_ad(api, net, crm_env):
+    auto_mode()
+    crm_env.gemini(jreply("Reels paketi 150 AZN-dir."), jreply("Bu getməməlidir."), jreply("Buyurun."))
+    text = "Merhaba, bunun hakkında daha fazla bilgi alabilir miyim?"
+    post_ig(api, dm(mid="d1", text=text))
+    post_ig(api, ad_dm(mid="d2", text=text))  # Instagram eyni hazır sualı ikinci dəfə, reklam nişanı ilə göndərdi
+    assert [(i.external_id, i.status, i.ad_id) for i in items()] == [
+        ("d1", "sent", "120000000000000001"), ("d2", "ignored", "120000000000000001")]
+    assert len(crm_env.gemini_calls) == 1
+    post_ig(api, dm(mid="d3", text="Salam"))  # fərqli mətn adi qaydada cavablanır
+    assert items()[-1].status == "sent" and len(crm_env.gemini_calls) == 2

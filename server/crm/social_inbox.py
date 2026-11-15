@@ -35,6 +35,9 @@ from models import Lead, SocialItem, WaContact
 log = logging.getLogger("bot")
 HISTORY = 10
 OLD_MARGIN = timedelta(seconds=2)
+# Instagram reklamın hazır sualını bəzən iki ayrı mesaj (fərqli mid) kimi göndərir (14.11, 10 san. ara):
+# eyni thread-də bu müddətdə eyni mətn ikinci dəfə gəlsə cavab yazılmır
+DUP_WINDOW = timedelta(minutes=2)
 WA_NUMBER = "994555303532"
 DM_NOTE = ("\n\nKANAL: Bu, Instagram DM-dir. WhatsApp-dakı kimi qısa və isti cavab ver, suallara cavab ver. "
            "Məqsəd söhbəti WhatsApp-a keçirməkdir. İlk cavabda nömrə istəmə: əvvəl sualına cavab ver və bir sual ver. "
@@ -437,6 +440,18 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
             item.status, item.decided_at = "ignored", now()
             db.commit()
             return "skip:newer"
+        dup = None if item.text.startswith("[") else db.scalar(  # «[audio]», «[şəkil]» yer tutucularıdır, fərqli ola bilər
+            select(SocialItem).where(SocialItem.channel == item.channel, SocialItem.kind == "dm",
+                                     SocialItem.thread_id == item.thread_id, SocialItem.id < item.id,
+                                     SocialItem.text == item.text, SocialItem.status != "ignored",
+                                     SocialItem.created_at >= aware(item.created_at) - DUP_WINDOW)
+            .order_by(SocialItem.id.desc()).limit(1))
+        if dup:
+            if item.ad_id and not dup.ad_id:  # reklam statistikası itməsin
+                dup.ad_id = item.ad_id
+            item.status, item.decided_at = "ignored", now()
+            db.commit()
+            return "skip:duplicate"
         if not item.author:  # Inbox və Telegram-da kimin yazdığı görünsün
             item.author = ig_author(db, item.thread_id)
         mo = item.model_output or {}
