@@ -18,16 +18,18 @@ _last: dict[str, float] = {}
 _lock = threading.Lock()
 
 
-def _post(text: str, topic: str = "server") -> None:
+def _post(text: str, topic: str = "server", reply_markup: dict | None = None) -> None:
     try:
         httpx.post(f"https://api.telegram.org/bot{settings.TG_BOT_TOKEN}/sendMessage",
-                   json={**tgtopics.dest(topic), "text": text[:3500]}, timeout=10)
+                   json={**tgtopics.dest(topic), "text": text[:3500], **({"reply_markup": reply_markup} if reply_markup else {})},
+                   timeout=10)
     except Exception:
         log.warning("telegram xəbərdarlığı göndərilmədi")
 
 
-def notify(key: str, text: str, topic: str = "server") -> bool:
-    """True: göndərişə verildi; False: konfiqurasiya yoxdur və ya təkrardır. `topic`: tgtopics.TOPICS açarı."""
+def notify(key: str, text: str, topic: str = "server", reply_markup: dict | None = None) -> bool:
+    """True: göndərişə verildi; False: konfiqurasiya yoxdur və ya təkrardır. `topic`: tgtopics.TOPICS açarı.
+    `reply_markup`: ixtiyari Telegram düymələri (dedupe açarına təsir etmir)."""
     if not (settings.TG_BOT_TOKEN and settings.TG_CHAT_ID):
         return False
     now = time.monotonic()
@@ -35,5 +37,5 @@ def notify(key: str, text: str, topic: str = "server") -> bool:
         if now - _last.get(key, -DEDUPE_SEC) < DEDUPE_SEC:
             return False
         _last[key] = now
-    threading.Thread(target=_post, args=("Y Pod: " + text, topic), daemon=True).start()
+    threading.Thread(target=_post, args=("Y Pod: " + text, topic, *([reply_markup] if reply_markup else [])), daemon=True).start()
     return True

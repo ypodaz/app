@@ -59,10 +59,12 @@ def send(item: SocialItem) -> str | None:
     return str(mid) if mid else None
 
 
-def auto_log(item: SocialItem, head: str = "🤖 Avtomatik cavab getdi", topic: str = "auto", extra: str = "") -> None:
-    """Avtomatik göndərilən cavab: düyməsiz qeyd (sahibkar nə yazıldığını görsün). `extra`: əlavə Direct mətni."""
+def auto_log(item: SocialItem, head: str = "🤖 Avtomatik cavab getdi", topic: str = "auto", extra: str = "",
+             reply_markup: dict | None = None) -> None:
+    """Avtomatik göndərilən cavab: qeyd (sahibkar nə yazıldığını görsün), adətən düyməsiz. `extra`: əlavə Direct mətni."""
     body = _body(item) + (f"\n\nDirect:\n{extra[:1500]}" if extra else "")
-    _call("sendMessage", {**tgtopics.dest(topic), "text": f"{head}\n\n{body}"[:4000]})
+    _call("sendMessage", {**tgtopics.dest(topic), "text": f"{head}\n\n{body}"[:4000],
+                          **({"reply_markup": reply_markup} if reply_markup else {})})
 
 
 def comment_command(db, msg: dict) -> str:

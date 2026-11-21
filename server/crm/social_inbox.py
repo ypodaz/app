@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import AiError
-from crm import autobook, bot, conf, contacts, events, friends, instagram, social_tg, turns, typing_state, voice, youtube
+from crm import autobook, bot, conf, contacts, events, friends, instagram, owner_reply, social_tg, turns, typing_state, voice, youtube
 from db import SessionLocal, aware, now
 from models import Lead, SocialItem, WaContact
 
@@ -557,7 +557,8 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
                 if handoff:
                     social_tg.auto_log(item, f"🙋 Əməkdaş lazımdır (səbəb: {res.get('handoff_reason') or '-'}). Bot "
                                              "cavab verdi, sizin cavabınızı gözləyir (asan suallara özü cavab verəcək), "
-                                             "Instagram-dan özünüz yazın.", topic="action")
+                                             "Instagram-dan özünüz yazın.", topic="action",
+                                   reply_markup=owner_reply.markup(db, "ig", item.thread_id))
                     return f"handoff:{res.get('handoff_reason')}"
                 social_tg.auto_log(item)
                 return "sent"

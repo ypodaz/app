@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session as DB
 import alerts
 import settings
 import tgtopics
-from crm import bot, calendar_sync, chat, conf, contacts, friends, kapso, social_tg, tg, todo, turns
+from crm import bot, calendar_sync, chat, conf, contacts, friends, kapso, owner_reply, social_tg, tg, todo, turns
 from db import SessionLocal, aware, get_db, now
 from models import KnownContact, WaContact, WaConversation, WaMessage, WebhookEvent
 
@@ -281,6 +281,8 @@ def telegram_webhook(update: dict, background: BackgroundTasks,
         result = tg.handle_callback(db, cq)
         if result == "regenerate":  # Gemini bir neçə saniyə çəkir: Telegram-a dərhal cavab, yeni qaralama fonda
             background.add_task(bot.regenerate, int(str(cq["data"]).split(":")[1]))
+        elif result == "owner_compose":  # «✍️ Cavabımı yaz» kartında 🔄: yeni variant fonda
+            background.add_task(owner_reply.process, int(str(cq["data"]).split(":")[1]))
     elif msg and cmd == "/qur":  # mövzu qrupunun qurulması
         result = tgtopics.setup(db, msg, tg._call)
     elif msg and cmd == "/komment":  # komment rejimi: avto | qaralama
@@ -293,6 +295,11 @@ def telegram_webhook(update: dict, background: BackgroundTasks,
         pass
     elif msg and (result := todo.topic_message(db, msg)):  # 📋 mövzusuna yazılan iş (qaralama məntiqinə düşməsin)
         pass
+    elif msg and (owned := owner_reply.handle_reply(db, msg)):  # «✍️ Cavabımı yaz» cavabı (qaralamadan əvvəl yoxlanır)
+        result = owned[0]
+        if result == "compose":
+            background.add_task(owner_reply.process, owned[1], (msg.get("text") or "").strip(),
+                                (msg.get("voice") or msg.get("audio") or {}).get("file_id"))
     elif msg:
         result, draft_id = tg.handle_reply(db, msg)
         if result == "regenerate":

@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from crm import chat, conf, events, kapso, tg
+from crm import chat, conf, events, kapso, owner_reply, tg
 import tgtopics
 from db import SessionLocal, aware, now
 from models import BotDraft, WaContact, WaConversation, WaMessage
@@ -152,7 +152,8 @@ def remind_waiting(db: DB, t: datetime) -> int:
         tg._call("sendMessage", {**tgtopics.dest("action"), "disable_web_page_preview": True,
                                  "text": f"⏳ Müştəri {mins} dəqiqədir cavab gözləyir (bot komandaya ötürüb)\n"
                                          f"{contact.name or 'Naməlum'} ({contact.phone or 'telefonsuz'})\n"
-                                         f"Son mesaj: {(last.text if last else '-')[:500]}\n{chat.panel_link(conv.id)}"})
+                                         f"Son mesaj: {(last.text if last else '-')[:500]}\n{chat.panel_link(conv.id)}",
+                                 "reply_markup": owner_reply.markup(db, "wa", conv.id)})
         n += 1
     return n
 
@@ -170,11 +171,13 @@ def noon_reminder(db: DB, t: datetime) -> int:
                       .order_by(BotDraft.id)).all()
     if not rows:
         return 0
-    lines = [f"🌙 Gecədən qalan, sizi gözləyən qaralamalar: {len(rows)}"]
+    lines, keys = [f"🌙 Gecədən qalan, sizi gözləyən qaralamalar: {len(rows)}"], []
     for d, conv in rows[:15]:
         contact = db.get(WaContact, conv.contact_id)
         lines.append(f"• {contact.name or 'Naməlum'} ({contact.phone or '-'}): {d.text[:120]}")
-    tg._call("sendMessage", {**tgtopics.dest("action"), "text": "\n".join(lines)[:4000]})
+        keys.append([owner_reply.button(db, "wa", conv.id, f"✍️ {contact.name or contact.phone or 'Naməlum'}"[:40])])
+    tg._call("sendMessage", {**tgtopics.dest("action"), "text": "\n".join(lines)[:4000],
+                             "reply_markup": {"inline_keyboard": keys}})
     return len(rows)
 
 

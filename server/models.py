@@ -253,6 +253,25 @@ class BookingHold(Base):
     __table_args__ = (Index("ix_booking_holds_chan_ref", "channel", "ref"), Index("ix_booking_holds_status", "status"))
 
 
+class OwnerReply(Base):
+    """Telegram «✍️ Cavabımı yaz» (crm/owner_reply.py): sahibkarın xam cavabı → AI səliqəli variantı → göndəriş.
+    channel: wa | ig; ref: WA söhbət id-si və ya Instagram thread id."""
+    __tablename__ = "owner_replies"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel: Mapped[str] = mapped_column(String(4))
+    ref: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(120), default="")
+    raw: Mapped[str] = mapped_column(Text, default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(10), default="await")  # await | ready | sent | cancelled
+    regen_count: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+    tg_chat_id: Mapped[Optional[str]] = mapped_column(String(32))
+    tg_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    __table_args__ = (Index("ix_owner_replies_chan_ref", "channel", "ref"),)
+
+
 class CashbackLedger(Base):
     __tablename__ = "cashback_ledger"
     id: Mapped[int] = mapped_column(primary_key=True)

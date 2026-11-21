@@ -25,6 +25,7 @@ class Env:
     def __init__(self):
         self.http = []  # (url, json)
         self.alerts = []  # (key, text)
+        self.markups = {}  # alerts.notify(reply_markup=...): key → düymələr
         self.kapso_error = None  # {"code": 131047, "message": "..."} verilsə Kapso xəta qaytarır
         self.gemini_calls = []
         self.gemini_queue = []
@@ -81,8 +82,14 @@ def crm_env(monkeypatch):
     monkeypatch.setattr(httpx, "post", fake_post)
     monkeypatch.setattr(chat, "PAUSE", (0, 0))  # iki mesaj arasında real gözləmə yoxdur
     monkeypatch.setattr(ai, "generate", fake_generate)
-    monkeypatch.setattr(alerts, "notify",
-                        lambda key, text, topic="server": (key != "start" and env.alerts.append((key, text))) or True)  # «server başladı» sayılmır
+
+    def fake_notify(key, text, topic="server", reply_markup=None):
+        if key != "start":  # «server başladı» sayılmır
+            env.alerts.append((key, text))
+            env.markups[key] = reply_markup
+        return True
+
+    monkeypatch.setattr(alerts, "notify", fake_notify)
     return env
 
 

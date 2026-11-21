@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
 import tgtopics
-from crm import conf, events, friends, social_inbox, social_tg, tg, turns
+from crm import conf, events, friends, owner_reply, social_inbox, social_tg, tg, turns
 from db import aware
 from models import Setting, SocialItem
 from views import BAKU
@@ -84,7 +84,8 @@ def remind_waiting(db: DB, t: datetime) -> int:
         db.commit()
         tg._call("sendMessage", {**tgtopics.dest("action"), "disable_web_page_preview": True,
                                  "text": f"⏳ Instagram müştərisi {mins} dəqiqədir cavab gözləyir (bot komandaya ötürüb)\n"
-                                         f"{_who(db, thread)}\nSon mesaj: {(last or '-')[:500]}"})
+                                         f"{_who(db, thread)}\nSon mesaj: {(last or '-')[:500]}",
+                                 "reply_markup": owner_reply.markup(db, "ig", thread)})
         n += 1
     return n
 
@@ -102,8 +103,10 @@ def noon_reminder(db: DB, t: datetime) -> int:
         if social_inbox.ig_mode(db, it.thread_id) in ("owner", "wait")]
     if not rows:
         return 0
-    lines = [f"🌙 Gecədən qalan, sizi gözləyən Instagram qaralamaları: {len(rows)}"]
+    lines, keys = [f"🌙 Gecədən qalan, sizi gözləyən Instagram qaralamaları: {len(rows)}"], []
     for it in rows[:15]:
         lines.append(f"• {_who(db, it.thread_id)}: {(it.draft_text or '')[:120]}")
-    tg._call("sendMessage", {**tgtopics.dest("action"), "text": "\n".join(lines)[:4000]})
+        keys.append([owner_reply.button(db, "ig", it.thread_id, f"✍️ {_who(db, it.thread_id)}"[:40])])
+    tg._call("sendMessage", {**tgtopics.dest("action"), "text": "\n".join(lines)[:4000],
+                             "reply_markup": {"inline_keyboard": keys}})
     return len(rows)

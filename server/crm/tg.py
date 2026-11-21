@@ -94,6 +94,9 @@ def handle_callback(db: DB, cq: dict) -> str:
     if str(cq.get("data", "")).startswith("b:"):  # avtomatik rezerv: «✅ Təsdiqlə» / «❌ Ləğv et»
         from crm import autobook
         return autobook.handle_callback(db, cq)
+    if str(cq.get("data", "")).startswith("o:"):  # «✍️ Cavabımı yaz»: sahibkarın xam cavabı → AI səliqəyə salır
+        from crm import owner_reply
+        return owner_reply.handle_callback(db, cq)
     if str(cq.get("data", "")).startswith("t:"):  # to-do: «☑️ Bitdi»
         from crm import todo
         return todo.handle_callback(db, cq)

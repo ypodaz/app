@@ -15,7 +15,7 @@ import ai
 import alerts
 import tgtopics
 from ai import WD, AiError
-from crm import autobook, bot_prompt, chat, conf, contacts, customer_card, events, kapso, slots, tg, turns, typing_state, voice
+from crm import autobook, bot_prompt, chat, conf, contacts, customer_card, events, kapso, owner_reply, slots, tg, turns, typing_state, voice
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -559,6 +559,7 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         elif partner:
             urgent = "🤝 Əməkdaşlıq və ya iş təklifi (müştəri deyil), bot qısa təşəkkür yazdı\n"
         alerts.notify(f"handoff:{conv.id}:{last_in.id if last_in else 0}", topic="action",
+                      reply_markup=owner_reply.markup(db, "wa", conv.id),
                       text=f"{urgent}{'söhbət sizə keçdi' if auto and (silent or partner) else 'bot komandaya ötürdü, sizin cavabınızı gözləyir (asan suallara özü cavab verir)' if auto else 'əməkdaş lazımdır (bot qaralama yazmağa davam edir)'}\n"
                       f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\n"
                       f"Səbəb: {res['handoff_reason'] or '-'}\nMüştəri: {(last_in.text if last_in else '')[:500]}\n"
@@ -608,7 +609,7 @@ def _file_handoff(db: DB, conv: WaConversation, contact: WaContact, last_in: WaM
         turns.to_wait(db, conv, now())
         events.handoff(db, events.WA, conv.id, "fayl")
     db.commit()
-    alerts.notify(f"handoff:{conv.id}:{last_in.id}", topic="action",
+    alerts.notify(f"handoff:{conv.id}:{last_in.id}", topic="action", reply_markup=owner_reply.markup(db, "wa", conv.id),
                   text=f"📎 Fayl göndərildi, {'bot qısa cavab verdi, sizin cavabınızı gözləyir' if sent else 'bot cavab yazmadı'}\n"
                   f"Ad: {contact.name or '-'}, telefon: {contact.phone or '-'}\nMesaj: {(last_in.text or '')[:500]}\n"
                   f"{chat.panel_link(conv.id)}")
