@@ -224,6 +224,35 @@ class Block(Base):
     reason: Mapped[Optional[str]] = mapped_column(String(255))
 
 
+class BookingHold(Base):
+    """Bot tutduğu saat (crm/autobook.py): qəbz gözlənilir, 24 saatdan sonra boşalır. Tutulan vaxt həm də `Block` sətridir.
+    channel: wa | ig; ref: WA söhbət id-si və ya Instagram thread id; kind/tag/cameras/...: çəkiliş sahələri (qiymət snapshot-ı)."""
+    __tablename__ = "booking_holds"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    channel: Mapped[str] = mapped_column(String(4))
+    ref: Mapped[str] = mapped_column(String(64))
+    lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("leads.id", ondelete="SET NULL"), index=True)
+    block_id: Mapped[Optional[int]] = mapped_column(ForeignKey("blocks.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(120), default="")
+    phone: Mapped[Optional[str]] = mapped_column(String(32))
+    starts_at: Mapped[datetime] = mapped_column(TS)
+    duration_min: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))  # reels_pack | shoot | single_reel
+    tag: Mapped[str] = mapped_column(String(16))  # reels | podcast
+    cameras: Mapped[int] = mapped_column(Integer, default=1)
+    editing: Mapped[bool] = mapped_column(default=False)
+    reels_count: Mapped[int] = mapped_column(Integer, default=0)
+    total: Mapped[int] = mapped_column(Integer)  # qəpik (money.py vahidi)
+    deposit: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending | receipt | confirmed | cancelled | expired
+    hold_until: Mapped[datetime] = mapped_column(TS)
+    shoot_id: Mapped[Optional[int]] = mapped_column(Integer)
+    tg_chat_id: Mapped[Optional[str]] = mapped_column(String(32))
+    tg_message_id: Mapped[Optional[str]] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+    __table_args__ = (Index("ix_booking_holds_chan_ref", "channel", "ref"), Index("ix_booking_holds_status", "status"))
+
+
 class CashbackLedger(Base):
     __tablename__ = "cashback_ledger"
     id: Mapped[int] = mapped_column(primary_key=True)

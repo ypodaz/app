@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 TTL = 600  # keş 10 dəqiqə
 STALE_MAX = 24 * 3600  # yükləmə uğursuz olsa köhnə keş 24 saata qədər işlənir
 RETRY = 60  # uğursuzluqdan sonra 60 san. təkrar sorğu yoxdur (bot hər mesajda 10 san. gözləməsin)
+STRICT_MAX = 900  # busy_strict: son uğurlu yükləmə 15 dəqiqədən köhnədirsə yenidən yüklənir
 
 _lock = threading.Lock()
 # hər mənbənin öz keşi var: "main" (Y Pod) və "personal" (şəxsi)
@@ -50,16 +51,43 @@ def _load(name: str = "main"):
         return cache["cal"]
 
 
+class CalendarUnavailable(Exception):
+    """busy_strict: təqvim təzə oxuna bilmədi (avtomatik rezerv bu halda saat tutmur)."""
+
+
+def _load_strict(name: str):
+    """Mənbənin təqvimi, ən çoxu STRICT_MAX köhnə; lazımsa yenidən yükləyir. Alınmasa CalendarUnavailable (köhnə keşə düşmür).
+    Şəxsi təqvimin URL-i boşdursa None (qurulmayıb); Y Pod təqvimi qurulmayıbsa xəta."""
+    url = (settings.APPLE_CAL_ICS_URL if name == "main" else settings.APPLE_CAL_ICS_URL_PERSONAL).strip()
+    if not url:
+        if name == "main":
+            raise CalendarUnavailable("Y Pod təqvimi qurulmayıb")
+        return None
+    cache = _caches[name]
+    with _lock:
+        if cache["cal"] is not None and time.monotonic() - cache["at"] < STRICT_MAX:
+            return cache["cal"]
+        try:
+            r = httpx.get("https://" + url[len("webcal://"):] if url.startswith("webcal://") else url,
+                          timeout=10, follow_redirects=True)
+            r.raise_for_status()
+            cache["cal"], cache["at"] = icalendar.Calendar.from_ical(r.content), time.monotonic()
+        except Exception as e:  # noqa: BLE001 — URL və cavab mətni loga düşməsin
+            log.warning("ICS təqvimi təzə yüklənmədi (%s: %s)", name, type(e).__name__)
+            raise CalendarUnavailable(type(e).__name__) from e
+        return cache["cal"]
+
+
 def _dt(v: datetime) -> datetime:
     """Qurşaqsız (floating) vaxt Bakı vaxtı sayılır."""
     return v.replace(tzinfo=BAKU) if v.tzinfo is None else aware(v)
 
 
-def _events(name: str, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+def _events(name: str, start: datetime, end: datetime, cal=None, strict: bool = False) -> list[tuple[datetime, datetime]]:
     """Bir mənbənin məşğul aralıqları. Y Pod təqvimində bütün günlük və TRANSPARENT sayılmır;
     şəxsi təqvimdə bütün günlük hadisə günü Bakı vaxtı ilə 00:00–24:00 tutur (DTEND eksklüzivdir).
-    Hər ikisində CANCELLED sayılmır."""
-    cal = _load(name)
+    Hər ikisində CANCELLED sayılmır. strict: Y Pod təqvimində də bütün günlük hadisə məşğuldur (busy_strict)."""
+    cal = cal if cal is not None else _load(name)
     if cal is None:
         return []
     out = []
@@ -68,7 +96,7 @@ def _events(name: str, start: datetime, end: datetime) -> list[tuple[datetime, d
             continue
         a, b = ev.start, ev.end
         if not isinstance(a, datetime):
-            if name == "main":
+            if name == "main" and not strict:
                 continue
             # iCloud TRANSP ötürmür, ona görə şəxsi all-day TRANSP-a baxılmır
             a = datetime(a.year, a.month, a.day, tzinfo=BAKU)
@@ -91,6 +119,22 @@ def busy(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
             out += _events(name, start, end)
         except Exception as e:  # noqa: BLE001 — biri alınmasa digəri işləyir
             log.warning("ICS təqvimi emal edilmədi (%s: %s)", name, type(e).__name__)
+    return out
+
+
+def busy_strict(start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    """busy() kimi, amma avtomatik rezerv üçün ciddi: təqvimlər ən çoxu 15 dəqiqə köhnə olmalıdır (lazımsa yenidən yüklənir),
+    alınmasa və ya emal olunmasa CalendarUnavailable (boş siyahı «boşdur» demək olmasın); bütün günlük hadisələr də məşğuldur."""
+    out = []
+    for name in ("main", "personal"):
+        cal = _load_strict(name)
+        if cal is None:
+            continue
+        try:
+            out += _events(name, start, end, cal=cal, strict=True)
+        except Exception as e:  # noqa: BLE001
+            log.warning("ICS təqvimi emal edilmədi (%s: %s)", name, type(e).__name__)
+            raise CalendarUnavailable(type(e).__name__) from e
     return out
 
 

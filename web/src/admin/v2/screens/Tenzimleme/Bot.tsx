@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAction, useAuth, useLoad } from '../../../ctx';
 import { whenFull } from '../../../components/crm';
 import { PageHeader } from '../../shell/PageHeader';
@@ -7,7 +7,7 @@ import { Gate } from './kit';
 import './tenzimleme.css';
 
 export type Mode = 'draft' | 'auto' | 'new_auto';
-export type Settings = { bot_enabled: boolean; bot_mode: Mode; kapso_month_count: number; kapso_month_limit: number };
+export type Settings = { bot_enabled: boolean; bot_mode: Mode; kapso_month_count: number; kapso_month_limit: number; auto_booking?: boolean; booking_card_text?: string; booking_address_text?: string };
 type Faq = { id: number; question: string; answer: string; active: boolean };
 type Quick = { id: number; title: string; text: string };
 type Unanswered = { id: number; conversation_id: number | null; question: string; created_at: string };
@@ -50,7 +50,7 @@ export function Bot() {
           ]} />
         </div>
         {tab === 'qayda' && <Rules />}
-        {tab === 'nobe' && <Queue />}
+        {tab === 'nobe' && <><Queue /><AutoBooking /></>}
         {tab === 'bilik' && <Knowledge />}
         {tab === 'hazir' && <Quicks />}
       </div>
@@ -101,6 +101,34 @@ function Queue() {
               footer={<><Button variant="text" onClick={() => setAsk(null)}>Ləğv et</Button><Button variant="primary" disabled={act.busy || !online} onClick={async () => { const m = ask; setAsk(null); if (m) await save({ bot_mode: m }); }}>Avtomatikə keç</Button></>}>
               <ChangeNote changes={['Bot cavabları müştəriyə təsdiqsiz göndərilir']} unchanged={['FAQ və hazır cavablar', 'Köhnə söhbətlər']} />
             </Dialog>
+          </div>
+        )}
+      </Gate>
+    </Card>
+  );
+}
+
+/** Avtomatik rezerv (crm/autobook.py): açar və kart/ünvan mətni. Kart mətni boşdursa rezerv işləmir. */
+function AutoBooking() {
+  const { s, act, save } = useBotSettings();
+  const online = useOnline();
+  const [card, setCard] = useState('');
+  const [addr, setAddr] = useState('');
+  const d = s.data;
+  useEffect(() => { if (d) { setCard(d.booking_card_text ?? ''); setAddr(d.booking_address_text ?? ''); } }, [d?.booking_card_text, d?.booking_address_text]);
+  return (
+    <Card title="Avtomatik rezerv" aside={<span className="tz-aside">WhatsApp və Instagram DM</span>}>
+      <Gate q={s} title="Ayarlar yüklənmədi" rows={2}>
+        {(x) => (
+          <div className="tz-stack">
+            {act.err && <ErrorBox title="Saxlanmadı" detail={act.err} />}
+            <div className="bt-switch">
+              <span><b>Avtomatik rezerv (≥2 gün, ±1 saat boş)</b><span className="tz-sub" style={{ display: 'block' }}>Müştəri gün və saat deyəndə bot saatı 24 saat tutur, kart məlumatını göndərir; qəbz gələndə siz təsdiqləyirsiniz.</span></span>
+              <Switch ai checked={!!x.auto_booking} disabled={act.busy || !online} label="Avtomatik rezerv" onChange={(v) => save({ auto_booking: v })} />
+            </div>
+            <Field label="Kart məlumatı">{(id) => <TextArea id={id} maxLength={500} placeholder="Kart nömrəsi və ad (olduğu kimi göndərilir)" value={card} onChange={(e) => setCard(e.target.value)} />}</Field>
+            <Field label="Ünvan və taksi mətni">{(id) => <TextArea id={id} maxLength={1000} placeholder="Ünvan, taksi üçün qeyd (boş ola bilər)" value={addr} onChange={(e) => setAddr(e.target.value)} />}</Field>
+            <div className="tz-actions"><Button variant="primary" disabled={act.busy || !online || (card === (x.booking_card_text ?? '') && addr === (x.booking_address_text ?? ''))} onClick={() => save({ booking_card_text: card, booking_address_text: addr })}>Yadda saxla</Button></div>
           </div>
         )}
       </Gate>

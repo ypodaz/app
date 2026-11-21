@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session as DB
 
 import ai
 import booking
-from auth import current_admin, new_card_code
-from crm import bot, chat, conf, events, friends, kapso, turns, typing_state
+from auth import current_admin
+from crm import bot, chat, conf, contacts, events, friends, kapso, turns, typing_state
 from db import aware, get_db, now
 from models import (BotDraft, Client, Faq, Lead, LeadEvent, QuickReply, UnansweredQuestion, WaContact, WaConversation,
                     Shoot, WaMessage)
@@ -361,13 +361,6 @@ def _tail(phone: str | None) -> str:
     return chat.digits(phone)[-9:]
 
 
-def client_for_lead(db: DB, lead: Lead, contact: WaContact) -> Client | None:
-    tail = _tail(lead.phone or contact.phone)
-    if len(tail) < 7:
-        return None
-    return next((c for c in db.scalars(select(Client).where(Client.phone != "")) if _tail(c.phone) == tail), None)
-
-
 @router.post("/leads/{lead_id}/confirm")
 def lead_confirm(lead_id: int, body: ConfirmIn, db: DB = Depends(get_db), admin=Depends(current_admin)):
     lead = get_or_404(db, Lead, lead_id, "Lead")
@@ -379,13 +372,7 @@ def lead_confirm(lead_id: int, body: ConfirmIn, db: DB = Depends(get_db), admin=
     if found:
         raise HTTPException(409, {"message": "Bu vaxt məşğuldur", "conflicts": found})
     contact = db.get(WaContact, lead.contact_id)
-    client = client_for_lead(db, lead, contact)
-    if not client:
-        name = (lead.name or contact.name or "").strip()
-        client = Client(full_name=name if len(name) >= 2 else "WhatsApp müştərisi",
-                        phone=chat.digits(lead.phone or contact.phone), card_code=new_card_code())
-        db.add(client)
-        db.flush()
+    client = contacts.ensure_client(db, lead.name or contact.name, lead.phone or contact.phone)
     tag = {"reels": "reels", "podkast": "podcast"}.get(lead.service or "", "other")
     try:
         s = booking.create_shoot(db, admin.id, client_id=client.id, starts_at=starts, duration_min=body.duration_min,
@@ -521,7 +508,10 @@ def unanswered_resolve(uq_id: int, body: ResolveIn | None = None, db: DB = Depen
 
 def settings_out(db: DB) -> dict:
     return {"bot_enabled": conf.bot_enabled(db), "bot_mode": conf.bot_mode(db),
-            "kapso_month_count": kapso.month_count(db), "kapso_month_limit": kapso.MONTH_LIMIT}
+            "kapso_month_count": kapso.month_count(db), "kapso_month_limit": kapso.MONTH_LIMIT,
+            "auto_booking": (conf.get(db, "auto_booking", "false") or "").strip().lower() == "true",
+            "booking_card_text": conf.get(db, "booking_card_text", "") or "",
+            "booking_address_text": conf.get(db, "booking_address_text", "") or ""}
 
 
 @router.get("/bot/settings")
@@ -532,6 +522,9 @@ def bot_settings(db: DB = Depends(get_db)):
 class BotSettingsIn(BaseModel):
     bot_enabled: bool | None = None
     bot_mode: Literal["draft", "auto", "new_auto"] | None = None
+    auto_booking: bool | None = None
+    booking_card_text: str | None = Field(default=None, max_length=500)  # boş string: təmizlə
+    booking_address_text: str | None = Field(default=None, max_length=1000)
 
 
 @router.post("/bot/settings")
@@ -540,6 +533,12 @@ def bot_settings_save(body: BotSettingsIn, db: DB = Depends(get_db)):
         conf.put(db, "bot_enabled", "true" if body.bot_enabled else "false")
     if body.bot_mode is not None:
         conf.put(db, "bot_mode", body.bot_mode)
+    if body.auto_booking is not None:
+        conf.put(db, "auto_booking", "true" if body.auto_booking else "false")
+    if body.booking_card_text is not None:
+        conf.put(db, "booking_card_text", body.booking_card_text.strip())
+    if body.booking_address_text is not None:
+        conf.put(db, "booking_address_text", body.booking_address_text.strip())
     db.commit()
     return settings_out(db)
 

@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session as DB
 import ai
 import alerts
 from ai import AiError
-from crm import bot, conf, contacts, events, friends, instagram, social_tg, turns, typing_state, voice, youtube
+from crm import autobook, bot, conf, contacts, events, friends, instagram, social_tg, turns, typing_state, voice, youtube
 from db import SessionLocal, aware, now
 from models import Lead, SocialItem, WaContact
 
@@ -462,6 +462,12 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
                 item.text = voice.image_label(voice.image_text(db, mo["image_url"]))
             item.model_output = {k: v for k, v in mo.items() if k not in ("audio_url", "image_url")}
             db.commit()
+        hold = autobook.pending_hold(db, "ig", item.thread_id) if item.channel == "instagram" else None
+        if hold and not avoid and item.text.startswith(autobook.RECEIPT_LABELS):  # qəbz: saat tutulub
+            autobook.receipt(db, hold)
+            item.status, item.draft_text, item.decided_at = "sent", autobook.RECEIPT_REPLY, now()
+            db.commit()
+            return "receipt"
         first = not db.scalar(select(SocialItem.id).where(SocialItem.channel == item.channel, SocialItem.kind == "dm",
                                                           SocialItem.thread_id == item.thread_id,
                                                           SocialItem.status == "sent").limit(1))
@@ -527,6 +533,10 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         if avoid:  # «Yenidən yaz» həmişə qaralamadır, avtomatik göndəriş taymeri də ləğv olunur
             item.auto_at = None
         elif ig_auto(db, item):
+            if (res.get("booking") and not problem and ig_mode(db, item.thread_id) == "bot" and autobook.enabled(db)
+                    and res.get("language") in (None, "az")):
+                if outcome := _ig_autobook(db, item, res):
+                    return outcome
             send_now, item.auto_at = turns.plan_mode(ig_mode(db, item.thread_id), res, now())  # növbə: crm/turns.py
             handoff = bool(res.get("handoff"))
             if send_now:
@@ -554,6 +564,37 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
     social_tg.send(item)
     db.commit()
     return "draft"
+
+
+def _ig_autobook(db: DB, item: SocialItem, res: dict) -> str | None:
+    """DM-də konkret gün və saat: saat boşdursa tutulur və kart məlumatı gedir; doludursa alternativlər yazılır.
+    None: avtomatik getmədi (köhnə yol: qaralama və ya handoff)."""
+    lid = item_lead_id(db, item)
+    lead = db.get(Lead, lid) if lid else None
+    name = (lead.name if lead else "") or (f"@{item.author}" if item.author else "") or "Müştəri"
+    r = autobook.try_hold(db, channel="ig", ref=item.thread_id, lead=lead, name=name, phone=lead.phone if lead else None,
+                          booking=res["booking"], now_dt=now())
+    if not r["messages"]:
+        return None
+    sent = []
+    try:
+        for m in r["messages"]:
+            autobook.send(db, "ig", item.thread_id, m)
+            sent.append(m)
+    except instagram.IgError as e:
+        log.warning("avtomatik rezerv DM-i getmədi (item %s): %s", item.id, str(e)[:200])
+        if r["ok"] and not sent:  # heç nə getmədi: saat boşaldılır, köhnə yol
+            autobook.discard(db, r["hold"], "mesaj getmədi")
+            return None
+    if not sent:
+        return None
+    item.draft_text, item.status, item.decided_at = "\n\n".join(sent), "sent", now()
+    item.auto_at = None
+    if r["ok"]:
+        autobook.advance_lead(db, lead)
+    db.commit()
+    social_tg.auto_log(item)
+    return "autobook" if r["ok"] else "autobook:alternativ"
 
 
 def _first_dm(db: DB, item: SocialItem) -> str:

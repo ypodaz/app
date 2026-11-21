@@ -1,9 +1,12 @@
 """Sahibkarın telefon kontaktları: xarici və şəxsi nömrələrdə bot yazmır, söhbət sahibkara keçir."""
 import re
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session as DB
 
-from models import KnownContact, WaContact
+from auth import new_card_code
+from crm import chat
+from models import Client, KnownContact, WaContact
 
 
 def normalize(phone: str | None) -> str:
@@ -37,3 +40,23 @@ def route(contact: WaContact, known: KnownContact | None) -> str | None:
     if known and known.kind == "personal":
         return "personal"
     return None
+
+
+def find_client(db: DB, phone: str | None) -> Client | None:
+    """Telefonun son 9 rəqəmi ilə müştəri (nömrə formatı fərqli yazılsa da)."""
+    tail = chat.digits(phone)[-9:]
+    if len(tail) < 7:
+        return None
+    return next((c for c in db.scalars(select(Client).where(Client.phone != "")) if chat.digits(c.phone)[-9:] == tail), None)
+
+
+def ensure_client(db: DB, name: str | None, phone: str | None, fallback: str = "WhatsApp müştərisi") -> Client:
+    """Telefona görə müştərini tapır, yoxdursa yaradır (flush edir, commit çağıran tərəfindədir)."""
+    client = find_client(db, phone)
+    if not client:
+        name = (name or "").strip()
+        client = Client(full_name=name if len(name) >= 2 else fallback, phone=chat.digits(phone),
+                        card_code=new_card_code())
+        db.add(client)
+        db.flush()
+    return client

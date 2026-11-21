@@ -15,7 +15,7 @@ import ai
 import alerts
 import tgtopics
 from ai import WD, AiError
-from crm import bot_prompt, chat, conf, contacts, customer_card, events, kapso, slots, tg, turns, typing_state, voice
+from crm import autobook, bot_prompt, chat, conf, contacts, customer_card, events, kapso, slots, tg, turns, typing_state, voice
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -100,6 +100,27 @@ def _date(v):
         return None
 
 
+BOOKING_SERVICES = ("reels", "podkast", "tek_reels")
+BOOKING_START_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def _booking(v):
+    """Avtomatik rezerv sahəsi: {date, start, hours, service, cameras}; səhvdirsə None (köhnə yol: handoff rezerv)."""
+    if not isinstance(v, dict):
+        return None
+    day, m, service = _date(v.get("date")), BOOKING_START_RE.match(str(_null(v.get("start")) or "").strip()), str(_null(v.get("service")) or "").strip().lower()
+    if not day or not m or service not in BOOKING_SERVICES:
+        return None
+    try:
+        hours = float(v["hours"]) if _null(v.get("hours")) is not None else None
+    except (TypeError, ValueError):
+        return None
+    if hours is not None and not 0.5 <= hours <= 8:
+        return None
+    return {"date": day.isoformat(), "start": f"{int(m.group(1)):02d}:{m.group(2)}", "hours": hours, "service": service,
+            "cameras": _int(v.get("cameras"))}
+
+
 REMIND_HOUR = 9  # «sonra yazacaq» xatırlatması həmin gün Bakı vaxtı 09:00-da
 REMIND_MAX_DAYS = 90
 
@@ -139,6 +160,7 @@ def parse_reply(text: str) -> dict:
         "stage": _null(data.get("stage")),
         "remind_at": d.isoformat() if (d := _date(data.get("remind_at"))) else None,
         "unanswered_question": _null(data.get("unanswered_question")),
+        "booking": _booking(data.get("booking")),
     }
 
 
@@ -472,6 +494,11 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         db.commit()
     voice.fill_missing(db, conv.id)  # səsli mesaj mətnə çevrilir, şəkil təsvir olunur (Gemini)
     last_file = chat.last_message(db, conv.id, "customer")
+    hold = autobook.pending_hold(db, "wa", str(conv.id))
+    if hold and not avoid and last_file and (last_file.text or "").startswith(autobook.RECEIPT_LABELS):
+        autobook.receipt(db, hold)  # qəbz: saat tutulub, komanda təsdiqləyəcək
+        db.commit()
+        return "receipt"
     if not avoid and last_file and (last_file.text or "").startswith(FILE_LABELS):
         return _file_handoff(db, conv, contact, last_file)
     first =chat.last_message(db, conv.id, "bot") is None
@@ -499,12 +526,17 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         res = {**res, "handoff": True, "handoff_reason": "filtr", "reply": ""}
     silent = res["handoff"] and res["handoff_reason"] in SILENT_REASONS
     partner = res["handoff"] and res["handoff_reason"] in PARTNER_REASONS
+    lead = None
     if silent:  # iş yazışması: müştəriyə heç nə getmir, satış lead-i də yaranmır
         res = {**res, "reply": ""}
     elif not partner:  # əməkdaşlıq təklifi satış deyil: lead yaranmır, yalnız qısa təşəkkür gedir
-        apply_result(db, conv, contact, res)
+        lead = apply_result(db, conv, contact, res)
     if not avoid:  # «Yenidən yaz»da eyni sual ikinci dəfə yazılmasın
         note_gap(db, conv.id, res, last_in.text if last_in else "")
+    if (lead and res.get("booking") and not avoid and not problem and conv.mode == "bot" and autobook.enabled(db)
+            and auto_reply(db, conv, contact) and res.get("language") in (None, "az")):
+        if outcome := _autobook(db, conv, contact, lead, res):
+            return outcome
     outcome = "draft"
     if res["reply"]:
         outcome = deliver(db, conv, res["reply"], res, reason=f"handoff:{res['handoff_reason']}" if res["handoff"] else None,
@@ -534,6 +566,32 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
                       f"{chat.panel_link(conv.id)}")
     db.commit()
     return outcome
+
+
+def _autobook(db: DB, conv: WaConversation, contact: WaContact, lead: Lead, res: dict) -> str | None:
+    """Müştəri konkret gün və saat dedi: saat boşdursa tutulur və kart məlumatı gedir; doludursa alternativlər yazılır.
+    None: avtomatik getmədi (köhnə yol: handoff «rezerv», komanda baxır). Qaralama/handoff yaranmır."""
+    db.commit()  # lead dəyişiklikləri saxlanıb, try_hold öz tranzaksiyasını bağlayır
+    r = autobook.try_hold(db, channel="wa", ref=str(conv.id), lead=lead, name=lead.name or contact.name or "Müştəri",
+                          phone=contact.phone or lead.phone or None, booking=res["booking"], now_dt=now())
+    if not r["messages"]:
+        return None
+    sent = []
+    try:
+        for m in r["messages"]:
+            chat.send_out(db, conv, m, "bot")
+            sent.append(m)
+    except kapso.KapsoError as e:
+        log.warning("avtomatik rezerv mesajı getmədi (söhbət %s): %s", conv.id, e.message)
+        if r["ok"] and not sent:  # heç nə getmədi: saat boşaldılır, köhnə yol
+            autobook.discard(db, r["hold"], "mesaj getmədi")
+            return None
+    if sent:
+        tg.auto_log(db, conv, "\n\n".join(sent))
+    if r["ok"]:
+        autobook.advance_lead(db, lead)
+    db.commit()
+    return "autobook" if r["ok"] else "autobook:alternativ"
 
 
 def _file_handoff(db: DB, conv: WaConversation, contact: WaContact, last_in: WaMessage) -> str:
