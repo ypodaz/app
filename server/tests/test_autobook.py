@@ -283,6 +283,25 @@ def test_receipt_image_moves_hold_to_receipt_and_waits(api, crm_env):
     assert card["text"].startswith("🧾 Qəbz gəldi\n") and card["reply_markup"]["inline_keyboard"][0][0]["text"] == "✅ Təsdiqlə"
 
 
+def test_receipt_image_then_text_still_receipt(api, crm_env):
+    _, conv_id = wa_ready()
+    crm_env.gemini(booking_reply())
+    bot.handle(conv_id)
+    customer_says(conv_id, "[şəkil: qəbz]")
+    with SessionLocal() as db:
+        db.add(WaMessage(conversation_id=conv_id, direction="in", source="customer", text="Göndərdim",
+                         created_at=now() + timedelta(seconds=8)))
+        db.commit()
+    assert bot.handle(conv_id) == "receipt"
+    assert one(BookingHold).status == "receipt"
+
+
+def test_log_text_hides_card(api):
+    setup_conf()
+    with SessionLocal() as db:
+        assert autobook.log_text(db, ["a", CARD, "b"]) == "a\n\n💳 [kart məlumatı]\n\nb"
+
+
 def test_confirm_after_receipt_creates_shoot_with_deposit(api, crm_env):
     _, conv_id = wa_ready()
     crm_env.gemini(booking_reply())

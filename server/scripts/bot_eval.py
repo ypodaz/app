@@ -91,6 +91,12 @@ def check(res: dict, expect: dict, global_bad: list[str]) -> list[str]:
             bad.append(f"lead.{k}={res['lead'].get(k)} (gözlənən {v})")
     if "asan" in expect and bool(res.get("asan")) != expect["asan"]:
         bad.append(f"asan={bool(res.get('asan'))} (gözlənən {expect['asan']})")
+    if "booking" in expect:
+        want, got = expect["booking"], res.get("booking")
+        if want is None and got is not None:
+            bad.append(f"booking={got} (gözlənən null)")
+        elif want is not None and (got is None or any(got.get(k) != v for k, v in want.items())):
+            bad.append(f"booking={got} (gözlənən {want})")
     if "unanswered" in expect and bool(res["unanswered_question"]) != expect["unanswered"]:
         bad.append(f"unanswered_question={'var' if res['unanswered_question'] else 'yoxdur'}")
     if re.search(r"\d{12,}", re.sub(r"[\s\-]", "", reply)):

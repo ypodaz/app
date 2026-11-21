@@ -588,7 +588,7 @@ def _ig_autobook(db: DB, item: SocialItem, res: dict) -> str | None:
             return None
     if not sent:
         return None
-    item.draft_text, item.status, item.decided_at = "\n\n".join(sent), "sent", now()
+    item.draft_text, item.status, item.decided_at = autobook.log_text(db, sent), "sent", now()
     item.auto_at = None
     if r["ok"]:
         autobook.advance_lead(db, lead)

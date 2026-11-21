@@ -495,7 +495,7 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
     voice.fill_missing(db, conv.id)  # səsli mesaj mətnə çevrilir, şəkil təsvir olunur (Gemini)
     last_file = chat.last_message(db, conv.id, "customer")
     hold = autobook.pending_hold(db, "wa", str(conv.id))
-    if hold and not avoid and last_file and (last_file.text or "").startswith(autobook.RECEIPT_LABELS):
+    if hold and not avoid and autobook.wa_receipt(db, hold):
         autobook.receipt(db, hold)  # qəbz: saat tutulub, komanda təsdiqləyəcək
         db.commit()
         return "receipt"
@@ -587,7 +587,7 @@ def _autobook(db: DB, conv: WaConversation, contact: WaContact, lead: Lead, res:
             autobook.discard(db, r["hold"], "mesaj getmədi")
             return None
     if sent:
-        tg.auto_log(db, conv, "\n\n".join(sent))
+        tg.auto_log(db, conv, autobook.log_text(db, sent))
     if r["ok"]:
         autobook.advance_lead(db, lead)
     db.commit()

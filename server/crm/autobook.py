@@ -17,7 +17,7 @@ import tgtopics
 from ai import WD
 from crm import calendar_ics, chat, conf, contacts, instagram, kapso, slots, tg
 from db import aware, now
-from models import BookingHold, Block, Lead, LeadEvent, Shoot, WaConversation
+from models import BookingHold, Block, Lead, LeadEvent, Shoot, WaConversation, WaMessage
 from views import BAKU, utc
 
 log = logging.getLogger("autobook")
@@ -130,6 +130,19 @@ def _link(hold: BookingHold) -> str:
 def pending_hold(db: DB, channel: str, ref: str) -> BookingHold | None:
     return db.scalar(select(BookingHold).where(BookingHold.channel == channel, BookingHold.ref == str(ref),
                                                BookingHold.status == "pending").order_by(BookingHold.id.desc()).limit(1))
+
+
+def wa_receipt(db: DB, hold: BookingHold) -> bool:
+    """Saat tutulandan sonra müştəri şəkil/sənəd göndərib (ardınca «göndərdim» yazsa da tanınır)."""
+    q = select(WaMessage.text).where(WaMessage.conversation_id == int(hold.ref), WaMessage.source == "customer",
+                                     WaMessage.created_at > hold.created_at)
+    return any((t or "").startswith(RECEIPT_LABELS) for t in db.scalars(q))
+
+
+def log_text(db: DB, sent: list[str]) -> str:
+    """Telegram qeydi üçün: kart mətni yazılmır."""
+    card = (conf.get(db, "booking_card_text", "") or "").strip()
+    return "\n\n".join("💳 [kart məlumatı]" if card and m.strip() == card else m for m in sent)
 
 
 def _release(db: DB, hold: BookingHold, status: str) -> None:

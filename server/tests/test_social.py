@@ -12,6 +12,7 @@ import alerts  # noqa: E402
 import settings  # noqa: E402
 from db import SessionLocal  # noqa: E402
 from models import MediaAsset, Setting, SocialPost  # noqa: E402
+from routes import admin_social  # noqa: E402
 from social import buffer, captions, facebook, schedule, worker  # noqa: E402
 
 CAPTIONS_FILE = (Path.home() / "Claude Projects/Y Pod Social Media AI/Y Pod Kontent/ssenariler/aciqlamalar.md")
@@ -388,6 +389,7 @@ def test_admin_social_api(api, monkeypatch):
     assert r.json() == {"id": mid, "public_url": "https://cdn.test/new.mp4", "cover_offset_ms": 2500}
 
     assert api.post("/api/admin/social/queue", json={"enabled": True}, headers=h).json() == {"queue_enabled": True}
+    monkeypatch.setattr(admin_social, "now", lambda: datetime(2026, 11, 19, tzinfo=timezone.utc))  # postlar 20.11-dən
     st = api.get("/api/admin/social/status", headers=h).json()
     assert st["queue_enabled"] is True and st["requests_today"] == 0 and st["recent_errors"] == []
     assert st["channels"] == [{"id": "c1", "service": "tiktok", "name": "ypod", "queue_paused": False}]
