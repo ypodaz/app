@@ -13,7 +13,7 @@ from sqlalchemy import select  # noqa: E402
 import booking  # noqa: E402
 from crm import autobook, bot, calendar_ics, conf  # noqa: E402
 from db import SessionLocal, now  # noqa: E402
-from models import BookingHold, Block, Client, Lead, Shoot, WaConversation, WaMessage  # noqa: E402
+from models import BookingHold, Block, Client, Lead, OwnerReply, Shoot, SocialItem, Subscription, WaConversation, WaMessage  # noqa: E402
 from views import BAKU, utc  # noqa: E402
 
 TODAY = date(2026, 11, 20)
@@ -71,8 +71,8 @@ def add_shoot(db, day, hh):
 
 def test_check_days(api):
     with SessionLocal() as db:
-        assert autobook.check(db, at(21, 12), 60, TODAY) == (False, "too_soon")  # D+1
-        assert autobook.check(db, at(22, 12), 60, TODAY) == (True, "ok")  # D+2
+        assert autobook.check(db, at(20, 18), 60, TODAY) == (False, "too_soon")  # bu gün olmaz
+        assert autobook.check(db, at(21, 12), 60, TODAY) == (True, "ok")  # sabah olar
 
 
 def test_check_hours(api):
@@ -110,7 +110,7 @@ def test_alternatives_respect_today_and_buffer(api):
         db.commit()
         alts = autobook.alternatives(db, date(2026, 11, 22), 60, today=TODAY)
         assert alts == [at(22, 21), at(23, 8), at(23, 8, 30)]  # bloka 60 dəq bufer
-        assert autobook.alternatives(db, date(2026, 11, 20), 60, today=TODAY)[0] == at(22, 21)  # D+2-dən əvvəl təklif yox
+        assert autobook.alternatives(db, date(2026, 11, 20), 60, today=TODAY)[0] == at(21, 8)  # bu gün təklif yox, sabahdan başlayır
 
 
 def test_alternatives_calendar_down_returns_empty(api, cal):
@@ -192,7 +192,7 @@ def test_same_ref_new_hold_replaces_old(api):
 
 def test_try_hold_too_soon_has_no_messages(api):
     with SessionLocal() as db:
-        r = hold_it(db, day=21)
+        r = hold_it(db, day=20, hh=18)
         assert (r["ok"], r["reason"], r["messages"]) == (False, "too_soon", [])
         assert db.scalars(select(BookingHold)).all() == []
 
@@ -253,14 +253,14 @@ def test_bot_autobook_conflict_sends_alternatives_instead_of_reply(api, crm_env)
     assert one(WaConversation).mode == "bot"
 
 
-@pytest.mark.parametrize("case", ["too_soon", "ru", "disabled", "draft_mode", "no_booking"])
+@pytest.mark.parametrize("case", ["too_soon", "ru", "disabled", "no_booking"])
 def test_bot_falls_back_to_old_path(api, crm_env, case):
-    _, conv_id = wa_ready(mode="draft" if case == "draft_mode" else "auto")
+    _, conv_id = wa_ready(mode="auto")
     if case == "disabled":
         with SessionLocal() as db:
             conf.put(db, "auto_booking", "false")
             db.commit()
-    out = booking_reply(days=1 if case == "too_soon" else 5, **({"language": "ru"} if case == "ru" else {}))
+    out = booking_reply(days=0 if case == "too_soon" else 5, **({"language": "ru"} if case == "ru" else {}))
     if case == "no_booking":
         out["booking"] = None
     crm_env.gemini(out)
@@ -441,3 +441,149 @@ def test_ig_autobook_off_keeps_old_path(api, net, crm_env):
     crm_env.gemini(booking_reply())
     post_ig(api, dm(mid="m1", text="Saat 12-də Reels"))
     assert one(BookingHold) is None and not any("Kart məlumatı" in t for t in graph_texts(net))
+
+
+# --- 2026-11-23: köhnə müştəri, abunə, saat dəyişikliyi, IG tarixçəsi ---
+
+def test_old_customer_in_draft_mode_still_autobooks(api, crm_env):
+    _, conv_id = wa_ready(mode="draft")  # köhnə müştəri: bot cavabları qaralamadır, rezerv isə birbaşa gedir
+    crm_env.gemini(booking_reply())
+    assert bot.handle(conv_id) == "autobook"
+    assert len(sent_texts(crm_env)) == 5 and one(BookingHold).status == "pending"
+
+
+def test_subscribed_client_skips_autobook(api, crm_env):
+    _, conv_id = wa_ready(mode="draft")
+    with SessionLocal() as db:
+        c = Client(full_name="Test Abunəçi", phone="994500000000", card_code="tsub")
+        db.add(c)
+        db.flush()
+        db.add(Subscription(client_id=c.id, title="Test", kind="client", amount=10000, pay_day=1,
+                            starts_on=date(2026, 11, 1), active=True))
+        db.commit()
+    crm_env.gemini(booking_reply())
+    assert bot.handle(conv_id) in ("handoff:rezerv", "draft")
+    assert one(BookingHold) is None and not any("Kart məlumatı" in t for t in sent_texts(crm_env))
+
+
+def test_inactive_subscription_does_not_block(api):
+    setup_conf()
+    with SessionLocal() as db:
+        c = Client(full_name="Test Abunəçi", phone="994500000000", card_code="tsub")
+        db.add(c)
+        db.flush()
+        db.add(Subscription(client_id=c.id, title="Test", kind="client", amount=10000, pay_day=1,
+                            starts_on=date(2026, 11, 1), active=False))
+        db.commit()
+        assert not autobook.subscribed(db, "994500000000")
+        assert hold_it(db)["ok"]
+
+
+def to_receipt(db, ref="1"):
+    h = hold_it(db, ref=ref)["hold"]
+    h.status = "receipt"
+    db.commit()
+    return h
+
+
+def test_receipt_hold_moves_to_free_slot(api, crm_env):
+    setup_conf()
+    with SessionLocal() as db:
+        h = to_receipt(db)
+        r = hold_it(db, hh=15)
+        assert r["ok"] and r["moved"] and r["hold"].id == h.id
+        assert r["messages"] == ["Saatınızı dəyişdik: Çərşənbə axşamı 24.11 saat 15:00. Ödənişiniz qüvvədə qalır 😊"]
+        db.refresh(h)
+        assert h.status == "receipt" and aware_baku(h.starts_at) == at(24, 15)
+        assert aware_baku(db.get(Block, h.block_id).starts_at) == at(24, 15)
+        assert len(db.scalars(select(BookingHold)).all()) == 1 and len(db.scalars(select(Block)).all()) == 1
+    assert crm_env.tg("editMessageText")[-1]["text"].startswith("🔁 Saat dəyişdi (yeni kart aşağıdadır)")
+    card = crm_env.tg("sendMessage")[-1]
+    assert card["text"].startswith("🔁 Müştəri saatı dəyişdi, qəbz var") and "15:00–16:00" in card["text"]
+    assert card["reply_markup"]["inline_keyboard"][0][0]["text"] == "✅ Təsdiqlə"
+
+
+def aware_baku(dt):
+    from db import aware
+    return aware(dt).astimezone(BAKU)
+
+
+def test_receipt_hold_busy_slot_gives_alternatives(api):
+    setup_conf()
+    with SessionLocal() as db:
+        h = to_receipt(db)
+        db.add(Block(starts_at=utc(at(24, 15)), ends_at=utc(at(24, 16)), reason="test"))
+        db.commit()
+        r = hold_it(db, hh=15)
+        assert not r["ok"] and r["messages"][0].startswith("Bu saat artıq doludur. Yaxın boş saatlar:")
+        db.refresh(h)
+        assert aware_baku(h.starts_at) == at(24, 12)
+
+
+def test_receipt_hold_other_service_goes_old_path(api):
+    setup_conf()
+    with SessionLocal() as db:
+        to_receipt(db)
+        r = hold_it(db, hh=15, service="tek_reels")
+        assert not r["ok"] and r["messages"] == [] and r["reason"] == "service_change"
+        assert len(db.scalars(select(BookingHold)).all()) == 1
+
+
+def test_receipt_hold_same_start_sends_nothing(api):
+    setup_conf()
+    with SessionLocal() as db:
+        to_receipt(db)
+        r = hold_it(db)
+        assert not r["ok"] and r["messages"] == []
+
+
+def test_confirmed_shoot_is_rescheduled(api, crm_env):
+    setup_conf()
+    with SessionLocal() as db:
+        h = to_receipt(db)
+        s = add_shoot(db, 28, 9)  # başqa çəkiliş, ayrı gündə
+        s.starts_at = utc(at(24, 12))
+        s.client_id, s.duration_min = s.client_id, 60
+        h.status, h.shoot_id, h.block_id = "confirmed", s.id, None
+        db.commit()
+        r = hold_it(db, hh=16)
+        assert r["ok"] and r["moved"]
+        assert r["messages"] == ["Çəkilişinizin saatını dəyişdik: Çərşənbə axşamı 24.11 saat 16:00 😊"]
+        db.refresh(s)
+        assert aware_baku(s.starts_at) == at(24, 16) and aware_baku(h.starts_at) == at(24, 16)
+    assert any(m["text"].startswith("🔁 Bot çəkilişi köçürdü: Test Müştəri") and "→" in m["text"]
+               for m in crm_env.tg("sendMessage"))
+
+
+def test_confirmed_shoot_busy_slot_goes_old_path(api):
+    setup_conf()
+    with SessionLocal() as db:
+        h = to_receipt(db)
+        s = add_shoot(db, 24, 12)
+        h.status, h.shoot_id, h.block_id = "confirmed", s.id, None
+        add_shoot(db, 24, 16)
+        db.commit()
+        r = hold_it(db, hh=16)
+        assert not r["ok"] and r["messages"] == []
+        db.refresh(s)
+        assert aware_baku(s.starts_at) == at(24, 12)
+
+
+def test_ig_history_includes_owner_reply(api, net):
+    from crm import social_inbox
+    with SessionLocal() as db:
+        t = now()
+        db.add(SocialItem(channel="instagram", kind="dm", external_id="h1", thread_id="777", text="Salam", status="sent",
+                          draft_text="Salam, buyurun", created_at=t - timedelta(minutes=30)))
+        db.add(OwnerReply(channel="ig", ref="777", raw="xam", text="Sahibkarın cavabı", status="sent",
+                          created_at=t - timedelta(minutes=20)))
+        db.add(OwnerReply(channel="ig", ref="777", raw="x", text="Göndərilməyib", status="cancelled",
+                          created_at=t - timedelta(minutes=15)))
+        cur = SocialItem(channel="instagram", kind="dm", external_id="h2", thread_id="777", text="Saat 12-də", status="pending",
+                         created_at=t - timedelta(minutes=10))
+        db.add(cur)
+        db.commit()
+        hist = social_inbox._history(db, cur)
+    assert [x for x in hist if x[0] == "user" or x[1] != "Salam, buyurun"][-3:] == [
+        ("user", "Salam"), ("model", "Sahibkarın cavabı"), ("user", "Saat 12-də")]
+    assert ("model", "Göndərilməyib") not in hist

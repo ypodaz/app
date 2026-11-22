@@ -1,6 +1,6 @@
 """Avtomatik rezerv: müştəri konkret gün və saat deyəndə bot saatı 24 saatlıq tutur (`Block` + `BookingHold`), kart məlumatını
 göndərir, sahibkara Telegram kartı gedir. Qəbz (şəkil/sənəd) gələndə kart yenilənir; sahibkar ✅ basanda çəkiliş yaranır,
-❌ basanda və ya qəbz 24 saat gəlməsə saat boşalır. Qaydalar: tarix ≥ bu gün + 2 gün, 08:00–22:00, çəkilişin ətrafında ±60 dəq boş,
+❌ basanda və ya qəbz 24 saat gəlməsə saat boşalır. Qaydalar: tarix ≥ bu gün + 1 gün (sabahdan), 08:00–22:00, çəkilişin ətrafında ±60 dəq boş,
 beh 50%. Yalnız WhatsApp və Instagram DM. Ayarlar `settings` cədvəlində: `auto_booking`, `booking_card_text`, `booking_address_text`.
 """
 import logging
@@ -17,13 +17,13 @@ import tgtopics
 from ai import WD
 from crm import calendar_ics, chat, conf, contacts, instagram, kapso, slots, tg
 from db import aware, now
-from models import BookingHold, Block, Lead, LeadEvent, Shoot, WaConversation, WaMessage
+from models import BookingHold, Block, Lead, LeadEvent, Shoot, Subscription, WaConversation, WaMessage
 from views import BAKU, utc
 
 log = logging.getLogger("autobook")
 
 HOLD_HOURS = 24
-MIN_DAYS = 2  # tarix ≥ bu gün (Bakı) + 2 təqvim günü
+MIN_DAYS = 1  # tarix ≥ bu gün (Bakı) + 1 təqvim günü: sabah olar, bu gün olmaz
 BUFFER = timedelta(minutes=60)  # tutulan saatın hər iki tərəfində boş olmalıdır
 RECEIPT_LABELS = ("[şəkil", "[sənəd]")  # qəbz: bot.FILE_LABELS-dəki «[video]» qəbz sayılmır
 SERVICE_NAME = {"reels_pack": "Reels paketi", "single_reel": "Tək Reels", "shoot": "Podkast çəkilişi"}
@@ -67,8 +67,10 @@ def quote(booking: dict, lead: Lead | None) -> dict | None:
             "total": p.total, "deposit": money.deposit_expected(p.total, 0, False), "label": label}
 
 
-def check(db: DB, start: datetime, duration_min: int, today: date, ignore_block: int | None = None) -> tuple[bool, str]:
-    """(uyğundur?, səbəb): too_soon | hours | calendar | conflict | ok. `ignore_block`: müştərinin öz köhnə tutduğu saat."""
+def check(db: DB, start: datetime, duration_min: int, today: date, ignore_block: int | None = None,
+          ignore_shoot: int | None = None) -> tuple[bool, str]:
+    """(uyğundur?, səbəb): too_soon | hours | calendar | conflict | ok. `ignore_block` / `ignore_shoot`: müştərinin öz köhnə
+    tutduğu saat və ya təsdiqlənmiş çəkilişi (saatını dəyişəndə)."""
     s = aware(start).astimezone(BAKU)
     e = s + timedelta(minutes=duration_min)
     if s.date() < today + timedelta(days=MIN_DAYS):
@@ -83,7 +85,8 @@ def check(db: DB, start: datetime, duration_min: int, today: date, ignore_block:
     # bazaya və sorğulara UTC (SQLite qurşağı saxlamır)
     for sh in db.scalars(select(Shoot).where(Shoot.status == "confirmed", Shoot.starts_at < utc(hi) + timedelta(hours=6),
                                              Shoot.starts_at > utc(lo) - timedelta(hours=12))):
-        spans.append(booking.busy_span(sh))
+        if sh.id != ignore_shoot:
+            spans.append(booking.busy_span(sh))
     q = select(Block).where(Block.starts_at < utc(hi), Block.ends_at > utc(lo))
     if ignore_block:
         q = q.where(Block.id != ignore_block)
@@ -95,7 +98,7 @@ def check(db: DB, start: datetime, duration_min: int, today: date, ignore_block:
 
 def alternatives(db: DB, day: date, duration_min: int, n: int = 3, today: date | None = None,
                  ignore_block: int | None = None) -> list[datetime]:
-    """`day` və sonrakı 2 gündə (hamısı ≥ bu gün + 2) 08:00–22:00, 30 dəqiqə addımla `check` keçən ilk n başlanğıc."""
+    """`day` və sonrakı 2 gündə (hamısı ≥ bu gün + 1) 08:00–22:00, 30 dəqiqə addımla `check` keçən ilk n başlanğıc."""
     today = today or aware(now()).astimezone(BAKU).date()
     out: list[datetime] = []
     for i in range(3):
@@ -130,6 +133,20 @@ def _link(hold: BookingHold) -> str:
 def pending_hold(db: DB, channel: str, ref: str) -> BookingHold | None:
     return db.scalar(select(BookingHold).where(BookingHold.channel == channel, BookingHold.ref == str(ref),
                                                BookingHold.status == "pending").order_by(BookingHold.id.desc()).limit(1))
+
+
+def subscribed(db: DB, phone: str | None) -> bool:
+    """Telefon aktiv aylıq abunəsi (kind=client) olan müştəriyə bağlıdır: onun rezervi köhnə yolla (komanda) gedir."""
+    client = contacts.find_client(db, phone)
+    return bool(client and db.scalar(select(Subscription.id).where(
+        Subscription.client_id == client.id, Subscription.kind == "client", Subscription.active.is_(True)).limit(1)))
+
+
+def active_hold(db: DB, channel: str, ref: str) -> BookingHold | None:
+    """Söhbətin ən son rezervi, əgər hələ qüvvədədirsə (pending | receipt | confirmed)."""
+    h = db.scalar(select(BookingHold).where(BookingHold.channel == channel, BookingHold.ref == str(ref))
+                  .order_by(BookingHold.id.desc()).limit(1))
+    return h if h and h.status in ("pending", "receipt", "confirmed") else None
 
 
 def wa_receipt(db: DB, hold: BookingHold) -> bool:
@@ -239,12 +256,18 @@ def try_hold(db: DB, *, channel: str, ref: str, lead: Lead | None, name: str, ph
              now_dt: datetime) -> dict:
     """Saatı yoxlayıb tutur. {"ok": True, "hold", "messages"} və ya {"ok": False, "reason", "messages"} (conflict-də alternativ
     mətni; digər səbəblərdə və ya alternativ yoxdursa boş: köhnə yol, komanda baxır). Müştəridə pending hold varsa, yenisi uğurlu
-    olanda köhnə ləğv edilir. Mesajları göndərmək çağıranın işidir."""
+    olanda köhnə ləğv edilir. Qəbzli və ya təsdiqli rezervin saatı dəyişirsə `_move` işləyir (cavabda `moved`: True).
+    Mesajları göndərmək çağıranın işidir."""
     q, start = quote(booking, lead), _start(booking)
     if not q or not start:
         return {"ok": False, "reason": "quote", "messages": []}
+    if subscribed(db, phone):  # abunəli müştəri: köhnə yol
+        return {"ok": False, "reason": "subscription", "messages": []}
     today = aware(now_dt).astimezone(BAKU).date()
     with _lock:
+        act = active_hold(db, channel, ref)
+        if act and act.status in ("receipt", "confirmed"):  # qəbz və ya təsdiq var: saat dəyişir, yeni hold açılmır
+            return _move(db, act, q, start, today, now_dt)
         old = pending_hold(db, channel, ref)
         ignore = old.block_id if old else None
         ok, why = check(db, start, q["duration_min"], today, ignore)
@@ -271,6 +294,61 @@ def try_hold(db: DB, *, channel: str, ref: str, lead: Lead | None, name: str, ph
     _send_card(db, hold, "📅 Bot saatı tutdu, qəbz gözlənilir", f"{HOLD_HOURS} saat ərzində qəbz gəlməsə boşalacaq")
     db.commit()
     return {"ok": True, "hold": hold, "messages": _messages(db, hold, q)}
+
+
+def _move(db: DB, hold: BookingHold, q: dict, start: datetime, today: date, now_dt: datetime) -> dict:
+    """Qəbzli (`receipt`) və ya təsdiqli (`confirmed`) rezervin saatı dəyişir: xidmət və qiymət eyni olmalıdır, yoxsa
+    boş `messages` (köhnə yol, komanda baxır). `receipt`-də hold və Block köçür, `confirmed`-də çəkiliş
+    `booking.reschedule` ilə (onun 24 saat qaydası; 24 saatdan az qalıbsa sahibkara qalır). Lock çağıranın üzərindədir."""
+    no = {"ok": False, "messages": []}
+    old = aware(hold.starts_at).astimezone(BAKU)
+    if (q["kind"], q["duration_min"], q["total"]) != (hold.kind, hold.duration_min, hold.total):
+        return {**no, "reason": "service_change"}  # qiymət dəyişir: sahibkara ötürülür
+    if aware(start) == aware(hold.starts_at):
+        return {**no, "reason": "same_start"}
+    if hold.status == "receipt":
+        block = db.get(Block, hold.block_id) if hold.block_id else None
+        ok, why = check(db, start, hold.duration_min, today, hold.block_id)
+        if not ok:
+            alts = alternatives(db, start.date(), hold.duration_min, today=today, ignore_block=hold.block_id) if why == "conflict" else []
+            text = ("Bu saat artıq doludur. Yaxın boş saatlar: "
+                    + ", ".join(f"{a:%d.%m} saat {a:%H:%M}" for a in alts) + ". Hansı sizə uyğundur?") if alts else None
+            return {**no, "reason": why, "messages": [text] if text else []}
+        old_card = _card(hold, "🔁 Saat dəyişdi (yeni kart aşağıdadır)", "")
+        hold.starts_at = utc(start)
+        if block:
+            block.starts_at, block.ends_at = utc(start), utc(start) + timedelta(minutes=hold.duration_min)
+        else:
+            block = Block(starts_at=utc(start), ends_at=utc(start) + timedelta(minutes=hold.duration_min),
+                          reason=f"⏳ Bot rezervi: {hold.name}"[:255])
+            db.add(block)
+            db.flush()
+            hold.block_id = block.id
+        db.commit()
+        _edit(hold.tg_chat_id, hold.tg_message_id, old_card)
+        _send_card(db, hold, "🔁 Müştəri saatı dəyişdi, qəbz var", "Qəbzi yoxlayın, sonra təsdiqləyin")
+        db.commit()
+        return {"ok": True, "moved": True, "hold": hold,
+                "messages": [f"Saatınızı dəyişdik: {_day(start)} saat {start:%H:%M}. Ödənişiniz qüvvədə qalır 😊"]}
+    s = db.get(Shoot, hold.shoot_id) if hold.shoot_id else None
+    if not s or s.status != "confirmed" or aware(s.starts_at) <= aware(now_dt):
+        return {**no, "reason": "no_shoot"}
+    if money.cancel_window(aware(s.starts_at), aware(now_dt)) == "lt24":  # tək dəyişmə haqqı sahibkarındır
+        return {**no, "reason": "lt24"}
+    ok, why = check(db, start, hold.duration_min, today, ignore_shoot=s.id)
+    if not ok:
+        return {**no, "reason": why}  # dolu və ya qayda uyğun deyil: köhnə yol
+    try:
+        booking.reschedule(db, None, s, utc(start), aware(now_dt))
+    except booking.Rejected as e:
+        db.rollback()
+        return {**no, "reason": f"rejected:{e}"}
+    hold.starts_at = utc(start)
+    db.commit()
+    tg._call("sendMessage", {**tgtopics.dest("action"),
+                             "text": f"🔁 Bot çəkilişi köçürdü: {hold.name}, {_day(old)} {old:%H:%M} → {_day(start)} {start:%H:%M}"})
+    return {"ok": True, "moved": True, "hold": hold,
+            "messages": [f"Çəkilişinizin saatını dəyişdik: {_day(start)} saat {start:%H:%M} 😊"]}
 
 
 def discard(db: DB, hold: BookingHold, why: str) -> None:

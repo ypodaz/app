@@ -533,8 +533,9 @@ def _handle(db: DB, conversation_id: int, *, avoid: str | None = None, instructi
         lead = apply_result(db, conv, contact, res)
     if not avoid:  # «Yenidən yaz»da eyni sual ikinci dəfə yazılmasın
         note_gap(db, conv.id, res, last_in.text if last_in else "")
-    if (lead and res.get("booking") and not avoid and not problem and conv.mode == "bot" and autobook.enabled(db)
-            and auto_reply(db, conv, contact) and res.get("language") in (None, "az")):
+    # köhnə müştəridə də (qaralama rejimi): rezerv mesajları birbaşa gedir; yalnız `owner`/`human` rejimində yox
+    if (lead and res.get("booking") and not avoid and not problem and conv.mode in ("bot", "wait") and autobook.enabled(db)
+            and res.get("language") in (None, "az")):
         if outcome := _autobook(db, conv, contact, lead, res):
             return outcome
     outcome = "draft"
@@ -584,11 +585,12 @@ def _autobook(db: DB, conv: WaConversation, contact: WaContact, lead: Lead, res:
             sent.append(m)
     except kapso.KapsoError as e:
         log.warning("avtomatik rezerv mesajı getmədi (söhbət %s): %s", conv.id, e.message)
-        if r["ok"] and not sent:  # heç nə getmədi: saat boşaldılır, köhnə yol
+        if r["ok"] and not sent and not r.get("moved"):  # heç nə getmədi: saat boşaldılır, köhnə yol
             autobook.discard(db, r["hold"], "mesaj getmədi")
             return None
     if sent:
         tg.auto_log(db, conv, autobook.log_text(db, sent))
+        chat.reject_pending(db, conv.id, "avtomatik rezerv mesajı getdi")  # köhnə gözləyən qaralama qalmasın
     if r["ok"]:
         autobook.advance_lead(db, lead)
     db.commit()

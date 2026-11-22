@@ -30,7 +30,7 @@ import alerts
 from ai import AiError
 from crm import autobook, bot, conf, contacts, events, friends, instagram, owner_reply, social_tg, turns, typing_state, voice, youtube
 from db import SessionLocal, aware, now
-from models import Lead, SocialItem, WaContact
+from models import Lead, OwnerReply, SocialItem, WaContact
 
 log = logging.getLogger("bot")
 HISTORY = 10
@@ -394,14 +394,22 @@ def _history(db: DB, item: SocialItem) -> list[tuple[str, str]]:
                                                SocialItem.thread_id == item.thread_id, SocialItem.id <= item.id)
                       .order_by(SocialItem.id.desc()).limit(HISTORY)).all()
     out = []
+    start = None
     if item.channel == "instagram" and rows:
         start = aware(rows[-1].created_at) - OLD_MARGIN  # API vaxtı saniyəlikdir: ilk mesajın özü təkrarlanmasın
         out = [(role, text) for role, text, t in instagram.thread_messages(item.thread_id) if t < start][-HISTORY:]
+    mixed = []  # (vaxt, rol, mətn)
     for r in reversed(rows):
-        out.append(("user", r.text))
+        mixed.append((aware(r.created_at), "user", r.text))
         if r.status == "sent" and r.draft_text:
-            out.append(("model", r.draft_text))
-    return out
+            mixed.append((aware(r.created_at), "model", r.draft_text))
+    if start:  # Telegram «✍️ Cavabımı yaz» ilə sahibkarın göndərdiyi cavablar (start-dan əvvəlkilər API tarixçəsindədir)
+        for o in db.scalars(select(OwnerReply).where(OwnerReply.channel == "ig", OwnerReply.ref == item.thread_id,
+                                                     OwnerReply.status == "sent").order_by(OwnerReply.id.desc()).limit(HISTORY)):
+            if (o.text or o.raw) and start <= aware(o.created_at) <= aware(item.created_at):
+                mixed.append((aware(o.created_at), "model", o.text or o.raw))
+    mixed.sort(key=lambda x: x[0])  # sabit sıralama: eyni vaxtda əvvəl müştəri, sonra cavab
+    return out + [(role, text) for _, role, text in mixed]
 
 
 def draft(item_id: int, avoid: str | None = None) -> str:
@@ -530,13 +538,14 @@ def _draft(db: DB, item: SocialItem, avoid: str | None) -> str:
         except Exception:  # lead xətası cavabı saxlamasın
             db.rollback()
             log.exception("Instagram lead (item %s)", item.id)
+        # köhnə müştəridə də (`ig_dm_mode` qaralama/new_auto): rezerv mesajları birbaşa gedir; `owner` rejimində yox
+        if (not avoid and res.get("booking") and not problem and ig_mode(db, item.thread_id) in ("bot", "wait")
+                and autobook.enabled(db) and res.get("language") in (None, "az")):
+            if outcome := _ig_autobook(db, item, res):
+                return outcome
         if avoid:  # «Yenidən yaz» həmişə qaralamadır, avtomatik göndəriş taymeri də ləğv olunur
             item.auto_at = None
         elif ig_auto(db, item):
-            if (res.get("booking") and not problem and ig_mode(db, item.thread_id) == "bot" and autobook.enabled(db)
-                    and res.get("language") in (None, "az")):
-                if outcome := _ig_autobook(db, item, res):
-                    return outcome
             send_now, item.auto_at = turns.plan_mode(ig_mode(db, item.thread_id), res, now())  # növbə: crm/turns.py
             handoff = bool(res.get("handoff"))
             if send_now:
@@ -584,7 +593,7 @@ def _ig_autobook(db: DB, item: SocialItem, res: dict) -> str | None:
             sent.append(m)
     except instagram.IgError as e:
         log.warning("avtomatik rezerv DM-i getmədi (item %s): %s", item.id, str(e)[:200])
-        if r["ok"] and not sent:  # heç nə getmədi: saat boşaldılır, köhnə yol
+        if r["ok"] and not sent and not r.get("moved"):  # heç nə getmədi: saat boşaldılır, köhnə yol
             autobook.discard(db, r["hold"], "mesaj getmədi")
             return None
     if not sent:
