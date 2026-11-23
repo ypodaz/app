@@ -149,6 +149,15 @@ def active_hold(db: DB, channel: str, ref: str) -> BookingHold | None:
     return h if h and h.status in ("pending", "receipt", "confirmed") else None
 
 
+def _upcoming(db: DB, hold: BookingHold, now_dt: datetime) -> bool:
+    """Rezerv hələ qabaqdadır. Keçmiş və ya ləğv olunmuş çəkiliş, vaxtı keçmiş qəbzli rezerv (✅/❌ basılmayıb)
+    saat dəyişikliyi sayılmır: qayıdan müştərinin yeni rezervi adi yolla gedir."""
+    if hold.status == "confirmed":
+        s = db.get(Shoot, hold.shoot_id) if hold.shoot_id else None
+        return bool(s and s.status == "confirmed" and aware(s.starts_at) > aware(now_dt))
+    return aware(hold.starts_at) > aware(now_dt)
+
+
 def wa_receipt(db: DB, hold: BookingHold) -> bool:
     """Saat tutulandan sonra müştəri şəkil/sənəd göndərib (ardınca «göndərdim» yazsa da tanınır)."""
     q = select(WaMessage.text).where(WaMessage.conversation_id == int(hold.ref), WaMessage.source == "customer",
@@ -266,7 +275,7 @@ def try_hold(db: DB, *, channel: str, ref: str, lead: Lead | None, name: str, ph
     today = aware(now_dt).astimezone(BAKU).date()
     with _lock:
         act = active_hold(db, channel, ref)
-        if act and act.status in ("receipt", "confirmed"):  # qəbz və ya təsdiq var: saat dəyişir, yeni hold açılmır
+        if act and act.status in ("receipt", "confirmed") and _upcoming(db, act, now_dt):  # qəbz/təsdiq var: saat dəyişir
             return _move(db, act, q, start, today, now_dt)
         old = pending_hold(db, channel, ref)
         ignore = old.block_id if old else None

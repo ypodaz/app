@@ -569,6 +569,37 @@ def test_confirmed_shoot_busy_slot_goes_old_path(api):
         assert aware_baku(s.starts_at) == at(24, 12)
 
 
+def test_past_receipt_hold_does_not_block_new_booking(api):
+    """Unudulmuş qəbzli rezerv (✅/❌ basılmayıb, vaxtı keçib): yeni rezerv adi yolla gedir, köhnəsi köçmür."""
+    setup_conf()
+    with SessionLocal() as db:
+        h = to_receipt(db)
+        b = db.get(Block, h.block_id)
+        h.starts_at, b.starts_at, b.ends_at = utc(at(19, 12)), utc(at(19, 12)), utc(at(19, 13))
+        db.commit()
+        r = hold_it(db, hh=15)
+        assert r["ok"] and not r.get("moved") and r["hold"].id != h.id and r["hold"].status == "pending"
+        assert CARD in r["messages"]
+        db.refresh(h)
+        assert h.status == "receipt" and aware_baku(h.starts_at) == at(19, 12)
+
+
+def test_past_confirmed_shoot_does_not_block_new_booking(api):
+    """Keçmiş çəkilişdən sonra qayıdan müştəri: yeni rezerv adi yolla gedir (saat dəyişikliyi sayılmır)."""
+    setup_conf()
+    with SessionLocal() as db:
+        h = to_receipt(db)
+        db.delete(db.get(Block, h.block_id))
+        s = add_shoot(db, 28, 9)
+        s.starts_at = utc(at(19, 12))
+        h.status, h.shoot_id, h.block_id, h.starts_at = "confirmed", s.id, None, utc(at(19, 12))
+        db.commit()
+        r = hold_it(db, hh=15)
+        assert r["ok"] and not r.get("moved") and r["hold"].status == "pending"
+        db.refresh(s)
+        assert aware_baku(s.starts_at) == at(19, 12)
+
+
 def test_ig_history_includes_owner_reply(api, net):
     from crm import social_inbox
     with SessionLocal() as db:
