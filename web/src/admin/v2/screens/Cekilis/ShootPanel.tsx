@@ -46,7 +46,7 @@ export function ShootPanel({ id, now, initial, onInitialDone, children }: { id: 
     const endMin = Number(p.time.slice(0, 2)) * 60 + Number(p.time.slice(3)) + s!.duration_min + 30;
     if (endMin > 22 * 60) { toast.show('Alınmadı: studiya 22:00-da bağlanır', { error: true }); return; }
     const body = { starts_at: s!.starts_at, duration_min: s!.duration_min + 30, kind: s!.kind, tag: s!.tag, location: s!.location, cameras: s!.cameras, editing: s!.editing,
-      reels_count: s!.reels_count, address: s!.address, title: s!.title, note: s!.note, discount: s!.discount, discount_note: s!.discount_note, prep_min: s!.prep_min, wrap_min: s!.wrap_min, extras: s!.extras ?? [] };
+      reels_count: s!.reels_count, address: s!.address, title: s!.title, note: s!.note, discount: s!.discount, discount_note: s!.discount_note, campaign: !!s!.campaign, prep_min: s!.prep_min, wrap_min: s!.wrap_min, extras: s!.extras ?? [] };
     const r = await act.run(() => call(`/shoots/${s!.id}`, { method: 'PATCH', body }));
     if (r !== undefined) { toast.show(`Uzadıldı · ${endMin >= 600 ? '' : '0'}${Math.floor(endMin / 60)}:${String(endMin % 60).padStart(2, '0')}-dək`); refresh(); reload(); }
   }
@@ -130,6 +130,7 @@ export function ShootPanel({ id, now, initial, onInitialDone, children }: { id: 
           <dl className="ck-facts">
             {lines.filter(([, v]) => v > 0).map(([l, v]) => <div key={l}><dt>{l}</dt><dd className="mono">{formatMoney2(v)}</dd></div>)}
             {(s.extras ?? []).map((x, i) => <div key={i}><dt>{x.name}</dt><dd className="mono">{formatMoney2(x.amount)}</dd></div>)}
+            {s.campaign && <div><dt>Kampaniya</dt><dd>keşbeksiz</dd></div>}
             {s.discount > 0 && <div><dt>Endirim{s.discount_note ? ` · ${s.discount_note}` : ''}</dt><dd className="mono">{formatMoney2(-s.discount)}</dd></div>}
             <div className="ck-facts__sum"><dt>{s.discount > 0 ? 'Yekun' : 'Cəmi'}</dt><dd className="mono">{formatMoney2(s.total)}</dd></div>
             {s.cashback_used > 0 && <div><dt>Keşbekdən</dt><dd className="mono">{formatMoney2(-s.cashback_used)}</dd></div>}

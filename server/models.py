@@ -165,6 +165,7 @@ class Shoot(Base):
     discount: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     extras: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # [{name, amount}]
     discount_note: Mapped[Optional[str]] = mapped_column(String(255))  # yalnız admin görür
+    campaign: Mapped[bool] = mapped_column(default=False, server_default=sa_false())  # kampaniya qiyməti, keşbek yoxdur
     total: Mapped[int] = mapped_column(Integer, default=0)
     # ödəniş (qəpik)
     cashback_used: Mapped[int] = mapped_column(Integer, default=0)

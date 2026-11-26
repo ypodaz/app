@@ -161,10 +161,24 @@ def text_of(content: dict) -> str:
 
 # --- müştəri AI dəstəkçisi ---
 
-def _price_lines() -> str:
+def _price_lines(campaign: bool = False) -> str:
+    """campaign: WhatsApp botu kampaniya günlərində studiya çəkilişini və Reels paketini kampaniya qiyməti ilə görür."""
     s, o = money.SHOOT_PER_HOUR["studio"], money.SHOOT_PER_HOUR["onsite"]
     pk = "; ".join(f"{h} saat ({m} ay): 1 kamera {money.fmt(p[1])}, 2 kamera {money.fmt(p[2])}, "
                    f"3 kamera {money.fmt(p[3])}" for h, (m, p) in money.PACKAGES.items())
+    if campaign:
+        c = money.CAMPAIGN_PER_HOUR
+        return (
+            f"- Studiyada çəkiliş, 1 saat (kampaniya): 1 kamera {money.fmt(c[1])} (normalda {money.fmt(s[1])}), "
+            f"2 kamera {money.fmt(c[2])} (normalda {money.fmt(s[2])}), 3 kamera {money.fmt(c[3])} (normalda {money.fmt(s[3])}). "
+            f"Operator, işıq və səs daxildir, montaj daxil deyil.\n"
+            f"- Sizin məkanda (ofis, klinika və s.) çəkiliş, 1 saat: {money.fmt(o[1])} / {money.fmt(o[2])} / "
+            f"{money.fmt(o[3])} (1/2/3 kamera).\n"
+            f"- Podcast montajı (1 saatlıq epizod): {money.fmt(money.EDITING)}. Montajlı çəkilişdə podcastdan Reels: "
+            f"hər biri {money.fmt(money.REEL)}.\n"
+            f"- Reels paketi (kampaniya): 1 saat studiyada çəkiliş və {money.CAMPAIGN_REELS} hazır Reels, montaj daxil "
+            f"{money.fmt(money.REELS_PACK['studio'])}. Sizin məkanda: çəkiliş + 5 Reels {money.fmt(money.REELS_PACK['onsite'])}.\n"
+            f"- Saat paketləri (yalnız studiyada, montaj daxil deyil): {pk}.")
     return (
         f"- Studiyada çəkiliş, 1 saat: 1 kamera {money.fmt(s[1])}, 2 kamera {money.fmt(s[2])}, "
         f"3 kamera {money.fmt(s[3])}. Operator, işıq və səs daxildir.\n"

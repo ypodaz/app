@@ -39,8 +39,9 @@ def enabled(db: DB) -> bool:
     return on and bool((conf.get(db, "booking_card_text", "") or "").strip())
 
 
-def quote(booking: dict, lead: Lead | None) -> dict | None:
-    """Botun `booking` sahəsini çəkiliş sahələrinə və qiymətə çevirir; qiymət hesablanmırsa None."""
+def quote(booking: dict, lead: Lead | None, today: date | None = None) -> dict | None:
+    """Botun `booking` sahəsini çəkiliş sahələrinə və qiymətə çevirir; qiymət hesablanmırsa None.
+    Kampaniya günlərində (money.campaign_active) Reels paketi 10 Reels, studiyada operatorlu çəkiliş kampaniya qiyməti ilədir."""
     service = booking.get("service")
     if service == "reels":
         kind, tag, minutes, cameras, editing, label = "reels_pack", "reels", 60, 1, False, None
@@ -52,19 +53,29 @@ def quote(booking: dict, lead: Lead | None) -> dict | None:
         kind, tag, editing, label = "shoot", "podcast", bool(lead and lead.editing is True), None
     else:
         return None
+    campaign = (today is not None and money.campaign_active(today)
+                and (kind == "reels_pack" or (kind == "shoot" and cameras in money.CAMPAIGN_PER_HOUR)))
     try:
-        p = money.price(kind=kind, location="studio", cameras=cameras, duration_min=minutes, editing=editing)
+        p = money.price(kind=kind, location="studio", cameras=cameras, duration_min=minutes, editing=editing,
+                        campaign=campaign)
     except ValueError:
         return None
     total = money.fmt(p.total)
     if kind == "reels_pack":
-        label = f"Reels paketi: 1 saat çəkiliş və 5 hazır Reels, montaj daxil — {total}."
+        n = money.CAMPAIGN_REELS if campaign else 5
+        label = f"Reels paketi: 1 saat çəkiliş və {n} hazır Reels, montaj daxil — {total}."
     elif kind == "single_reel":
         label = f"Tək Reels (çəkiliş və montaj) — {total}."
     else:
         label = f"Podkast çəkilişi: {money.fmt_hours(minutes)}, {cameras} kamera{', montaj daxil' if editing else ''} — {total}."
     return {"kind": kind, "tag": tag, "duration_min": minutes, "cameras": cameras, "editing": editing, "reels_count": 0,
-            "total": p.total, "deposit": money.deposit_expected(p.total, 0, False), "label": label}
+            "total": p.total, "deposit": money.deposit_expected(p.total, 0, False), "label": label, "campaign": campaign}
+
+
+def _hold_campaign(hold: BookingHold) -> bool:
+    """Təsdiq anında kampaniya hələ davam edirsə, bot rezervi kampaniya qiyməti ilə yazılır (quote ilə eyni şərt)."""
+    fits = hold.kind == "reels_pack" or (hold.kind == "shoot" and hold.cameras in money.CAMPAIGN_PER_HOUR)
+    return fits and money.campaign_active(datetime.now(BAKU).date())
 
 
 def check(db: DB, start: datetime, duration_min: int, today: date, ignore_block: int | None = None,
@@ -267,12 +278,12 @@ def try_hold(db: DB, *, channel: str, ref: str, lead: Lead | None, name: str, ph
     mətni; digər səbəblərdə və ya alternativ yoxdursa boş: köhnə yol, komanda baxır). Müştəridə pending hold varsa, yenisi uğurlu
     olanda köhnə ləğv edilir. Qəbzli və ya təsdiqli rezervin saatı dəyişirsə `_move` işləyir (cavabda `moved`: True).
     Mesajları göndərmək çağıranın işidir."""
-    q, start = quote(booking, lead), _start(booking)
+    today = aware(now_dt).astimezone(BAKU).date()
+    q, start = quote(booking, lead, today), _start(booking)
     if not q or not start:
         return {"ok": False, "reason": "quote", "messages": []}
     if subscribed(db, phone):  # abunəli müştəri: köhnə yol
         return {"ok": False, "reason": "subscription", "messages": []}
-    today = aware(now_dt).astimezone(BAKU).date()
     with _lock:
         act = active_hold(db, channel, ref)
         if act and act.status in ("receipt", "confirmed") and _upcoming(db, act, now_dt):  # qəbz/təsdiq var: saat dəyişir
@@ -409,7 +420,8 @@ def handle_callback(db: DB, cq: dict) -> str:
         db.flush()
         s = booking.create_shoot(db, None, client_id=client.id, starts_at=aware(hold.starts_at), duration_min=hold.duration_min,
                                  kind=hold.kind, tag=hold.tag, location="studio", cameras=hold.cameras, editing=hold.editing,
-                                 reels_count=hold.reels_count, source_note="bot", prep_min=15, wrap_min=0)
+                                 reels_count=hold.reels_count, source_note="bot", prep_min=15, wrap_min=0,
+                                 campaign=_hold_campaign(hold))
         if paid:
             booking.receive_deposit(db, None, s, hold.deposit)
     except booking.Rejected as e:

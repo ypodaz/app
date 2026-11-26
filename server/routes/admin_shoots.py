@@ -53,6 +53,7 @@ class ShootIn(BaseModel):
     prep_min: int = Field(default=15, ge=0, le=240)
     wrap_min: int = Field(default=0, ge=0, le=240)
     extras: list[ExtraIn] = Field(default_factory=list, max_length=20)
+    campaign: bool = False  # kampaniya qiyməti (money.CAMPAIGN_*), keşbek yazılmır
 
 
 class ShootEditIn(BaseModel):
@@ -73,6 +74,7 @@ class ShootEditIn(BaseModel):
     prep_min: int = Field(default=15, ge=0, le=240)
     wrap_min: int = Field(default=0, ge=0, le=240)
     extras: list[ExtraIn] = Field(default_factory=list, max_length=20)
+    campaign: bool = False  # kampaniya qiyməti (money.CAMPAIGN_*), keşbek yazılmır
 
 
 class DepositIn(BaseModel):
@@ -176,7 +178,7 @@ def shoots_out(db: DB, shoots: list[Shoot]) -> list[dict]:
         "retained_amount": s.retained_amount, "refund_amount": s.refund_amount,
         "refunded_at": iso(s.refunded_at), "rescheduled_lt24": s.rescheduled_lt24,
         "payment_line": payment_line(s), "studio_balance": studio_balance(s), "materials": mats[s.id],
-        "created_at": iso(s.created_at), "discount_note": s.discount_note,
+        "created_at": iso(s.created_at), "discount_note": s.discount_note, "campaign": s.campaign,
         "prep_min": s.prep_min, "wrap_min": s.wrap_min,
     } for s in shoots]
 
@@ -255,13 +257,13 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         p = money.price(kind=body.kind, location=location, cameras=body.cameras, duration_min=body.duration_min,
                         editing=editing, reels_count=reels, package_cameras=pkg.cameras if pkg else None,
                         discount=body.discount, extras=sum(e.amount for e in body.extras),
-                        cover_count=body.cover_count)
+                        cover_count=body.cover_count, campaign=body.campaign)
         if subscriptions.has_free_visits(db, client.id):  # aylıq abunə: 0 AZN, keşbek yoxdur
             p = money.Price(0, 0, 0, 0)
         money.check_cashback_use(body.cashback_use, balance, p.total, done)
         draft = Shoot(client_id=client.id, starts_at=utc(body.starts_at), kind=body.kind)
         first = booking.is_first_shoot(db, client, draft)
-        kind, earn = money.cashback_earned(p, from_package=pkg is not None, first_shoot=first)
+        kind, earn = money.cashback_earned(p, from_package=pkg is not None, first_shoot=first, campaign=body.campaign)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {
@@ -274,6 +276,7 @@ def quote(body: ShootIn, exclude_id: Optional[int] = None, db: DB = Depends(get_
         "cashback_shoots_left": max(0, money.CASHBACK_UNLOCK_SHOOTS - done),
         "cashback_earn": earn, "cashback_kind": kind, "first_shoot_bonus": first,
         "cashback_balance": balance, "deposit_required": client.deposit_required,
+        "campaign_active": money.campaign_active(baku_today()), "campaign_end": money.CAMPAIGN_END.isoformat(),
     }
 
 

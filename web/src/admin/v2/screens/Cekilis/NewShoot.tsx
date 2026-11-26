@@ -59,6 +59,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
   const [discText, setDiscText] = useState('');
   const [discPct, setDiscPct] = useState(false);
   const [discNote, setDiscNote] = useState('');
+  const [campaignSel, setCampaign] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [qerr, setQerr] = useState('');
   const [studio, setStudio] = useState(false);
@@ -74,6 +75,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
     setEditing(o.editing); setReels(o.reels_count); setCover(o.cover_count ?? 0); setNote(o.note ?? '');
     setExRows(extraRows(o.extras ?? []));
     if (o.discount > 0) { setDiscText(aznInput(o.discount)); setDiscNote(o.discount_note ?? ''); }
+    setCampaign(!!o.campaign);
     setHydrated(true);
   }, [o, hydrated]);
 
@@ -97,6 +99,10 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
   const pay = edit ? (o?.package_id ? 'package' : 'paid') : payWanted === 'package' && pkgs.length && kind === 'shoot' ? 'package' : 'paid';
   const pkgId = edit ? (o?.package_id ?? null) : pay === 'package' ? (pkgs.find((p) => p.id === pkgSel) ?? pkgs[0]).id : null;
   const reelsN = editing && kind === 'shoot' ? reels : 0;
+  // Kampaniya: studiyada Reels paketi və ya operatorlu çəkiliş, saat paketindən deyil (money.CAMPAIGN_*)
+  const campaignFits = loc === 'studio' && pay !== 'package' && (reelsPack || kind === 'shoot');
+  const campaignShown = campaignFits && (!!quote?.campaign_active || !!o?.campaign);
+  const campaign = campaignFits && campaignSel;
   const usable = quote?.cashback_usable ?? 0;
   const cashback = edit ? 0 : useCb ? usable : 0;
   const cbShown = edit ? (o?.cashback_used ?? 0) : cashback;
@@ -106,8 +112,8 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
     client_id: clientId, starts_at: toIso(date, time), duration_min: dur, kind, tag: rent ? 'other' : reelsPack || single ? 'reels' : tag,
     location: loc, cameras: rent || single ? 0 : reelsPack ? 1 : cameras, editing: kind === 'shoot' ? editing : false, reels_count: reelsN, cover_count: coverN,
     package_id: pkgId, cashback_use: cashback, address: loc === 'onsite' ? address.trim() || null : null, note: note.trim() || null,
-    extras, discount, discount_note: discount > 0 ? discNote.trim() || null : null, prep_min: prep, wrap_min: wrap,
-  } : null), [clientId, hydrated, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, coverN, reelsPack, single, rent, pkgId, cashback, note, discBad, extrasBad, extrasKey, discount, discNote, prep, wrap]); // eslint-disable-line react-hooks/exhaustive-deps
+    extras, discount, discount_note: discount > 0 ? discNote.trim() || null : null, prep_min: prep, wrap_min: wrap, campaign,
+  } : null), [campaign, clientId, hydrated, date, time, dur, kind, tag, loc, address, cameras, editing, reelsN, coverN, reelsPack, single, rent, pkgId, cashback, note, discBad, extrasBad, extrasKey, discount, discNote, prep, wrap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Qiymət: 250ms gecikmə ilə serverdən
   const key = JSON.stringify(body);
@@ -265,6 +271,7 @@ export function NewShootDialog({ editId, query, onClose, onCreated }: { editId?:
                   <span className="ck-sub">{coverN === 0 ? 'Cover yoxdur' : `${coverN} × 10 = ${coverN * 10} AZN`}</span></div>
               </div>
             )}
+            {campaignShown && <label className="ck-switch"><Switch checked={campaign} onChange={setCampaign} label="Kampaniya qiyməti" /><span>Kampaniya qiyməti <small>{reelsPack ? '10 Reels 150 AZN' : 'saatı 1 kamera 50, 2 kamera 100, 3 kamera 150 AZN'} · keşbek yazılmır{quote?.campaign_end ? ` · ${quote.campaign_end.slice(8, 10)}.${quote.campaign_end.slice(5, 7)}-dək` : ''}</small></span></label>}
             <div className="field"><span className="field__label">Əlavə xərclər</span><Extras rows={exRows} onChange={setExRows} /></div>
             <Field label={`Endirim (${discPct ? '%' : 'AZN'})`} hint={discBad ? undefined : discPct && discount > 0 ? `= ${formatMoney(discount)}` : 'Boş qalsa endirim yoxdur.'} error={discBad ? (discPct ? 'Faizi 0–100 arasında yazın' : 'Məbləği düzgün yazın, məs. 50 və ya 12,5') : undefined}>
               {(i, bad) => (

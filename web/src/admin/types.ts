@@ -28,7 +28,7 @@ export type Shoot = {
   starts_at: string; duration_min: number; kind: Kind; tag: Tag; location: Location; address: string | null;
   cameras: number; editing: boolean; reels_count: number; cover_count?: number; title: string | null; status: ShootStatus;
   production: Production; delivery_on: string | null;
-  price_base: number; price_editing: number; price_reels: number; price_extra_camera: number; discount: number; discount_note: string | null; extras: Extra[]; prep_min: number; wrap_min: number; total: number;
+  price_base: number; price_editing: number; price_reels: number; price_extra_camera: number; discount: number; discount_note: string | null; campaign?: boolean; extras: Extra[]; prep_min: number; wrap_min: number; total: number;
   note: string | null; source_note: string | null; cashback_used: number;
   deposit_expected: number; deposit_amount: number; deposit_received_at: string | null; deposit_waived: boolean;
   paid_at_studio: number; paid_method: 'cash' | 'card' | null; closed_at: string | null;
@@ -70,7 +70,7 @@ export type Conflict =
 export type Quote = {
   base: number; editing: number; reels: number; extra_camera: number; extras: number; cover?: number; gross: number; discount: number; total: number; deposit_expected: number;
   conflicts: Conflict[];
-  cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; cashback_usable: number; cashback_min_use: number; cashback_shoots_left: number; deposit_required: boolean;
+  cashback_earn: number; cashback_kind: string; first_shoot_bonus: boolean; cashback_balance: number; cashback_usable: number; cashback_min_use: number; cashback_shoots_left: number; deposit_required: boolean; campaign_active?: boolean; campaign_end?: string;
 };
 
 // Kampaniyalar və avtomatik bildirişlər

@@ -154,7 +154,7 @@ def test_try_hold_messages_and_block(api, crm_env):
         r = hold_it(db)
         assert r["ok"] and len(r["messages"]) == 5
         m = r["messages"]
-        assert m[0] == "Çərşənbə axşamı 24.11 saat 12:00 sizin üçün boşdur 🙏\nReels paketi: 1 saat çəkiliş və 5 hazır Reels, montaj daxil — 150 AZN."
+        assert m[0] == "Çərşənbə axşamı 24.11 saat 12:00 sizin üçün boşdur 🙏\nReels paketi: 1 saat çəkiliş və 10 hazır Reels, montaj daxil — 150 AZN."  # kampaniya (29.12-dək)
         assert m[1] == "Rezervasiya üçün 50% ön ödəniş: 75 AZN. Kart məlumatı:" and m[2] == CARD and m[3] == ADDR
         assert m[4].startswith("Ödənişi etdikdən sonra qəbzi")
         h = r["hold"]

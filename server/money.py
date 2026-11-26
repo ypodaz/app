@@ -5,9 +5,20 @@ route-lar nəticəni yazır. Qaydalar texniki planın «Pul qaydaları» bölmə
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 AZN = 100
+
+# «İlin son fürsəti» kampaniyası (sahibkar, 2026-11-27): son gün daxil olmaqla, Bakı tarixi ilə.
+# Studiyada operatorlu çəkiliş saatı 1 kamera 50, 2 kamera 100, 3 kamera 150 AZN (montaj ayrıca); Reels paketi 150 AZN-ə 10 Reels.
+# Kampaniya qiymətinə keşbek yazılmır.
+CAMPAIGN_END = date(2026, 12, 29)
+CAMPAIGN_PER_HOUR = {1: 50 * AZN, 2: 100 * AZN, 3: 150 * AZN}
+CAMPAIGN_REELS = 10
+
+
+def campaign_active(today: date) -> bool:
+    return today <= CAMPAIGN_END
 
 # Saatlıq çəkiliş qiyməti, kamera sayına görə.
 SHOOT_PER_HOUR = {
@@ -112,11 +123,18 @@ def price(
     discount: int = 0,
     extras: int = 0,
     cover_count: int = 0,
+    campaign: bool = False,
 ) -> Price:
     """Çəkilişin qiyməti. package_cameras verilirsə, çəkiliş paketdəndir: saatlar paketdən
-    çıxılır, yalnız montaj, Reels və əlavə kamera pulla ödənir. discount məbləğdən çıxılır."""
+    çıxılır, yalnız montaj, Reels və əlavə kamera pulla ödənir. discount məbləğdən çıxılır.
+    campaign: studiyada operatorlu çəkilişin saatı CAMPAIGN_PER_HOUR-dan (Reels paketinin qiyməti dəyişmir)."""
     p = _gross_price(kind=kind, location=location, cameras=cameras, duration_min=duration_min, editing=editing,
                      reels_count=reels_count, package_cameras=package_cameras)
+    if campaign:
+        if kind == "shoot" and location == "studio" and package_cameras is None and cameras in CAMPAIGN_PER_HOUR:
+            p = Price(CAMPAIGN_PER_HOUR[cameras] * duration_min // 60, p.editing, p.reels, p.extra_camera)
+        elif kind != "reels_pack" or location != "studio":
+            raise ValueError("Kampaniya qiyməti yalnız studiyada operatorlu çəkilişə və Reels paketinə aiddir")
     if extras < 0:
         raise ValueError("Əlavə xərc mənfi ola bilməz")
     if cover_count < 0 or cover_count > COVER_MAX:
@@ -251,11 +269,11 @@ def payment_status(
     return f"Beh gözlənilir · {fmt2(deposit_expected(total, cashback_used, False))}"
 
 
-def cashback_earned(p: Price, *, from_package: bool, first_shoot: bool) -> tuple[str, int]:
+def cashback_earned(p: Price, *, from_package: bool, first_shoot: bool, campaign: bool = False) -> tuple[str, int]:
     """Çəkiliş bağlananda yazılan keşbek: (ledger kind, məbləğ).
     Keşbeklə ödənən hissə çıxılmır, endirim çıxılır. Paketdən çəkilişə (pullu əlavələr daxil) keşbek yazılmır
-    (sahibkar, 2026-11-13)."""
-    if from_package:
+    (sahibkar, 2026-11-13). Kampaniya qiymətinə də yazılmır (sahibkar, 2026-11-27)."""
+    if from_package or campaign:
         return "earn", 0
     base = p.total
     if first_shoot:

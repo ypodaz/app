@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session as DB
 
 import ai
 import alerts
+import money
 import tgtopics
 from ai import WD, AiError
 from crm import autobook, bot_prompt, chat, conf, contacts, customer_card, events, friends, kapso, owner_reply, slots, tg, turns, typing_state, voice
@@ -225,8 +226,9 @@ def build_system(db: DB, now_dt: datetime, *, first_message: bool, lead: Lead | 
     faqs = db.scalars(select(Faq).where(Faq.active.is_(True)).order_by(Faq.id)).all()
     if slots_text is None:
         slots_text = slots.free_text(db, now_dt) or "Növbəti 7 gündə boş vaxt yoxdur."
+    campaign = money.campaign_active(aware(now_dt).astimezone(BAKU).date())
     return bot_prompt.render(
-        prices=ai._price_lines(),
+        campaign=campaign, prices=ai._price_lines(campaign),
         faqs="\n".join(f"S: {f.question}\nC: {f.answer}" for f in faqs) or "(hələ yoxdur)",
         free_slots=slots_text, now=now_text(now_dt), first_message="bəli" if first_message else "xeyr",
         lead=_lead_text(lead), customer=customer)
