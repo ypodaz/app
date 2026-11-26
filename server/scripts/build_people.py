@@ -2,7 +2,12 @@
 
     railway connect Postgres --tunnel-only --port 15432   # ayrı terminalda, DATABASE_URL buradan gəlir
     cd server && DATABASE_URL=... railway run .venv/bin/python scripts/build_people.py \\
-        --ig-archive /yol/ig-arxiv.json [--limit N] [--dry-run] [--force]
+        --ig-archive /yol/ig-arxiv.json [--wa-archive /yol/wa-arxiv.json] [--limit N] [--dry-run] [--force] [--openai]
+
+--wa-archive: oflayn WhatsApp Business arxivi (JSON):
+    {"contacts": [{"phone": "994501112233", "name": "Ad", "msgs": [["2025-03-01T12:00:00+04:00", "Müştəri"|"Y Pod", "mətn"]]}]}
+    Səs mesajları əvvəlcədən mətnə çevrilib, «[səs] …» kimi gəlir.
+--openai: kartı Gemini əvəzinə OpenAI ilə çıxarır (OPENAI_API_KEY, OPENAI_FALLBACK_MODEL mühitdən).
 
 --dry-run: AI çağırmır, bazaya yazmır; yalnız say çıxarır (ad, telefon, mətn çıxmır).
 Kartı olan və kartdan sonra yeni mesajı olmayan şəxs keçilir (--force: hamısı yenidən).
@@ -18,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import ai  # noqa: E402
+import settings  # noqa: E402
 from crm import people  # noqa: E402
 from db import SessionLocal  # noqa: E402
 
@@ -27,13 +33,17 @@ PAUSE = 0.5  # çağırışlar arası saniyə
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ig-archive", type=Path)
+    ap.add_argument("--wa-archive", type=Path)
+    ap.add_argument("--openai", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true")
     a = ap.parse_args()
     archive = json.loads(a.ig_archive.read_text(encoding="utf-8")) if a.ig_archive else None
+    wa_archive = json.loads(a.wa_archive.read_text(encoding="utf-8")) if a.wa_archive else None
+    gen = ai.generate_openai if a.openai else ai.generate
     with SessionLocal() as db:
-        bundles = people.collect(db, archive)
+        bundles = people.collect(db, archive, wa_archive)
         todo = [b for b in bundles if people.needs_card(db, b, a.force)]
         if a.limit:
             todo = todo[:a.limit]
@@ -52,7 +62,7 @@ def main() -> None:
         for b in todo:
             prompt = people.card_prompt(b)
             try:
-                out = ai.generate(people.CARD_SYSTEM, [{"role": "user", "parts": [{"text": prompt}]}],
+                out = gen(people.CARD_SYSTEM, [{"role": "user", "parts": [{"text": prompt}]}],
                                   max_tokens=1000, json_mode=True)
                 text = ai.text_of(out["content"])
                 card = people.parse_card(text)
@@ -61,7 +71,7 @@ def main() -> None:
                 continue
             chars_in += len(prompt) + len(people.CARD_SYSTEM)
             chars_out += len(text)
-            people.upsert(db, b, card)
+            people.upsert(db, b, card, settings.OPENAI_FALLBACK_MODEL if a.openai else None)
             db.commit()
             done += 1
             if done % 10 == 0:

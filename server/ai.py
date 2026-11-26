@@ -147,6 +147,14 @@ def _openai(system: str, contents: list[dict], max_tokens: int, json_mode: bool,
             "usage": (u.get("prompt_tokens", 0), u.get("completion_tokens", 0)), "fallback": True}
 
 
+def generate_openai(system: str, contents: list[dict], max_tokens: int = 900, json_mode: bool = False) -> dict:
+    """Yalnız OpenAI (Gemini-siz): oflayn/toplu işlər üçün. Cavab generate() ilə eyni formatda."""
+    out = _openai(system, contents, max_tokens, json_mode, "birbaşa OpenAI")
+    if not out:
+        raise AiError("OpenAI cavab vermədi")
+    return out
+
+
 def text_of(content: dict) -> str:
     return "".join(p.get("text", "") for p in content.get("parts", []) if not p.get("thought")).strip()
 

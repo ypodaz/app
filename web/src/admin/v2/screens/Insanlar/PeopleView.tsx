@@ -5,7 +5,7 @@ import { go } from '../../../router';
 import type { PeopleList, Person } from '../../../types';
 import { Avatar, Button, Dialog, EmptyState, ErrorBox, LoadingRows } from '../../ui';
 
-const OUTCOMES: [string, string][] = [['', 'Hamısı'], ['client', 'Müştəri'], ['lead', 'Lead'], ['lost', 'İtirildi'], ['unknown', 'Naməlum']];
+const OUTCOMES: [string, string][] = [['', 'Hamısı'], ['client', 'Müştəri'], ['lead', 'Lead'], ['lost', 'İtirildi'], ['unknown', 'Naməlum'], ['other', 'Digər (işçi/partnyor/şəxsi)']];
 const SOURCES: [string, string][] = [['', 'Hamısı'], ['ig', 'IG'], ['wa', 'WA'], ['app', 'App']];
 const outcomeLabel = (o: string) => OUTCOMES.find(([k]) => k === o)?.[1] ?? o;
 const PAGE = 50;
@@ -55,6 +55,7 @@ export function PeopleView({ q, onReset }: { q: string; onReset: () => void }) {
                   <span className="ins-name">{p.display_name || 'Adsız'}</span>
                   <span className="ins-sub">{[p.phone && `+${p.phone}`, p.ig_username && `@${p.ig_username}`].filter(Boolean).join(' · ') || 'əlaqə yoxdur'}</span>
                   <span className="ins-sub">{[outcomeLabel(p.outcome), p.service, p.profession].filter(Boolean).join(' · ')}</span>
+                  {p.last_visit_at && <span className="ins-sub">Son gəliş {day(p.last_visit_at)}</span>}
                 </span>
                 <span className="mono ins-dim2 ins-pdate">{day(p.last_contact_at)}</span>
               </button>
@@ -72,6 +73,7 @@ export function PeopleView({ q, onReset }: { q: string; onReset: () => void }) {
         {open && (
           <div className="ins-kvs">
             <Info label="Telefon" value={open.phone && `+${open.phone}`} /><Info label="Instagram" value={open.ig_username && `@${open.ig_username}`} />
+            <Info label="Son gəliş" value={open.last_visit_at && day(open.last_visit_at)} /><Info label="Son danışıq" value={open.last_topic} />
             <Info label="Peşə" value={open.profession} /><Info label="İş yeri" value={open.workplace} /><Info label="Niyə çəkiliş istəyir" value={open.reason} />
             <Info label="Xidmət" value={open.service} /><Info label="İstək" value={open.need} /><Info label="Xülasə" value={open.summary} />
             <Info label="Mesajlardakı nömrələr" value={open.phones_found.map((x) => `+${x}`).join(', ')} />

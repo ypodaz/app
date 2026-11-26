@@ -19,13 +19,14 @@ def person_out(p: Person) -> dict:
             "service": p.service, "need": p.need, "phones_found": [x for x in p.phones_found.split(",") if x],
             "summary": p.summary, "outcome": p.outcome, "sources": [x for x in p.sources.split(",") if x],
             "msg_count": p.msg_count, "first_contact_at": iso(p.first_contact_at),
-            "last_contact_at": iso(p.last_contact_at), "card_at": iso(p.card_at),
+            "last_contact_at": iso(p.last_contact_at), "last_visit_at": iso(p.last_visit_at),
+            "last_topic": p.last_topic, "card_at": iso(p.card_at),
             "wa_link": f"https://wa.me/{p.phone}" if p.phone else None,
             "ig_link": f"https://ig.me/m/{p.ig_username}" if p.ig_username else None}
 
 
 @router.get("/people")
-def people_list(q: str | None = None, outcome: Literal["client", "lead", "lost", "unknown"] | None = None,
+def people_list(q: str | None = None, outcome: Literal["client", "lead", "lost", "unknown", "other"] | None = None,
                 source: Literal["ig", "wa", "app", "contacts"] | None = None, limit: int = Query(50, ge=1, le=200),
                 offset: int = Query(0, ge=0), db: DB = Depends(get_db)):
     stmt = select(Person)

@@ -6,17 +6,18 @@ import json
 import re
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import settings
 from crm.contacts import normalize
 from db import aware, now
+from views import BAKU
 from models import Client, KnownContact, Lead, Person, Shoot, SocialItem, WaContact, WaConversation, WaMessage
 
 PREFIXES = {"50", "51", "55", "70", "77", "99", "10", "60", "12"}  # mobil operatorlar + Bakı
 STUDIO = "994555303532"  # öz nömrəmiz: müştəri nömrəsi sayılmır
-OUTCOMES = ("client", "lead", "lost", "unknown")
+OUTCOMES = ("client", "lead", "lost", "unknown", "other")
 MAX_MSGS, HEAD_MSGS, MAX_CHARS, MAX_LINE = 60, 5, 6000, 400
 _RUN = re.compile(r"(?<!\d)\+?\d[\d\s\-().]{6,}\d(?!\d)")
 
@@ -98,7 +99,7 @@ class _Groups:
         self.records.append((keys, rec))
 
 
-def collect(db: DB, ig_archive: dict | None = None) -> list[dict]:
+def collect(db: DB, ig_archive: dict | None = None, wa_archive: dict | None = None) -> list[dict]:
     """Şəxs paketlərinin siyahısı. Hər paket: phone, phones_found, ig_username, igsid, client_id, sources (sıralı list),
     msgs [(vaxt, 'Müştəri'|'Y Pod', mətn)], msg_count, first_contact_at, last_contact_at, facts, transcript."""
     personal = set(db.scalars(select(KnownContact.phone).where(KnownContact.kind == "personal")))
@@ -171,12 +172,27 @@ def collect(db: DB, ig_archive: dict | None = None) -> list[dict]:
                     msgs.append((aware(m.created_at), "Müştəri" if m.direction == "in" else "Y Pod", text))
         g.add([f"p:{p}" if p else f"w:{ct.id}"], {"src": "wa", "phone": p, "wa_name": ct.name or "", "msgs": msgs})
 
+    # oflayn WhatsApp Business arxivi: {"contacts": [{"phone", "name", "msgs": [[vaxt, "Müştəri"|"Y Pod", mətn]]}]}
+    for ct in (wa_archive or {}).get("contacts") or []:
+        p = normalize(str(ct.get("phone") or ""))
+        if not p or p == STUDIO:
+            continue
+        msgs = []
+        for m in ct.get("msgs") or []:
+            if not isinstance(m, (list, tuple)) or len(m) < 3:
+                continue
+            t, text = _dt(m[0]), str(m[2] or "").strip()
+            if t and text:
+                msgs.append((t, "Y Pod" if m[1] == "Y Pod" else "Müştəri", text))
+        g.add([f"p:{p}"], {"src": "wa", "phone": p, "wa_name": str(ct.get("name") or "").strip(), "msgs": msgs})
+
     # app müştəriləri
-    done = {cid for (cid,) in db.execute(select(Shoot.client_id).where(Shoot.status == "completed").distinct())}
+    done = {cid: last for cid, last in db.execute(select(Shoot.client_id, func.max(Shoot.starts_at))
+                                                  .where(Shoot.status == "completed").group_by(Shoot.client_id))}
     for cl in db.scalars(select(Client)):
         p, u = normalize(cl.phone), ig_handle(cl.instagram)
         g.add([f"c:{cl.id}", f"p:{p}" if p else "", f"u:{u}" if u else ""],
-              {"src": "app", "phone": p, "client": cl, "done": cl.id in done})
+              {"src": "app", "phone": p, "client": cl, "done": cl.id in done, "last_shoot": aware(done[cl.id]) if cl.id in done else None})
 
     # leadlər (telefonu kontaktdan və ya özündən)
     wa_phone = {c.id: normalize(c.phone) for c in db.scalars(select(WaContact))}
@@ -224,6 +240,7 @@ def _bundle(recs: list[dict]) -> dict:
     ig = next((r for r in recs if r["src"] == "ig"), {})
     facts = {"client_name": client.full_name if client else "", "profession": (client.profession or "") if client else "",
              "workplace": (client.workplace or "") if client else "", "completed": any(r.get("done") for r in recs),
+             "last_shoot": max((r["last_shoot"] for r in recs if r.get("last_shoot")), default=None),
              "lead_service": next((l.service for l in reversed(leads) if l.service), ""),
              "lead_name": next((l.name for l in reversed(leads) if l.name), ""),
              "wa_name": next((r["wa_name"] for r in recs if r.get("wa_name")), "")}
@@ -262,19 +279,23 @@ Qaydalar:
 - Hər şey Azərbaycan dilində, qısa.
 - full_name: şəxsin adı. profession: peşəsi. workplace: işlədiyi yer. reason: niyə çəkiliş istəyir (məqsəd). service: hansı xidmət (podkast, Reels, studiya icarəsi, korporativ və s.). need: konkret istəyi (neçə nəfər, tarix, büdcə, montaj və s.).
 - phones: yazışmada müştərinin verdiyi telefon nömrələri (siyahı; studiyanın öz nömrəsi yox).
-- outcome: client (çəkiliş edib/təsdiqləyib), lead (maraqlanıb, hələ yekun yoxdur), lost (imtina edib və ya itib), unknown (bəlli deyil).
+- outcome: client (çəkiliş edib/təsdiqləyib), lead (maraqlanıb, hələ yekun yoxdur), lost (imtina edib və ya itib), other (müştəri DEYİL: studiyanın işçisi, Y Pod üçün işləyən təchizatçı/partnyor (montajçı, SMM agentliyi, mühasib və s.) və ya şəxsi/ailə kontaktı; çəkiliş gətirən və ya alan agentlik müştəridir, other deyil), unknown (bəlli deyil).
+- last_visit: şəxsin studiyaya son real gəlişinin/çəkilişinin tarixi (YYYY-MM-DD), yalnız yazışmadan aydın görünürsə (çəkilişdən sonra təşəkkür, «dünən çəkildik» və s.); planlaşdırılan və ya bəlli olmayan tarix üçün "". Mesaj tarixini çəkiliş tarixi sanma.
+- last_topic: son söhbətin nə haqqında olduğu və necə bitdiyi, bir qısa cümlə.
 - summary: bir cümləlik xülasə.
-Cavab yalnız JSON: {"full_name":"","profession":"","workplace":"","reason":"","service":"","need":"","phones":[],"outcome":"","summary":""}"""
+Cavab yalnız JSON: {"full_name":"","profession":"","workplace":"","reason":"","service":"","need":"","phones":[],"outcome":"","last_visit":"","last_topic":"","summary":""}"""
 
 _TEXT_FIELDS = {"full_name": 120, "profession": 120, "workplace": 160, "reason": 500, "service": 120, "need": 500,
-                "summary": 500}
+                "last_topic": 300, "summary": 500}
 
 
 def card_prompt(bundle: dict) -> str:
     f = bundle["facts"]
     known = [(k, v) for k, v in (("Ad", f["client_name"] or f["lead_name"] or f["wa_name"]), ("Peşə", f["profession"]),
                                  ("İş yeri", f["workplace"]), ("Lead xidməti", f["lead_service"]),
-                                 ("Çəkiliş edib", "bəli" if f["completed"] else "")) if v]
+                                 ("Çəkiliş edib", "bəli" if f["completed"] else ""),
+                                 ("Son çəkiliş", f["last_shoot"].astimezone(BAKU).strftime("%Y-%m-%d") if f.get("last_shoot") else ""))
+             if v]
     known_text = "\n".join(f"- {k}: {v}" for k, v in known) or "- yoxdur"
     return f"Məlum məlumat:\n{known_text}\n\nYazışma:\n{bundle['transcript']}"
 
@@ -297,6 +318,8 @@ def parse_card(text: str) -> dict:
     card["phones"] = list(dict.fromkeys(p for v in raw for p in extract_phones(str(v))))
     o = str(data.get("outcome") or "").strip().lower()
     card["outcome"] = o if o in OUTCOMES else "unknown"
+    lv = data.get("last_visit")
+    card["last_visit"] = lv.strip() if isinstance(lv, str) and re.fullmatch(r"\d{4}-\d\d-\d\d", lv.strip()) else ""
     return card
 
 
@@ -323,7 +346,7 @@ def needs_card(db: DB, bundle: dict, force: bool = False) -> bool:
     return bool(bundle["last_contact_at"] and aware(p.card_at) < bundle["last_contact_at"])
 
 
-def upsert(db: DB, bundle: dict, card: dict | None) -> Person:
+def upsert(db: DB, bundle: dict, card: dict | None, model: str | None = None) -> Person:
     """Bundle-ı (və varsa AI kartını) Person-a yazır; təkrar işlədəndə yenisini yaratmır (flush edir, commit etmir).
     Deterministik məlumat AI-dan üstündür: Client adı/peşəsi, tamamlanmış çəkiliş → client."""
     p = find_person(db, bundle)
@@ -343,7 +366,8 @@ def upsert(db: DB, bundle: dict, card: dict | None) -> Person:
         phones = [x for x in bundle["phones_found"] + card["phones"] if x not in personal and x != p.phone]
         p.phones_found = ",".join(dict.fromkeys(phones))
         p.reason, p.need, p.summary = card["reason"], card["need"], card["summary"]
-        p.card_model, p.card_at = settings.GEMINI_MODEL, now()
+        p.last_topic = card.get("last_topic", "")
+        p.card_model, p.card_at = model or settings.GEMINI_MODEL, now()
     else:
         p.phones_found = p.phones_found or ",".join(bundle["phones_found"])
     ai = card or {}
@@ -359,8 +383,21 @@ def upsert(db: DB, bundle: dict, card: dict | None) -> Person:
     elif p.outcome in (None, "unknown") and f["lead_service"]:
         p.outcome = "lead"
     p.outcome = p.outcome or "unknown"
+    if f.get("last_shoot"):  # deterministik: tamamlanmış çəkiliş AI təxmininin üstündədir
+        p.last_visit_at = f["last_shoot"]
+    elif card:
+        p.last_visit_at = _visit_date(card.get("last_visit"))
     db.flush()
     return p
+
+
+def _visit_date(v: str | None) -> datetime | None:
+    """AI-nin «YYYY-MM-DD» tarixi → Bakı günü; yanlış və ya gələcək tarix → None."""
+    try:
+        d = datetime.strptime(v or "", "%Y-%m-%d").replace(tzinfo=BAKU)
+    except ValueError:
+        return None
+    return d if d <= now() else None
 
 
 def db_personal(db: DB) -> list[str]:

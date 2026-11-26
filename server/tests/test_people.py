@@ -68,6 +68,68 @@ def test_collect_merges_and_excludes(api):
     assert w["sources"] == ["wa"] and w["facts"]["lead_service"] == "reels"
 
 
+WA_ARCHIVE = {"contacts": [
+    {"phone": "0553334455", "name": "Vəli Arxiv", "msgs": [
+        ["2025-03-01T12:00:00+04:00", "Müştəri", "[səs] Salam, reels lazımdır"],
+        ["2025-03-01T12:05:00+04:00", "Y Pod", "Salam!"]]},
+    {"phone": "994501119900", "name": "Yalnız Arxiv", "msgs": [["2025-04-01T10:00:00+04:00", "Müştəri", "Salam"]]},
+    {"phone": "994705556677", "name": "Dost", "msgs": [["2025-04-01T10:00:00+04:00", "Müştəri", "Salam"]]},
+    {"phone": "", "name": "Nömrəsiz", "msgs": [["2025-04-01T10:00:00+04:00", "Müştəri", "Salam"]]}]}
+
+
+def test_collect_wa_archive_merges_by_phone(api):
+    with SessionLocal() as db:
+        db.add(KnownContact(phone="994705556677", kind="personal"))
+        wc = WaContact(phone="994553334455", name="Vəli")
+        db.add(wc)
+        db.flush()
+        conv = WaConversation(contact_id=wc.id, last_message_at=now())
+        db.add(conv)
+        db.flush()
+        db.add(WaMessage(conversation_id=conv.id, direction="in", source="customer", text="Canlı mesaj"))
+        db.commit()
+        bundles = people.collect(db, None, WA_ARCHIVE)
+    by_phone = {b["phone"]: b for b in bundles}
+    assert len(bundles) == 2 and "994705556677" not in by_phone  # şəxsi və nömrəsiz atılır
+    v = by_phone["994553334455"]  # canlı WA kontaktı + arxiv bir şəxsdə
+    assert v["sources"] == ["wa"] and v["msg_count"] == 3
+    assert "[səs] Salam, reels" in v["transcript"] and "Canlı mesaj" in v["transcript"]
+    assert v["msgs"][0][0].year == 2025 and v["facts"]["wa_name"]
+    assert by_phone["994501119900"]["facts"]["wa_name"] == "Yalnız Arxiv"
+
+
+def test_last_visit_deterministic_from_completed_shoot(api):
+    from datetime import timedelta
+    t1, t2 = now() - timedelta(days=40), now() - timedelta(days=10)
+    with SessionLocal() as db:
+        c = Client(full_name="Test Müştəri", phone="050 111 22 33", card_code="C1")
+        db.add(c)
+        db.flush()
+        for t, st in ((t1, "completed"), (t2, "completed"), (now() + timedelta(days=5), "confirmed")):
+            db.add(Shoot(client_id=c.id, tag="podcast", location="studio", starts_at=t, duration_min=60, cameras=1,
+                         status=st))
+        db.commit()
+        b = people.collect(db, None, None)[0]
+        assert abs((b["facts"]["last_shoot"] - t2).total_seconds()) < 1
+        assert "Son çəkiliş: " in people.card_prompt(b)
+        card = {"full_name": "", "profession": "", "workplace": "", "reason": "", "service": "", "need": "", "phones": [],
+                "outcome": "lead", "summary": "", "last_visit": "2020-01-01", "last_topic": "Keşbek soruşdu"}
+        p = people.upsert(db, b, card)
+        assert abs((p.last_visit_at - t2).total_seconds()) < 1 and p.last_topic == "Keşbek soruşdu"
+
+
+def test_last_visit_from_ai_when_no_shoot(api):
+    base = {"full_name": "", "profession": "", "workplace": "", "reason": "", "service": "", "need": "", "phones": [],
+            "outcome": "lead", "summary": "", "last_topic": "x"}
+    with SessionLocal() as db:
+        p = people.upsert(db, _bundle(), {**base, "last_visit": "2026-03-05"})
+        assert p.last_visit_at.strftime("%Y-%m-%d") == "2026-03-05"
+        p = people.upsert(db, _bundle(), {**base, "last_visit": "2099-01-01"})  # gələcək → None
+        assert p.last_visit_at is None
+        p = people.upsert(db, _bundle(), {**base, "last_visit": ""})
+        assert p.last_visit_at is None
+
+
 def test_collect_archive_me_as_plain_id(api, monkeypatch):
     import settings
     monkeypatch.setattr(settings, "IG_USER_ID", "")
@@ -107,8 +169,12 @@ def test_parse_card():
     c = people.parse_card('```json\n{"full_name":" Aysel ","profession":"Həkim","phones":["050 111 22 33","x"],'
                           '"outcome":"LEAD","summary":"Qısa","reason":null}\n```')
     assert c["full_name"] == "Aysel" and c["phones"] == ["994501112233"] and c["outcome"] == "lead"
-    assert c["reason"] == "" and c["workplace"] == ""
+    assert c["reason"] == "" and c["workplace"] == "" and c["last_visit"] == "" and c["last_topic"] == ""
+    c = people.parse_card('{"last_visit":" 2026-03-05 ","last_topic":"Qiymət soruşdu, cavab gözləyir"}')
+    assert c["last_visit"] == "2026-03-05" and c["last_topic"] == "Qiymət soruşdu, cavab gözləyir"
+    assert people.parse_card('{"last_visit":"keçən ay"}')["last_visit"] == ""
     assert people.parse_card('{"outcome":"nə isə"}')["outcome"] == "unknown"
+    assert people.parse_card('{"outcome":"Other"}')["outcome"] == "other"
     with pytest.raises(ValueError):
         people.parse_card("cavab yoxdur")
 
@@ -118,7 +184,7 @@ def _bundle(**kw):
          "sources": ["ig"], "msgs": [(now(), "Müştəri", "Salam")], "msg_count": 1, "first_contact_at": now(),
          "last_contact_at": now(), "transcript": "x",
          "facts": {"client_name": "", "profession": "", "workplace": "", "completed": False, "lead_service": "",
-                   "lead_name": "", "wa_name": ""}}
+                   "lead_name": "", "wa_name": "", "last_shoot": None}}
     b.update(kw)
     return b
 
@@ -153,9 +219,10 @@ def test_needs_card(api):
 def _seed():
     with SessionLocal() as db:
         db.add_all([Person(display_name="Aysel Test", phone="994501112233", profession="Həkim", sources="ig,wa",
-                           outcome="client", last_contact_at=now(), ig_username="aysel_t", phones_found="994551112200"),
+                           outcome="client", last_contact_at=now(), last_visit_at=now(), last_topic="Reels soruşdu", ig_username="aysel_t", phones_found="994551112200"),
                     Person(display_name="Vəli", phone="994553334455", sources="app", outcome="lead", summary="Reels istəyir"),
-                    Person(display_name="Anonim", sources="ig", outcome="unknown")])
+                    Person(display_name="Anonim", sources="ig", outcome="unknown"),
+                    Person(display_name="Montajçı", sources="wa", outcome="other")])
         db.commit()
 
 
@@ -165,17 +232,18 @@ def test_people_api(api):
     adm = bearer(admin_token(api))
     _seed()
     r = api.get("/api/admin/people", headers=adm).json()
-    assert r["total"] == 3 and r["items"][0]["display_name"] == "Aysel Test"
-    assert [i["display_name"] for i in r["items"]] == ["Aysel Test", "Anonim", "Vəli"]  # boş last_contact_at sona, id azalan
+    assert r["total"] == 4 and r["items"][0]["display_name"] == "Aysel Test"
+    assert [i["display_name"] for i in r["items"]] == ["Aysel Test", "Montajçı", "Anonim", "Vəli"]  # boş last_contact_at sona, id azalan
     a = r["items"][0]
     assert a["wa_link"] == "https://wa.me/994501112233" and a["ig_link"] == "https://ig.me/m/aysel_t"
     assert a["sources"] == ["ig", "wa"] and a["phones_found"] == ["994551112200"]
-    assert r["items"][1]["wa_link"] is None
+    assert r["items"][2]["wa_link"] is None
+    assert a["last_visit_at"] and a["last_topic"] == "Reels soruşdu" and r["items"][2]["last_visit_at"] is None
     q = lambda **p: api.get("/api/admin/people", params=p, headers=adm).json()  # noqa: E731
     assert q(q="AYSEL")["total"] == 1 and q(q="reels")["total"] == 1 and q(q="1112233")["total"] == 1
     assert q(q="050 111 22 33")["total"] == 1 and q(q="həkim")["total"] == 1
-    assert q(outcome="lead")["total"] == 1 and q(source="ig")["total"] == 2 and q(source="wa")["total"] == 1
-    assert q(limit=1, offset=1)["items"][0]["display_name"] == "Anonim" and q(limit=1)["total"] == 3
+    assert q(outcome="lead")["total"] == 1 and q(source="ig")["total"] == 2 and q(source="wa")["total"] == 2 and q(outcome="other")["total"] == 1
+    assert q(limit=1, offset=1)["items"][0]["display_name"] == "Montajçı" and q(limit=1)["total"] == 4
     pid = a["id"]
     assert api.get(f"/api/admin/people/{pid}", headers=adm).json()["display_name"] == "Aysel Test"
     assert api.get("/api/admin/people/999", headers=adm).status_code == 404
