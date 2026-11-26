@@ -2,6 +2,7 @@ from test_auth import admin_token, api, bearer  # noqa: F401,I001  (env-i əvvə
 from crm_helpers import crm_env  # noqa: F401,I001
 
 import pytest  # noqa: E402
+from datetime import timedelta  # noqa: E402
 
 from crm import people  # noqa: E402
 from db import SessionLocal, now  # noqa: E402
@@ -160,9 +161,13 @@ def test_collect_ig_phone_links_live_thread_and_own_account(api, monkeypatch):
 
 
 def test_transcript_caps():
-    msgs = [(now(), "Müştəri" if i % 2 else "Y Pod", f"mesaj{i} " + "x" * 300) for i in range(200)]
+    msgs = [(now() - timedelta(days=200 - i), "Müştəri" if i % 2 else "Y Pod", f"mesaj{i} " + "x" * 300)
+            for i in range(200)]
     t = people.transcript(msgs)
-    assert len(t) <= 6200 and "mesaj0 " in t and "mesaj4 " in t and "mesaj199 " in t and "mesaj50 " not in t
+    assert len(t) <= 12500 and "mesaj0 " in t and "mesaj4 " in t and "mesaj199 " in t and "buraxıldı" in t
+    assert t.startswith("— ") and t.count("— 20") >= 20  # gün başlıqları
+    short = people.transcript(msgs[:3])
+    assert "buraxıldı" not in short and short.count("Müştəri:") + short.count("Y Pod:") == 3
 
 
 def test_parse_card():

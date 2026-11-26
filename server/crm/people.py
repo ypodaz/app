@@ -18,7 +18,7 @@ from models import Client, KnownContact, Lead, Person, Shoot, SocialItem, WaCont
 PREFIXES = {"50", "51", "55", "70", "77", "99", "10", "60", "12"}  # mobil operatorlar + Bakı
 STUDIO = "994555303532"  # öz nömrəmiz: müştəri nömrəsi sayılmır
 OUTCOMES = ("client", "lead", "lost", "unknown", "other")
-MAX_MSGS, HEAD_MSGS, MAX_CHARS, MAX_LINE = 60, 5, 6000, 400
+MAX_MSGS, HEAD_MSGS, MID_MSGS, MAX_CHARS, MAX_LINE = 120, 5, 30, 12000, 400
 _RUN = re.compile(r"(?<!\d)\+?\d[\d\s\-().]{6,}\d(?!\d)")
 
 
@@ -260,14 +260,39 @@ def _bundle(recs: list[dict]) -> dict:
 
 
 def transcript(msgs: list[tuple]) -> str:
-    """Xronoloji mətn: ilk 5 + son mesajlar (cəmi ≤60), ≤6000 simvol (köhnə orta hissə atılır)."""
-    head, tail = msgs[:HEAD_MSGS], msgs[HEAD_MSGS:][-(MAX_MSGS - HEAD_MSGS):]
+    """Xronoloji mətn, gün dəyişəndə «— YYYY-MM-DD —» başlığı: ilk 5 + ortadan bərabər seçmə (≤30) + son mesajlar,
+    cəmi ≤120 mesaj və ≤12000 simvol. Uzun söhbətdə keçmiş də görünsün deyə orta hissə seçmə ilə saxlanır."""
+    head, rest = msgs[:HEAD_MSGS], msgs[HEAD_MSGS:]
+    tail = rest[-(MAX_MSGS - HEAD_MSGS - MID_MSGS):]
+    middle = rest[:len(rest) - len(tail)]
+    mid = [middle[i * len(middle) // MID_MSGS] for i in range(MID_MSGS)] if len(middle) > MID_MSGS else middle
     line = lambda m: f"{m[1]}: {m[2].replace(chr(10), ' ')[:MAX_LINE]}"
-    while len(tail) > 1 and sum(len(line(m)) + 1 for m in head + tail) > MAX_CHARS:
-        tail.pop(0)
-    skipped = len(msgs) - len(head) - len(tail)
-    lines = [line(m) for m in head] + ([f"[… {skipped} mesaj buraxıldı …]"] if skipped > 0 else []) + [line(m) for m in tail]
-    return "\n".join(lines)
+    size = lambda: sum(len(line(m)) + 14 for m in head + mid + tail)
+    while size() > MAX_CHARS and (mid or len(tail) > 1):
+        if mid and len(mid) * 3 >= len(tail):
+            mid = mid[1::2] if len(mid) > 1 else []
+        else:
+            tail.pop(0)
+    out, day = [], None
+
+    def add(ms: list[tuple]) -> None:
+        nonlocal day
+        for m in ms:
+            d = m[0].astimezone(BAKU).strftime("%Y-%m-%d")
+            if d != day:
+                out.append(f"— {d} —")
+                day = d
+            out.append(line(m))
+
+    add(head)
+    if len(middle) > len(mid):
+        out.append(f"[… {len(middle) - len(mid)} mesaj buraxıldı, aşağıda ortadan seçmə …]" if mid else
+                   f"[… {len(middle)} mesaj buraxıldı …]")
+    add(mid)
+    if mid and len(middle) > len(mid):
+        out.append("[… son mesajlar …]")
+    add(tail)
+    return "\n".join(out)
 
 
 # --- AI kartı ---
@@ -280,7 +305,8 @@ Qaydalar:
 - full_name: şəxsin adı. profession: peşəsi. workplace: işlədiyi yer. reason: niyə çəkiliş istəyir (məqsəd). service: hansı xidmət (podkast, Reels, studiya icarəsi, korporativ və s.). need: konkret istəyi (neçə nəfər, tarix, büdcə, montaj və s.).
 - phones: yazışmada müştərinin verdiyi telefon nömrələri (siyahı; studiyanın öz nömrəsi yox).
 - outcome: client (çəkiliş edib/təsdiqləyib), lead (maraqlanıb, hələ yekun yoxdur), lost (imtina edib və ya itib), other (müştəri DEYİL: studiyanın işçisi, Y Pod üçün işləyən təchizatçı/partnyor (montajçı, SMM agentliyi, mühasib və s.) və ya şəxsi/ailə kontaktı; çəkiliş gətirən və ya alan agentlik müştəridir, other deyil), unknown (bəlli deyil).
-- last_visit: şəxsin studiyaya son real gəlişinin/çəkilişinin tarixi (YYYY-MM-DD), yalnız yazışmadan aydın görünürsə (çəkilişdən sonra təşəkkür, «dünən çəkildik» və s.); planlaşdırılan və ya bəlli olmayan tarix üçün "". Mesaj tarixini çəkiliş tarixi sanma.
+- Yazışmada günlər «— YYYY-MM-DD —» sətirləri ilə ayrılıb; tarixləri oradan götür.
+- last_visit: şəxsin son real çəkilişinin/studiyaya gəlişinin günü (YYYY-MM-DD). Əlamətlər: həmin gün üçün saat razılaşdırılıb və sonra «gəldim/yoldayam», «videolar hazırdır», fayl/link göndərilməsi, çəkilişə görə təşəkkür və ya ödəniş var; «dünən çəkildik» kimi ifadədə günü hesabla. Çəkiliş baş tutmayıbsa və ya heç bir əlamət yoxdursa "".
 - last_topic: son söhbətin nə haqqında olduğu və necə bitdiyi, bir qısa cümlə.
 - summary: bir cümləlik xülasə.
 Cavab yalnız JSON: {"full_name":"","profession":"","workplace":"","reason":"","service":"","need":"","phones":[],"outcome":"","last_visit":"","last_topic":"","summary":""}"""
