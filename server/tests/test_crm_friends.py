@@ -123,3 +123,27 @@ def test_client_detail_links_conversation_and_contact(api, crm_env):  # noqa: F8
     assert d["conversation_id"] == conv_id and d["wa_contact"] == {"id": ct_id, "excluded": True}
     d = api.get(f"/api/admin/clients/{lone_id}", headers=adm).json()
     assert d["conversation_id"] is None and d["wa_contact"] is None
+
+
+def test_customer_button_survives_new_conversation(api, crm_env):  # noqa: F811
+    """Xarici/şəxsi kontakt «✅ bot yazsın» deyilibsə, yeni Kapso söhbətində də sahibkara ötürülmür."""
+    from datetime import timedelta
+    from db import now
+    from models import WaMessage
+    cid, conv_id = mk_conv(phone="971501112233")
+    assert bot.handle(conv_id) == "route:foreign"
+    assert cb(api, f"f:w:{cid}:on") == "customer"
+    with SessionLocal() as db:
+        conv = WaConversation(contact_id=cid, kapso_conversation_id="k-yeni", mode="bot", last_message_at=now(),
+                              last_inbound_at=now(), window_expires_at=now() + timedelta(hours=2))
+        db.add(conv)
+        db.flush()
+        db.add(WaMessage(conversation_id=conv.id, wamid="w-yeni", direction="in", source="customer",
+                         text="Salam", created_at=now()))
+        db.commit()
+        new_id = conv.id
+    crm_env.gemini(jreply())
+    assert bot.handle(new_id) == "draft"
+    assert cb(api, f"f:w:{cid}:off") == "friend"  # dost deyilsə, icazə geri götürülür
+    with SessionLocal() as db:
+        assert conf.get(db, f"wa_bot:{cid}") != "1"

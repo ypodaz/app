@@ -15,7 +15,7 @@ import ai
 import alerts
 import tgtopics
 from ai import WD, AiError
-from crm import autobook, bot_prompt, chat, conf, contacts, customer_card, events, kapso, owner_reply, slots, tg, turns, typing_state, voice
+from crm import autobook, bot_prompt, chat, conf, contacts, customer_card, events, friends, kapso, owner_reply, slots, tg, turns, typing_state, voice
 from db import SessionLocal, aware, now
 from models import BotDraft, Faq, Lead, LeadEvent, UnansweredQuestion, WaContact, WaConversation, WaMessage
 from views import BAKU
@@ -462,6 +462,8 @@ def route_away(db: DB, conv: WaConversation, contact: WaContact) -> str | None:
     """Xarici və ya şəxsi nömrə: söhbət bir dəfəlik sahibkara keçir (qiymət fərqli deyilir), Telegram-a xəbər gedir.
     Qaytarır: foreign | personal | None (bot normal işləyir)."""
     if conv.route:  # artıq ötürülüb; sahibkar `bot`-a qaytarıbsa, onun qərarıdır
+        return None
+    if friends.bot_allowed(db, contact.id):  # sahibkar bu kontakt üçün botu açıb (crm/friends.py)
         return None
     kind = contacts.route(contact, contacts.lookup(db, contact.phone))
     if not kind:

@@ -26,6 +26,15 @@ def is_ig_friend(db: DB, thread: str) -> bool:
     return conf.get(db, _ig_key(thread)) == "1"
 
 
+def bot_allowed_key(contact_id: int) -> str:
+    return f"wa_bot:{contact_id}"
+
+
+def bot_allowed(db: DB, contact_id: int) -> bool:
+    """Sahibkar «✅ Müştəridir, bot yazsın» deyib: xarici/şəxsi nömrə olsa da bot cavab yazır."""
+    return conf.get(db, bot_allowed_key(contact_id)) == "1"
+
+
 def wa_button(contact_id: int) -> dict:
     return {"text": "🙅 Dostdur, bot yazmasın", "callback_data": f"f:w:{contact_id}:off"}
 
@@ -42,6 +51,7 @@ def customer_button(contact_id: int) -> dict:
 def set_wa(db: DB, contact: WaContact, friend: bool) -> None:
     changed = contact.excluded != friend
     contact.excluded = friend
+    conf.put(db, bot_allowed_key(contact.id), "" if friend else "1")  # yeni söhbətlərdə də xarici/şəxsi ötürmə olmasın
     for conv in db.scalars(select(WaConversation).where(WaConversation.contact_id == contact.id)).all():
         if changed:
             events.friend_changed(db, events.WA, conv.id, friend)
