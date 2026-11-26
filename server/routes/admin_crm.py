@@ -22,6 +22,9 @@ Stage = Literal["yeni", "maraqlanir", "tarix", "beh", "tesdiq", "geldi", "itiril
 LostReason = Literal["qiymet", "vaxt", "cavab_yox", "basqa_yer", "diger"]
 
 
+OPEN_LIMIT = 500  # söhbət açılanda göstərilən son mesaj sayı
+
+
 def get_or_404(db: DB, model, id_: int, what: str):
     row = db.get(model, id_)
     if not row:
@@ -124,8 +127,10 @@ def inbox_open(conv_id: int, db: DB = Depends(get_db)):
     ct = db.get(WaContact, c.contact_id)
     c.unread = 0
     db.commit()
-    msgs = db.scalars(select(WaMessage).where(WaMessage.conversation_id == c.id)
-                      .order_by(WaMessage.created_at, WaMessage.id)).all()
+    # köhnə WhatsApp arxivi (history) idxalından sonra söhbətdə on minlərlə mesaj ola bilər: yalnız sonuncular
+    msgs = list(reversed(db.scalars(select(WaMessage).where(WaMessage.conversation_id == c.id)
+                                    .order_by(WaMessage.created_at.desc(), WaMessage.id.desc())
+                                    .limit(OPEN_LIMIT)).all()))
     drafts = db.scalars(select(BotDraft).where(BotDraft.conversation_id == c.id).order_by(BotDraft.id)).all()
     lead = db.get(Lead, c.lead_id) if c.lead_id else None
     return {"id": c.id, "mode": c.mode, "unread": c.unread, "bot_typing": typing_state.is_typing(f"wa:{c.id}"),
