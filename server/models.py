@@ -617,6 +617,8 @@ class Person(Base):
     last_contact_at: Mapped[Optional[datetime]] = mapped_column(TS)
     last_visit_at: Mapped[Optional[datetime]] = mapped_column(TS)  # son çəkiliş/gəliş: tamamlanmış Shoot, yoxsa AI
     last_topic: Mapped[str] = mapped_column(Text, default="", server_default="")  # son söhbət nə haqqında idi
+    profile: Mapped[str] = mapped_column(Text, default="", server_default="")  # JSON: tam yazışmadan istək, ehtiyac, satış problemi, şikayət, təklif, fərdi mesaj
+    profile_at: Mapped[Optional[datetime]] = mapped_column(TS)
     card_model: Mapped[Optional[str]] = mapped_column(String(60))
     card_at: Mapped[Optional[datetime]] = mapped_column(TS)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)

@@ -101,6 +101,8 @@ export type Person = {
   profession: string; workplace: string; reason: string; service: string; need: string; phones_found: string[];
   summary: string; outcome: 'client' | 'lead' | 'lost' | 'unknown' | 'other'; sources: string[]; msg_count: number;
   first_contact_at: string | null; last_contact_at: string | null; last_visit_at: string | null; last_topic: string; card_at: string | null;
-  wa_link: string | null; ig_link: string | null;
+  wa_link: string | null; ig_link: string | null; profile: PersonProfile | null;
 };
+/** Tam yazışmadan çıxarılan profil (server: Person.profile JSON). */
+export type PersonProfile = Partial<Record<'kim' | 'istekler' | 'ehtiyac' | 'satis_problemi' | 'etirazlar' | 'sikayetler' | 'teklifler' | 'son_veziyyet' | 'ton' | 'prioritet' | 'ferdi_mesaj_bucagi' | 'ferdi_mesaj' | 'kampaniya' | 'kampaniya_mesaj', string>>;
 export type PeopleList = { items: Person[]; total: number };

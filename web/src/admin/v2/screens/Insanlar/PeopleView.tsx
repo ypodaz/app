@@ -79,6 +79,12 @@ export function PeopleView({ q, onReset }: { q: string; onReset: () => void }) {
             <Info label="Mesajlardakı nömrələr" value={open.phones_found.map((x) => `+${x}`).join(', ')} />
             <Info label="Mənbə" value={open.sources.join(', ').toUpperCase()} /><Info label="Mesaj sayı" value={open.msg_count} />
             <Info label="İlk əlaqə" value={open.first_contact_at && day(open.first_contact_at)} /><Info label="Son əlaqə" value={open.last_contact_at && day(open.last_contact_at)} />
+            <Info label="Prioritet" value={open.profile?.prioritet} /><Info label="İstəkləri" value={open.profile?.istekler} />
+            <Info label="Əsl ehtiyac" value={open.profile?.ehtiyac} /><Info label="Satış harada ilişdi" value={open.profile?.satis_problemi} />
+            <Info label="Etirazlar" value={open.profile?.etirazlar} /><Info label="Şikayətlər" value={open.profile?.sikayetler} />
+            <Info label="Təklif və arzular" value={open.profile?.teklifler} /><Info label="Son vəziyyət" value={open.profile?.son_veziyyet} />
+            <Info label="Danışıq tonu" value={open.profile?.ton} /><Info label="Nəyə toxunmaq" value={open.profile?.ferdi_mesaj_bucagi} />
+            <Info label="Kampaniya" value={open.profile?.kampaniya} /><Info label="Fərdi mesaj (qaralama)" value={open.profile?.kampaniya_mesaj || open.profile?.ferdi_mesaj} />
           </div>
         )}
       </Dialog>

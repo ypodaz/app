@@ -1,4 +1,5 @@
 """Müştəri bazası API: axtarış və detal (scripts/build_people.py ilə qurulur)."""
+import json
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +14,13 @@ from views import iso
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(current_admin)])
 
 
+def _profile(p: Person) -> dict | None:
+    try:
+        return json.loads(p.profile) if p.profile else None
+    except ValueError:
+        return None
+
+
 def person_out(p: Person) -> dict:
     return {"id": p.id, "display_name": p.display_name, "phone": p.phone, "ig_username": p.ig_username,
             "client_id": p.client_id, "profession": p.profession, "workplace": p.workplace, "reason": p.reason,
@@ -20,7 +28,7 @@ def person_out(p: Person) -> dict:
             "summary": p.summary, "outcome": p.outcome, "sources": [x for x in p.sources.split(",") if x],
             "msg_count": p.msg_count, "first_contact_at": iso(p.first_contact_at),
             "last_contact_at": iso(p.last_contact_at), "last_visit_at": iso(p.last_visit_at),
-            "last_topic": p.last_topic, "card_at": iso(p.card_at),
+            "last_topic": p.last_topic, "card_at": iso(p.card_at), "profile": _profile(p),
             "wa_link": f"https://wa.me/{p.phone}" if p.phone else None,
             "ig_link": f"https://ig.me/m/{p.ig_username}" if p.ig_username else None}
 

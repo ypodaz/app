@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DB
 
 import settings
+from crm import conf
 from crm.contacts import normalize
 from db import aware, now
 from views import BAKU
@@ -200,6 +201,10 @@ def collect(db: DB, ig_archive: dict | None = None, wa_archive: dict | None = No
         p = normalize(ld.phone) or wa_phone.get(ld.contact_id, "")
         g.add([f"p:{p}" if p else f"w:{ld.contact_id}"], {"src": "wa", "phone": p, "lead": ld})
 
+    # sahibkarın təsdiqlədiyi IG ↔ telefon bağları (Meta arxivi uyğunlaşdırması): [[ig_username, telefon], ...]
+    for ig, ph in _links(db):
+        g.add([f"u:{ig}", f"p:{ph}"], {"src": "link"})
+
     # telefon kontaktları (müştəri)
     for k in db.scalars(select(KnownContact).where(KnownContact.kind == "customer")):
         g.add([f"p:{k.phone}"], {"src": "contacts", "phone": k.phone})
@@ -220,6 +225,19 @@ def collect(db: DB, ig_archive: dict | None = None, wa_archive: dict | None = No
 
 
 _ORDER = {"ig": 0, "wa": 1, "app": 2, "contacts": 3}
+LINKS_KEY = "people_links"
+
+
+def _links(db: DB) -> list[tuple[str, str]]:
+    try:
+        raw = json.loads(conf.get(db, LINKS_KEY) or "[]")
+    except ValueError:
+        return []
+    out = []
+    for x in raw:
+        if isinstance(x, (list, tuple)) and len(x) == 2 and x[0] and normalize(str(x[1])):
+            out.append((str(x[0]).lower().lstrip("@"), normalize(str(x[1]))))
+    return out
 
 
 def _bundle(recs: list[dict]) -> dict:
@@ -255,7 +273,7 @@ def _bundle(recs: list[dict]) -> dict:
     return {"phone": own[0] if own else (found[0] if found else None), "phones_found": found,
             "ig_username": ig_user or None, "igsid": next((r["igsid"] for r in recs if r.get("igsid")), None),
             "client_id": client.id if client else None,
-            "sources": sorted({r["src"] for r in recs}, key=_ORDER.get), "msgs": msgs, "msg_count": len(msgs),
+            "sources": sorted({r["src"] for r in recs} - {"link"}, key=_ORDER.get), "msgs": msgs, "msg_count": len(msgs),
             "first_contact_at": first, "last_contact_at": last, "facts": facts, "transcript": transcript(msgs)}
 
 

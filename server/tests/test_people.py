@@ -252,3 +252,43 @@ def test_people_api(api):
     pid = a["id"]
     assert api.get(f"/api/admin/people/{pid}", headers=adm).json()["display_name"] == "Aysel Test"
     assert api.get("/api/admin/people/999", headers=adm).status_code == 404
+
+
+def test_collect_owner_links_ig_to_phone(api, monkeypatch):
+    """people_links: IG hesabında nömrə yazılmayıb, amma Meta arxivindən təsdiqlənmiş bağ var -> bir şəxs."""
+    import json, settings
+    from crm import conf
+    monkeypatch.setattr(settings, "IG_USER_ID", "")
+    archive = {**ARCHIVE, "me": "900",
+               "conversations": [{**ARCHIVE["conversations"][0],
+                                  "participants": [{"id": "900"}, {"username": "Test_User", "id": "111"}]}]}
+    with SessionLocal() as db:
+        wc = WaContact(phone="994553334455", name="Vəli")
+        db.add(wc)
+        db.flush()
+        conv = WaConversation(contact_id=wc.id, last_message_at=now())
+        db.add(conv)
+        db.flush()
+        db.add(WaMessage(conversation_id=conv.id, direction="in", source="customer", text="WA mesajı"))
+        db.commit()
+        assert len(people.collect(db, archive)) == 2
+        conf.put(db, people.LINKS_KEY, json.dumps([["@Test_User", "0553334455"], ["bad"], ["x", ""]]))
+        db.commit()
+        bundles = people.collect(db, archive)
+    assert len(bundles) == 1
+    b = bundles[0]
+    assert b["phone"] == "994553334455" and b["ig_username"] == "test_user" and b["sources"] == ["ig", "wa"]
+    assert "WA mesajı" in b["transcript"] and "Salam!" in b["transcript"]
+
+
+def test_person_api_profile(api):
+    import json
+    with SessionLocal() as db:
+        p = Person(display_name="Profil", phone="994501234567", profile=json.dumps({"prioritet": "isti", "ferdi_mesaj": "Salam"}))
+        q = Person(display_name="Pozuq", profile="{bad")
+        db.add_all([p, q])
+        db.commit()
+        pid, qid = p.id, q.id
+    adm = bearer(admin_token(api))
+    assert api.get(f"/api/admin/people/{pid}", headers=adm).json()["profile"]["prioritet"] == "isti"
+    assert api.get(f"/api/admin/people/{qid}", headers=adm).json()["profile"] is None
